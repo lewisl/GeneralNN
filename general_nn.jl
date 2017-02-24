@@ -1,0 +1,223 @@
+# generalizing sigmoid neural networks for up to 5 layers
+
+# TODO factor out feedforward and backpropagate
+#       where should the loop be?
+#       can we share feedforward for training and predictions?
+# would make it easier to support different kinds of units at different layers
+
+using MAT
+using Devectorize
+using Plots
+pyplot()
+
+# This is a quicker way to call general_nn with only 1 hidden layer with n_hid units.
+function general_nn(matfname::String, n_iters::Int64, n_hid::Int64, alpha=0.35, 
+    classify="sigmoid", compare=false)
+    general_nn(matfname, n_iters,[n_hid], alpha, classify, compare)
+end
+
+function general_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}, alpha=0.35,
+    classify="sigmoid", compare=false)
+    # creates a nn with 1 input layer, up to 3 hidden layers with n_hid units,
+    # and a single output logistic neuron to do 1-way classification
+
+    # digits5000by784.mat",2000, [400,400], .4, sigmoid   .913 on test set
+
+    # layers must be 1, 2, or 3 hidden layers. In addition, there will always be
+    # 1 input layer and 1 output layer. So, total layers will be 3, 4, or 5.
+    if ndims(n_hid) != 1
+        error("Input n_hid must be a vector.")
+    elseif size(n_hid,1) > 3
+        error("n_hid can only contain 1 to 3 integer values for 1 to 3 hidden layers.")
+    end
+
+    # read the data, load into variables, set some useful variables
+    df = matread(matfname)
+    # Split into train and test datasets, if we have them
+    # we will set examples to be columns to optimize for julia column-dominant operations
+    if in("train", keys(df))
+        inputs = df["train"]["x"]'
+        targets = df["train"]["y"]'
+    else
+        inputs = df["x"]'
+        targets = df["y"]'
+    end
+
+    k,m = size(inputs) # number of features k by no. of examples m
+    t = size(targets,1) # number of output units
+    n_hid_layers = size(n_hid, 1)
+    output_layer = 2 + n_hid_layers # input layer is 1, output layer is highest value
+    
+    # weight dims include bias term the 2nd index at each layer
+    #    this follows the convention for theta: the outputs to the current layer activation
+    #    are rows of theta and the inputs from the next layer down are columns
+    w_dims = [[k, 1]] # "weight" dimensions for the input layer--not used
+    for i = 2:output_layer-1
+        push!(w_dims, [n_hid[i-1], w_dims[i-1][1]+1])
+    end
+    push!(w_dims, [t, n_hid[end]+ 1]) # weight dimensions for the output layer
+
+    # use either sigmoid or softmax for output layer with multiple classification
+    if w_dims[output_layer][1] > 1  # more than one output (unit)
+        if classify == "sigmoid"
+            class_function = sigmoid
+        elseif classify == "softmax"
+            class_function = softmax
+        else
+            error("Function to classify output labels must be \"sigmoid\" or \"softmax\".")
+        end
+    else
+        class_function = sigmoid  # for one output (unit)
+    end
+
+    cost = 0.0
+    cost_history = zeros(n_iters+1)
+
+    # weight matrices for all calculated layers (except the input layer)
+    # initialize random weight parameters including bias term
+    theta = [zeros(2,2)] # initialize collection of 2d float arrays: input layer 1 not used
+    interval = 0.5 # random weights will be generated in [-interval, interval]
+    for i = 2:output_layer
+        push!(theta, rand(w_dims[i]...) .* (2.0 * interval) .- interval)
+    end
+
+    # initialize matrices used in training by layer to enable update-in-place for speed
+    # for feed forward
+    a = [inputs]
+    a_wb = [vcat(ones(1, m), inputs)] # input layer with bias column, never changed in loop
+    z = [zeros(2,2)] # not used for input layer
+    for i = 2:output_layer-1
+        push!(z, zeros(size(theta[i] * a_wb[i-1])))  # z2 and up...  ...output layer set after loop
+        push!(a, zeros(size(z[i])))  # a2 and up...  ...output layer set after loop
+        push!(a_wb, vcat(ones(1, m), a[i]))  # a2_wb and up... ...but not output layer    
+    end
+    push!(z, similar(targets))  # z output layer z[output_layer]
+    push!(a, similar(targets))  # a output layer a[output_layer]
+
+    # for back propagation
+    eps = [rand(2,2)]  # not used at input layer
+    delta = [rand(2,2)]  # not used at input layer
+    for i = 2:output_layer
+        push!(eps, zeros(size(a[i])))
+        push!(delta, zeros(size(theta[i])))
+    end
+
+    # train the neural network and accumulate statistics
+    for i = 1:n_iters+1
+
+        # feed forward from inputs to output layer predictions
+            # x[:] enables replace in place--reduce allocations, speed up loop
+        @fastmath for ii = 2:output_layer-1
+            z[ii][:] = theta[ii] * a_wb[ii-1]
+            a[ii][:] = sigmoid(z[ii])
+            a_wb[ii][2:end, :] = a[ii]  # TODO Find a better way to handle bias
+        end
+        z[output_layer][:] = theta[output_layer] * a_wb[output_layer-1]
+        a[output_layer][:] = class_function(z[output_layer])
+
+        @fastmath cost = -1.0 / m * sum(targets .* log(a[output_layer]) + 
+            (1.0 .- targets) .* log(1.0 .- a[output_layer]))
+        cost_history[i] = cost # cost[1]
+
+        # back propagation
+        for jj = output_layer:-1:2
+            if jj == output_layer
+                eps[jj][:] = a[jj] .- targets  # eps is epsilon, this is the output layer
+            else
+                eps[jj][:] = theta[jj+1][:, 2:end]' * eps[jj+1] .* sigmoid_gradient(z[jj])
+            end
+            delta[jj][:] = eps[jj] * a_wb[jj-1]'
+            alphaoverm = alpha / m  # need this because @devec won't do division. 
+            @devec gradterm = theta[jj] .- alphaoverm .* delta[jj]
+            theta[jj][:] = gradterm
+        end
+    end
+    
+    # output some statistics 
+    # training data
+    println("Fraction correct labels predicted training: ", score(targets, a[output_layer]))
+    println("Final cost training: ", cost[1])
+
+    # test data
+    if in("test", keys(df))
+        testpredictions, testcost = feedfwdpredict(theta, df["test"], output_layer, class_function)
+        println("Fraction correct labels predicted test: ", score(df["test"]["y"]', testpredictions))
+        println("Final cost test: ", testcost[1])
+    end
+
+    # plot the progress of training cost
+    plot(cost_history[1:end-1], lab="Training Cost", ylims=(0, Inf))
+    gui()
+
+    if compare
+        printby2(hcat(choices, targets))
+    end
+
+    return theta
+end
+
+
+function feedfwdpredict(theta, data, output_layer, class_function)
+    # this is good for a single pass but inefficient in a loop
+
+    inputs = data["x"]'
+    targets = data["y"]'
+    m = size(inputs, 2)
+    a = [inputs]
+    a_wb = [vcat(ones(1,m), inputs)]
+    z = [zeros(2,2)] # not used for input layer
+    @fastmath for ii = 2:output_layer-1
+        push!(z, theta[ii] * a_wb[ii-1])
+        push!(a, sigmoid(z[ii]))
+        push!(a_wb,vcat(ones(1, m),a[ii]))
+    end
+    push!(z, theta[output_layer] * a_wb[output_layer-1])
+    push!(a, class_function(z[output_layer]))
+
+    @fastmath cost = -1.0 / m * sum(targets .* log(a[output_layer]) + 
+        (1.0 .- targets) .* log(1.0 .- a[output_layer]))   
+
+    return a[output_layer], cost
+end
+
+
+function sigmoid(z::Array{Float64,2})
+    @devec  ret = 1.0 ./ (1.0 .+ exp(-z))
+    return ret
+end
+
+
+function softmax(atop::Array{Float64,2})  # TODO try this with devec
+    f = atop .- maximum(atop,1)
+    # @devec ret = exp(f) ./ sum(exp(f), 1) # didn't work
+    return exp(f) ./ sum(exp(f), 1)  
+end
+
+
+function sigmoid_gradient(z::Array{Float64,2})
+    # derivative of sigmoid function
+    sig = sigmoid(z)
+    return sig .* (1 - sig)
+end
+
+
+function score(targets, predictions)
+    if size(targets,1) > 1
+        # works for output unitS sigmoid or softmax
+        targetmax = [indmax(targets[:,i]) for i in 1:size(targets,2)]
+        predmax = [indmax(predictions[:,i]) for i in 1:size(predictions,2)]
+        fracright = mean(convert(Array{Int},targetmax .== predmax))
+    else
+        # works because single output unit is sigmoid
+        choices = [j >= 0.5 ? 1.0 : 0.0 for j in predictions]
+        fracright = mean(convert(Array{Int},choices .== targets))
+    end
+    return fracright
+end
+
+
+function printby2(nby2)
+    for i = 1:size(nby2,1)
+        println(nby2[i,1], "    ", nby2[i,2])
+    end
+end
