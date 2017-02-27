@@ -9,12 +9,12 @@ pyplot()  # initialize the backend used by Plots
 
 # This is a quicker way to call general_nn with only 1 hidden layer with n_hid units.
 function general_nn(matfname::String, n_iters::Int64, n_hid::Int64, alpha=0.35, mb_size=0,
-    lambda=0, classify="softmax", compare=false)
+    lambda=0.0, classify="softmax", compare=false)
     general_nn(matfname, n_iters,[n_hid], alpha, mb_size, lambda, classify, compare)
 end
 
 function general_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}, alpha=0.35,
-    mb_size=0, lambda=0, classify="softmax", compare=false)
+    mb_size=0, lambda=0.0, classify="softmax", compare=false)
     # creates a nn with 1 input layer, up to 3 hidden layers with n_hid units,
     # and output units matching the dimensions of the training data y
     # returns theta
@@ -234,11 +234,15 @@ function backprop!(theta, targets, output_layer, lambda, alpha, m, a, a_wb, z, e
         delta[jj][:] = eps[jj] * a_wb[jj-1]'
         alphaoverm = alpha / m  # need this because @devec won't do division. 
         lamoverm = lambda / m  # need this because @devec won't do division. 
-        if lambda == 0
-            @devec gradterm = theta[jj] .- alphaoverm .* delta[jj] 
-        else
-            @devec gradterm = (1 - lamoverm) .* (theta[jj] .-  (alphaoverm .* delta[jj])) 
+        @devec gradterm = theta[jj] .- alphaoverm .* delta[jj]
+        if lambda != 0.0
+            gradterm[:, 2:end] = (1.0 - lamoverm) .* gradterm[:, 2:end]
         end
+        # if lambda != 0.0
+        #     @devec gradterm = theta[jj] .- alphaoverm .* delta[jj] 
+        # else
+        #     @devec gradterm = (1.0 - lamoverm) .* (theta[jj] .-  (alphaoverm .* delta[jj])) 
+        # end
         theta[jj][:] = gradterm
     end
 end
@@ -247,13 +251,9 @@ end
 function cross_entropy_cost(targets, predictions, m, theta, lambda, output_layer)
     @fastmath cost = -1.0 / m * sum(targets .* log(predictions) + 
         (1.0 .- targets) .* log(1.0 .- predictions))
-    if lambda != 0
-        lamover2m = lambda / (2 * m)
-        regterm = 0.0
-        for i in 2:output_layer  # is this faster than the comprehension?
-            @fastmath regterm = regterm + lamover2m .* sum(theta[i,2:end] .* theta[i,2:end]) 
-        end
-        # @fastmath regterm = lambda/(2*m)*sum([sum(theta[i][:, 2:end] .^ 2) for i in 2:output_layer])
+    if lambda != 0.0
+        regterm = lambda/(2.0*m) * sum([sum(theta[i][:, 2:end] .* theta[i][:, 2:end]) 
+            for i in 2:output_layer])
         cost = cost + regterm
     end
     return cost
