@@ -20,43 +20,49 @@ function general_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}, alp
     # creates a nn with 1 input layer, up to 3 hidden layers as an array input,
     # and output units matching the dimensions of the training data y
     # returns theta
-
     # layers must be 1, 2, or 3 hidden layers. In addition, there will always be
     # 1 input layer and 1 output layer. So, total layers will be 3, 4, or 5.
-    if ndims(n_hid) != 1
-        error("Input n_hid must be a vector.")
-    elseif size(n_hid,1) > 3
-        error("n_hid can only contain 1 to 3 integer values for 1 to 3 hidden layers.")
-    end
 
-    # read the data, load into variables, set some useful variables
-    df = matread(matfname)
+    #check inputs and prepare data
+        if ndims(n_hid) != 1
+            error("Input n_hid must be a vector.")
+        elseif size(n_hid,1) > 3
+            error("n_hid can only contain 1 to 3 integer values for 1 to 3 hidden layers.")
+        end
 
-    # Split into train and test datasets, if we have them
-    if in("train", keys(df))
-        inputs = df["train"]["x"]'  # set examples as columns to optimize for julia column-dominant operations
-        targets = df["train"]["y"]'
-    else
-        inputs = df["x"]'
-        targets = df["y"]'
-    end
-    if in("test", keys(df))
-        dotest = true
-        test_inputs = df["test"]["x"]'
-        test_targets = df["test"]["y"]'
-        testm = size(test_inputs,2)
-    else
-        dotest = false
-    end
+        if alpha < 0.00001
+            warn("Alpha learning rate set too small. Setting to default 0.35")
+            alpha = 0.35
+        end
 
-    k,n = size(inputs) # number of features k by no. of examples n
-    t = size(targets,1) # number of output units
-    n_hid_layers = size(n_hid, 1)
-    output_layer = 2 + n_hid_layers # input layer is 1, output layer is highest value
-    mb = mb_size  # shortcut
-    alphaovermb = alpha / mb  # need this because @devec won't do division. 
-    lamovern = lambda / n  # need this because @devec won't do division. 
-    
+        # read the data, load into variables, set some useful variables
+        df = matread(matfname)
+
+        # Split into train and test datasets, if we have them
+        if in("train", keys(df))
+            inputs = df["train"]["x"]'  # set examples as columns to optimize for julia column-dominant operations
+            targets = df["train"]["y"]'
+        else
+            inputs = df["x"]'
+            targets = df["y"]'
+        end
+        if in("test", keys(df))
+            dotest = true
+            test_inputs = df["test"]["x"]'
+            test_targets = df["test"]["y"]'
+            testm = size(test_inputs,2)
+        else
+            dotest = false
+        end
+
+        k,n = size(inputs) # number of features k by no. of examples n
+        t = size(targets,1) # number of output units
+        n_hid_layers = size(n_hid, 1)
+        output_layer = 2 + n_hid_layers # input layer is 1, output layer is highest value
+        mb = mb_size  # shortcut
+        alphaovermb = alpha / mb  # need this because @devec won't do division. 
+        lamovern = lambda / n  # need this because @devec won't do division. 
+        
     #setup mini-batch
         if mb_size == 0
             mb_size = n  # cause 1 mini-batch with all of the samples
@@ -82,68 +88,64 @@ function general_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}, alp
         mb_targets = zeros(size(targets,1), mb_size)  # pre-allocate mini-batch of targets
 
     # set up cost_history to track 1, 2, or 3 cost series
-    cost_history = zeros(n_iters * n_mb)
+    i = 1
+    plot_labels = "Mini-batch"
     if plotall
-        println("Plotting all of the costs is going to be slow. Proceeding.")
+        println("Plotting all of the costs is slower. Proceeding.")
         if in("test", keys(df))
-            cost_history = zeros(n_iters * n_mb, 3) # column 1 for mb, 2 train, 3 test
+            i = 3 # column 1 for mb, 2 train, 3 test
             plot_labels = ["Mini-batch" "Training" "Test"]
         else
-            cost_history = zeros(n_iters * n_mb,2)
+            i = 2
             plot_labels = ["Mini-batch" "Training"]
         end
-    else
-        cost_history = zeros(n_iters * n_mb)
-        plot_labels = "Mini-batch"
-    end        
+    end   
+    cost_history = zeros(n_iters * n_mb, i)
 
-    # theta dimensions for each layer of the neural network 
-    #    this follows the convention that the outputs to the current layer activation
-    #    are rows of theta and the inputs from the layer below are columns
-    theta_dims = [[k, 1]] # "weight" dimensions for the input layer--not used
-    for i = 2:output_layer-1
-        push!(theta_dims, [n_hid[i-1], theta_dims[i-1][1] + 1])  # 2nd index at each layer includes bias term
-    end
-    push!(theta_dims, [t, n_hid[end]+ 1]) # weight dimensions for the output layer
-
-    # use either sigmoid or softmax for output layer with multiple classification
-    if theta_dims[output_layer][1] > 1  # more than one output (unit)
-        if classify == "sigmoid"
-            class_function = sigmoid
-        elseif classify == "softmax"
-            class_function = softmax
-        else
-            error("Function to classify output labels must be \"sigmoid\" or \"softmax\".")
+    # prepare arrays used in training 
+        # theta dimensions for each layer of the neural network 
+        #    this follows the convention that the outputs to the current layer activation
+        #    are rows of theta and the inputs from the layer below are columns
+        theta_dims = [[k, 1]] # "weight" dimensions for the input layer--not used
+        for i = 2:output_layer-1
+            push!(theta_dims, [n_hid[i-1], theta_dims[i-1][1] + 1])  # 2nd index at each layer includes bias term
         end
-    else
-        class_function = sigmoid  # for one output (unit)
-    end
+        push!(theta_dims, [t, n_hid[end]+ 1]) # weight dimensions for the output layer
 
-    # setup cost
-    cost_function = cross_entropy_cost
+        # use either sigmoid or softmax for output layer with multiple classification
+        if theta_dims[output_layer][1] > 1  # more than one output (unit)
+            if classify == "sigmoid"
+                class_function = sigmoid
+            elseif classify == "softmax"
+                class_function = softmax
+            else
+                error("Function to classify output labels must be \"sigmoid\" or \"softmax\".")
+            end
+        else
+            class_function = sigmoid  # for one output (unit)
+        end
 
-    # theta = weight matrices in a collection for all calculated layers (e.g., not the input layer)
-    # initialize random weight parameters including bias term
-    theta = [zeros(2,2)] # initialize collection of 2d float arrays: input layer 1 not used
-    interval = 0.5 # random weights will be generated in [-interval, interval]
-    for i = 2:output_layer
-        push!(theta, rand(theta_dims[i]...) .* (2.0 * interval) .- interval)
-    end
+        # setup cost
+        cost_function = cross_entropy_cost
 
-    # pre-allocate matrices used in training by layer to enable update-in-place for speed
-    a, a_wb, z = preallocate_feedfwd(inputs, targets, theta, output_layer, n)
-    mb_a, mb_a_wb, mb_z = preallocate_feedfwd(mb_inputs, mb_targets, theta, output_layer, mb_size)
-    if dotest
-        a_test, a_wb_test, z_test = preallocate_feedfwd(test_inputs, test_targets, theta, output_layer, testm)
-    end
+        # theta = weight matrices in a collection for all calculated layers (e.g., not the input layer)
+        # initialize random weight parameters including bias term
+        theta = [zeros(2,2)] # initialize collection of 2d float arrays: input layer 1 not used
+        interval = 0.5 # random weights will be generated in [-interval, interval]
+        for i = 2:output_layer
+            push!(theta, rand(theta_dims[i]...) .* (2.0 * interval) .- interval)
+        end
 
-    # initialize matrices for back propagation to enable update-in-place for speed
-    eps = [rand(2,2)]  # not used at input layer
-    delta = [rand(2,2)]  # not used at input layer
-    for i = 2:output_layer
-        push!(eps, zeros(size(mb_a[i])))
-        push!(delta, zeros(size(theta[i])))
-    end
+        # pre-allocate matrices used in training by layer to enable update-in-place for speed
+        a, a_wb, z = preallocate_feedfwd(inputs, targets, theta, output_layer, n)
+        mb_a, mb_a_wb, mb_z = preallocate_feedfwd(mb_inputs, mb_targets, theta, output_layer, mb_size)
+        if dotest
+            a_test, a_wb_test, z_test = preallocate_feedfwd(test_inputs, test_targets, theta, output_layer, testm)
+        end
+
+        # initialize matrices for back propagation to enable update-in-place for speed
+        eps = deepcopy(mb_a)  # looks like activations of each unit above input layer
+        delta = deepcopy(theta)  # structure of gradient matches theta
 
     # train the neural network and accumulate mb_cost_history
     for i = 1:n_iters  # loop for "epochs"
@@ -154,17 +156,16 @@ function general_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}, alp
             mb_a_wb[1][:] = vcat(ones(1,mb_size), mb_a[1])
             mb_targets[:] = targets[:, start:fin]         
 
-            feedfwd!(theta, output_layer, class_function,
-                mb_a, mb_a_wb, mb_z)  # 2nd line args are pre-allocated memory arrays
-            backprop_gradients!(theta, mb_targets, output_layer, lambda, alpha, n,
-                mb_size, mb_a, mb_a_wb, mb_z, eps, delta)  # 2nd line args are pre-allocated memory arrays
+            feedfwd!(theta, output_layer, class_function, mb_a, mb_a_wb, mb_z)  
+            backprop_gradients!(theta, mb_targets, output_layer, 
+                mb_size, mb_a, mb_a_wb, mb_z, eps, delta)  
 
             # calculate new theta
-            for ii = 2:output_layer
-                if lambda > 0.0
-                    @fastmath delta[ii][:, 2:end] = delta[ii][:, 2:end] .- lamovern .* theta[ii][:,2:end]  # don't regularize bias
+            @fastmath for ii = 2:output_layer
+                if lambda > 0.0  # use regularization
+                    delta[ii][:, 2:end] = delta[ii][:, 2:end] .- lamovern .* theta[ii][:,2:end]  # don't regularize bias
                 end
-                @fastmath theta[ii][:] = theta[ii] .- alpha .* delta[ii]
+                theta[ii][:] = theta[ii] .- alpha .* delta[ii]
             end
 
             predictions = feedfwd!(theta, output_layer, class_function, mb_a, mb_a_wb, mb_z) 
@@ -172,17 +173,19 @@ function general_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}, alp
                 mb_size, theta, lambda, output_layer)
         end
 
-        if plotall
+        sz = size(cost_history,2)  # set near top based on input arguments
+        if sz == 1
+        elseif sz == 2
             predictions = feedfwd!(theta, output_layer, class_function, a, a_wb, z) 
             cost_history[(i-1)*n_mb+1:i*n_mb, 2] = cost_function(targets, predictions, n,
                 n, theta, lambda, output_layer)
-
-            if dotest
-                feedfwd!(theta, output_layer, class_function, a_test, a_wb_test, z_test)
-                predictions = a_test[output_layer]
-                cost_history[(i-1)*n_mb+1:i*n_mb, 3] = cost_function(test_targets, predictions, n,
-                    testm, theta, lambda, output_layer)
-            end
+        elseif sz == 3
+            predictions = feedfwd!(theta, output_layer, class_function, a, a_wb, z) 
+            cost_history[(i-1)*n_mb+1:i*n_mb, 2] = cost_function(targets, predictions, n,
+                n, theta, lambda, output_layer)
+            predictions = feedfwd!(theta, output_layer, class_function, a_test, a_wb_test, z_test)
+            cost_history[(i-1)*n_mb+1:i*n_mb, 3] = cost_function(test_targets, predictions, testm,
+                testm, theta, lambda, output_layer)
         end
     end
     
@@ -194,8 +197,7 @@ function general_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}, alp
                     n, theta, lambda, output_layer))
 
     # test statistics
-    if dotest
-        #feedforward for test data       
+    if dotest     
         predictions = feedfwd!(theta, output_layer, class_function, a_test, a_wb_test, z_test)
         println("Fraction correct labels predicted test: ", score(test_targets, predictions))
         println("Final cost test: ", cost_function(test_targets, predictions, testm, testm, theta, lambda, output_layer))
@@ -237,48 +239,39 @@ function feedfwd!(theta, output_layer, class_function, a, a_wb, z)
         a[ii][:] = sigmoid(z[ii])
         a_wb[ii][2:end, :] = a[ii]  
     end
-    z[output_layer][:] = theta[output_layer] * a_wb[output_layer-1]
+    @fastmath z[output_layer][:] = theta[output_layer] * a_wb[output_layer-1]
     a[output_layer][:] = class_function(z[output_layer])
 end
 
 
-function backprop_gradients!(theta, targets, output_layer, lambda, alpha, n, mb, a, a_wb, z, eps, delta)
-    # modifies theta, eps, delta in place
+function backprop_gradients!(theta, targets, output_layer, mb, a, a_wb, z, eps, delta)
+    # argument delta holds the computed gradients
+    # modifies theta, eps, delta in place--caller uses delta
     # use for iterations in training
     # send it all of the data or a mini-batch
     # receives intermediate storage of a, a_wb, z, eps, delta to reduce memory allocations
 
-    # alphaovermb = alpha / mb  # need this because @devec won't do division. 
-    # lamovern = lambda / n  # need this because @devec won't do division. 
     oneovermb = 1.0 / mb
 
     eps[output_layer][:] = a[output_layer] .- targets  # eps is epsilon
-    delta[output_layer][:] = oneovermb .* (eps[output_layer] * a_wb[output_layer-1]')
-    for jj = (output_layer - 1):-1:2  # jj is the current layer
+    @fastmath delta[output_layer][:] = oneovermb .* (eps[output_layer] * a_wb[output_layer-1]')
+    @fastmath for jj = (output_layer - 1):-1:2  # don't do input layer
         eps[jj][:] = theta[jj+1][:, 2:end]' * eps[jj+1] .* sigmoid_gradient(z[jj]) 
         delta[jj][:] = oneovermb .* (eps[jj] * a_wb[jj-1]') 
     end
-    return delta
-
-    # for jj = output_layer:-1:2
-    #     delta[jj][:] = eps[jj] * a_wb[jj-1]'
-    #     @devec newtheta = theta[jj] .- alphaovermb .* delta[jj]
-    #     if lambda != 0.0
-    #         newtheta[:, 2:end] = newtheta[:, 2:end] - lamovern .* theta[jj][:,2:end]  # don't regularize bias
-    #     end
-    #     theta[jj][:] = newtheta
-    # end
-
 end
 
 
 # suitable cost function for sigmoid and softmax
 function cross_entropy_cost(targets, predictions, n, mb, theta, lambda, output_layer)
-    @fastmath cost = -1.0 / mb * sum(targets .* log(predictions) + 
+    # n is count of all samples in data set--use with regularization term
+    # mb is count of all samples used in training batch--use with cost_history
+    # these may be equal
+    @devec cost = (-1.0 ./ mb) .* sum(targets .* log(predictions) + 
         (1.0 .- targets) .* log(1.0 .- predictions))
-    if lambda != 0.0
+    @fastmath if lambda != 0.0
         regterm = lambda/(2.0 * n) * sum([sum(theta[i][:, 2:end] .* theta[i][:, 2:end]) 
-            for i in 2:output_layer]) # 
+            for i in 2:output_layer]) 
         cost = cost + regterm
     end
     return cost
@@ -294,14 +287,15 @@ end
 function softmax(atop::Array{Float64,2})  # TODO try this with devec
     f = atop .- maximum(atop,1)  # atop => activation of top layer
     expf = exp(f)  # this gets called within a loop and exp() is expensive
-    return expf ./ sum(expf, 1)  
+    return @fastmath expf ./ sum(expf, 1)  
 end
 
 
 function sigmoid_gradient(z::Array{Float64,2})
     # derivative of sigmoid function
     sig = sigmoid(z)
-    return sig .* (1 - sig)
+    @devec ret = sig .* (1 .- sig)
+    return ret  # sig .* (1 - sig)
 end
 
 
