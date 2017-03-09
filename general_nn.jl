@@ -1,22 +1,23 @@
-# generalizing sigmoid/softmax neural networks for up to 5 layers
-
-# TODO Enable test only runs with saved thetas--in another file? nah, create a method
-# TODO Plot costs for test data and whole dataset
+# general_nn() -- generalizing sigmoid/softmax neural networks for up to 5 layers
+# test_score() -- cost and accuracy for test data and saved theta
+# save_theta() -- save theta, which is returned by general_nn
 
 
 using MAT
 using Devectorize
+# using PyCall
 using Plots
 pyplot()  # initialize the backend used by Plots
+# @pyimport seaborn  # prettier charts
 
 # This is a quicker way to call general_nn with only 1 hidden layer of n_hid units.
 function general_nn(matfname::String, n_iters::Int64, n_hid::Int64, alpha=0.35, mb_size=0,
-    lambda=0.0, classify="softmax", plotall=false)
-    general_nn(matfname, n_iters,[n_hid], alpha, mb_size, lambda, classify, plotall)
+    lambda=0.015, classify="softmax", plots=["Training"])
+    general_nn(matfname, n_iters,[n_hid], alpha, mb_size, lambda, classify, plots)
 end
 
 function general_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}, alpha=0.35,
-    mb_size=0, lambda=0.0, classify="softmax", plotall=false)
+    mb_size=0, lambda=0.015, classify="softmax", plots=["Training"])
     # creates a nn with 1 input layer, up to 3 hidden layers as an array input,
     # and output units matching the dimensions of the training data y
     # returns theta
@@ -50,7 +51,7 @@ function general_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}, alp
             dotest = true
             test_inputs = df["test"]["x"]'
             test_targets = df["test"]["y"]'
-            testm = size(test_inputs,2)
+            testn = size(test_inputs,2)
         else
             dotest = false
         end
@@ -60,7 +61,6 @@ function general_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}, alp
         n_hid_layers = size(n_hid, 1)
         output_layer = 2 + n_hid_layers # input layer is 1, output layer is highest value
         mb = mb_size  # shortcut
-        alphaovermb = alpha / mb  # need this because @devec won't do division. 
         lamovern = lambda / n  # need this because @devec won't do division. 
         
     #setup mini-batch
@@ -88,19 +88,39 @@ function general_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}, alp
         mb_targets = zeros(size(targets,1), mb_size)  # pre-allocate mini-batch of targets
 
     # set up cost_history to track 1, 2, or 3 cost series
-    i = 1
-    plot_labels = "Mini-batch"
-    if plotall
-        println("Plotting all of the costs is slower. Proceeding.")
-        if in("test", keys(df))
-            i = 3 # column 1 for mb, 2 train, 3 test
-            plot_labels = ["Mini-batch" "Training" "Test"]
-        else
-            i = 2
-            plot_labels = ["Mini-batch" "Training"]
+        plot_labels = []
+        if size(plots,1) > 3
+            warn("Only 3 plot requests permitted. Proceeding with up to 3.")
         end
-    end   
-    cost_history = zeros(n_iters * n_mb, i)
+
+        valid_plots = ["Training", "Test", "Mini-batch"]
+        plot_check = Dict(i => false for i in valid_plots)
+        for it in plots
+            if in(it, valid_plots)
+                if !in(it, plot_labels)  # can only add a plot once!
+                    push!(plot_labels, it)
+                    plot_check[it] = true
+                end
+            else
+                warn("plots argument can only include \"Training\", \"Test\", and \"Mini-batch\". Proceeding.")
+            end
+        end
+        if plot_check["Test"]
+            if !in("test", keys(df))  # must have test data
+                warn("Can't plot test cost. No test data. Proceeding.")
+                plot_check["Test"] = false
+                deleteat!(plot_labels, findin(plot_labels, ["Test"]))
+            end
+        end
+
+        sz = plot_check["Mini-batch"] ? n_iters * n_mb : n_iters
+        cost_history = zeros(sz, size(plot_labels,1))
+        plot_labels = reshape(plot_labels, 1, size(plot_labels,1)) # make 1 row of columns
+        # which column to save the cost data to be plotted?
+        col_mb = plot_check["Mini-batch"] ? 1 : 0
+        col_tra = plot_check["Training"] ? col_mb + 1 : 0
+        col_test = plot_check["Test"] ? col_mb + col_tra + 1 : 0
+        col_test = col_test > 3 ? 3 : col_test
 
     # prepare arrays used in training 
         # theta dimensions for each layer of the neural network 
@@ -140,7 +160,7 @@ function general_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}, alp
         a, a_wb, z = preallocate_feedfwd(inputs, targets, theta, output_layer, n)
         mb_a, mb_a_wb, mb_z = preallocate_feedfwd(mb_inputs, mb_targets, theta, output_layer, mb_size)
         if dotest
-            a_test, a_wb_test, z_test = preallocate_feedfwd(test_inputs, test_targets, theta, output_layer, testm)
+            a_test, a_wb_test, z_test = preallocate_feedfwd(test_inputs, test_targets, theta, output_layer, testn)
         end
 
         # initialize matrices for back propagation to enable update-in-place for speed
@@ -167,45 +187,50 @@ function general_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}, alp
                 end
                 theta[ii][:] = theta[ii] .- alpha .* delta[ii]
             end
-
-            predictions = feedfwd!(theta, output_layer, class_function, mb_a, mb_a_wb, mb_z) 
-            cost_history[(i-1)*n_mb+j,1] = cost_function(mb_targets, predictions, n,
-                mb_size, theta, lambda, output_layer)
+            if plot_check["Mini-batch"]
+                predictions = feedfwd!(theta, output_layer, class_function, mb_a, mb_a_wb, mb_z) 
+                cost_history[(i-1)*n_mb+j,1] = cost_function(mb_targets, predictions, n,
+                    mb_size, theta, lambda, output_layer)
+            end
         end
 
-        sz = size(cost_history,2)  # set near top based on input arguments
-        if sz == 1
-        elseif sz == 2
+        if plot_check["Training"]
             predictions = feedfwd!(theta, output_layer, class_function, a, a_wb, z) 
-            cost_history[(i-1)*n_mb+1:i*n_mb, 2] = cost_function(targets, predictions, n,
+            beg = plot_check["Mini-batch"] ? (i-1)*n_mb+1 : i
+            fin = plot_check["Mini-batch"] ? i*n_mb : i
+            cost_history[beg:fin, col_tra] = cost_function(targets, predictions, n,
                 n, theta, lambda, output_layer)
-        elseif sz == 3
-            predictions = feedfwd!(theta, output_layer, class_function, a, a_wb, z) 
-            cost_history[(i-1)*n_mb+1:i*n_mb, 2] = cost_function(targets, predictions, n,
-                n, theta, lambda, output_layer)
+        end
+        if plot_check["Test"]
             predictions = feedfwd!(theta, output_layer, class_function, a_test, a_wb_test, z_test)
-            cost_history[(i-1)*n_mb+1:i*n_mb, 3] = cost_function(test_targets, predictions, testm,
-                testm, theta, lambda, output_layer)
+            beg = plot_check["Mini-batch"] ? (i-1)*n_mb+1 : i
+            fin = plot_check["Mini-batch"] ? i*n_mb : i
+            cost_history[beg:fin, col_test] = cost_function(test_targets, predictions, testn,
+                testn, theta, lambda, output_layer)
         end
     end
     
-    # output some statistics 
-    # training data
+    # output training statistics
     predictions = feedfwd!(theta, output_layer, class_function, a, a_wb, z)
-    println("Fraction correct labels predicted training: ", score(targets, predictions))
+    println("Fraction correct labels predicted training: ", accuracy(targets, predictions))
     println("Final cost training: ", cost_function(targets, predictions, n,
                     n, theta, lambda, output_layer))
 
-    # test statistics
+    # output test statistics
     if dotest     
         predictions = feedfwd!(theta, output_layer, class_function, a_test, a_wb_test, z_test)
-        println("Fraction correct labels predicted test: ", score(test_targets, predictions))
-        println("Final cost test: ", cost_function(test_targets, predictions, testm, testm, theta, lambda, output_layer))
+        println("Fraction correct labels predicted test: ", accuracy(test_targets, predictions))
+        println("Final cost test: ", cost_function(test_targets, predictions, testn, testn, theta, lambda, output_layer))
     end
 
     # plot the progress of training cost
-    plot(cost_history, title="Cost Function", labels=plot_labels, ylims=(0, Inf))
-    gui()
+    if (plot_check["Mini-batch"] || plot_check["Training"] || plot_check["Test"])
+        plt = plot(cost_history, title="Cost Function", labels=plot_labels, ylims=(0, Inf))
+        # gui()
+        display(plt)
+        println("Press enter to close plot window..."); readline()
+        closeall()
+    end
 
     return theta
 end
@@ -265,7 +290,7 @@ end
 # suitable cost function for sigmoid and softmax
 function cross_entropy_cost(targets, predictions, n, mb, theta, lambda, output_layer)
     # n is count of all samples in data set--use with regularization term
-    # mb is count of all samples used in training batch--use with cost_history
+    # mb is count of all samples used in training batch--use with cost
     # these may be equal
     @devec cost = (-1.0 ./ mb) .* sum(targets .* log(predictions) + 
         (1.0 .- targets) .* log(1.0 .- predictions))
@@ -299,7 +324,7 @@ function sigmoid_gradient(z::Array{Float64,2})
 end
 
 
-function score(targets, predictions)
+function accuracy(targets, predictions)
     if size(targets,1) > 1
         # works for output units sigmoid or softmax
         targetmax = [indmax(targets[:,i]) for i in 1:size(targets,2)]
@@ -311,6 +336,71 @@ function score(targets, predictions)
         fracright = mean(convert(Array{Int},choices .== targets))
     end
     return fracright
+end
+
+
+function save_theta(theta, matfile)
+    # check if output file exists and ask permission to overwrite
+    if isfile(matfile)
+        print("Output file $matfile exists. OK to overwrite? ")
+        resp = readline()
+        if contains(lowercase(resp), "y")
+            rm(matfile)
+        else
+            error("File exists. Replied no to overwrite. Quitting.")
+        end
+    end
+
+    # write the matlab formatted file (based on hdf5)
+    outfile = matopen(matfile, "w")
+    write(outfile, "theta", theta)
+    close(outfile) 
+end
+
+
+function test_score(theta_fname, data_fname, lambda = 0.015, classify="softmax")
+    # read theta
+    dtheta = matread(theta_fname)
+    theta = dtheta["theta"]
+
+    # read the test data:  can be in a "test" key with x and y or can be top-level keys x and y
+    df = matread(data_fname)
+
+    if in("test", keys(df))
+        inputs = df["test"]["x"]'  # set examples as columns to optimize for julia column-dominant operations
+        targets = df["test"]["y"]'
+    else
+        inputs = df["x"]'
+        targets = df["y"]'
+    end
+
+    # set some useful variables
+    k,n = size(inputs) # number of features k by no. of examples n
+    t = size(targets,1) # number of output units
+    output_layer = size(theta,1) 
+
+    # setup cost
+    cost_function = cross_entropy_cost
+
+    # setup class function
+    if t > 1  # more than one output (unit)
+        if classify == "sigmoid"
+            class_function = sigmoid
+        elseif classify == "softmax"
+            class_function = softmax
+        else
+            error("Function to classify output labels must be \"sigmoid\" or \"softmax\".")
+        end
+    else
+        class_function = sigmoid  # for one output (unit)
+    end    
+
+    # output test statistics  
+    a_test, a_wb_test, z_test = preallocate_feedfwd(inputs, targets, theta, output_layer, n)
+    predictions = feedfwd!(theta, output_layer, class_function, a_test, a_wb_test, z_test)
+    println("Fraction correct labels predicted test: ", accuracy(targets, predictions))
+    println("Final cost test: ", cost_function(targets, predictions, n, n, theta, lambda, output_layer))
+
 end
 
 
