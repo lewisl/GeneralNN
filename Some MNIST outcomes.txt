@@ -1,0 +1,79 @@
+Some MNIST outcomes
+
+general_nn("digits5000by784.mat",1500,190,.3 ,500, 0.07);
+Fraction correct labels predicted training: 0.992
+Final cost training: 0.13278263746600893
+Fraction correct labels predicted test: 0.931
+Final cost test: 0.16339297383768014
+
+general_nn("digits5000by784.mat", 1500, 190,.3, 500, .07);
+Fraction correct labels predicted training: 1.0
+Final cost training: 0.05618060065676693
+Fraction correct labels predicted test: 0.941
+Final cost test: 0.14601174228898248
+
+general_nn("digits10000by784.mat",500, 220,.3 ,500, 0.08);
+Fraction correct labels predicted training: 0.9998
+Final cost training: 0.09019935797864428
+Fraction correct labels predicted test: 0.9426
+Final cost test: 0.16959406200226584
+
+@time general_nn("digits5000by784.mat",800,190,.28, 500,.08);
+Fraction correct labels predicted training: 0.9998
+Final cost training: 0.1382246373043908
+Fraction correct labels predicted test: 0.932
+Final cost test: 0.18450344670371252
+138.437173 seconds (2.32 M allocations: 162.762 GB, 11.52% gc time)
+
+
+###################################################################
+#
+# Changed code and calculations for regularization
+#
+###################################################################
+
+@time general_nn("digits5000by784.mat", 400, 190, .35, 500, .038, "softmax", true);
+Plotting all of the costs is slower. Proceeding.
+Fraction correct labels predicted training: 0.9942
+Final cost training: 0.1258004936541531
+Fraction correct labels predicted test: 0.9135
+Final cost test: 0.6527596339113823
+129.239747 seconds (1.46 M allocations: 123.526 GB, 11.85% gc time)
+
+@time general_nn("digits5000by784.mat", 250, 220, .3, 500, .015, "softmax", true);
+Plotting all of the costs is slower. Proceeding.
+Fraction correct labels predicted training: 0.9932
+Final cost training: 0.11561339955559752
+Fraction correct labels predicted test: 0.907
+Final cost test: 0.6107635788933432
+ 92.910573 seconds (965.27 k allocations: 85.762 GB, 13.39% gc time)
+
+general_nn("digits5000by784.mat",250,220,.33, 500,.028, "softmax", ["Training","Test"]);
+Fraction correct labels predicted training: 0.9852
+Final cost training: 0.164994101842657
+Fraction correct labels predicted test: 0.91
+Final cost test: 0.6417955157219688
+
+general_nn("digits5000by784.mat", 500, 220,.33, 500,.0385, "softmax", ["Training","Test"]);
+Fraction correct labels predicted training: 0.998
+Final cost training: 0.11230400325042149
+Fraction correct labels predicted test: 0.9205
+Final cost test: 0.6426140867833313
+
+train_nn("digits5000by784.mat", 200, 200,0.35,500)
+Fraction correct labels predicted training: 0.9682
+Final cost training: 0.23089017939732645
+Fraction correct labels predicted test: 0.9165
+Final cost test: 0.5494589077336298
+
+train_nn("digits5000by784.mat", 500, 200,alpha=0.35,mb_size=500,lambda=.05)
+Fraction correct labels predicted training: 0.9968
+Final cost training: 0.12550122086785528
+Fraction correct labels predicted test: 0.92
+Final cost test: 0.698622648722577
+
+train_nn("digits5000by784.mat", 800, 180,alpha=0.4,mb_size=500,lambda=.04)
+Fraction correct labels predicted training: 0.997
+Final cost training: 0.10794086623438941
+Fraction correct labels predicted test: 0.9145
+Final cost test: 0.7157171288672539
