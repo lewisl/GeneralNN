@@ -1,12 +1,7 @@
 #TODO
-#   YES: do I calculate derivative of cost wrt bias?
-#   FIXED SIGN: regularization seems messed up-->some small improvement
-#   OK: verify use of learning parameter alpha
-#   SAME AS CROSS ENTROPY: implement log_likelihood_cost for using softmax
-#   SIMPLIFY: plot logic
-#   IMPLEMENT: ReLU units. Use cross_entropy_cost
-#   REMOVED: Mini-batch plots--not valuable, made code harder to refactor
-#   plot learning curve
+#   FIX: Bugs from not quite removing mini-batch plotting
+#   ADD: plot learning curve
+#   which results from the mini-batch am I plotting?
 #   scale weights for cost regularization to accommodate ReLU normalization
 #   fix array type declaration?
 #   implement momentum
@@ -57,7 +52,7 @@ end
 Train sigmoid/softmax neural networks up to 5 layers.  Detects
 number of output labels from data. Detects number of features from data. Enables
 any size mini-batches that divide evenly into number of examples.  Plots 
-by any choice of per "Mini-batch", "Training" iteration (epoch), and for "Test" data.
+by any choice of per "Learning", "Training" iteration (epoch), and for "Test" data.
 classify may be "softmax" or "sigmoid", which applies only to the output layer. 
 units in other layers may be "sigmoid" or "relu".
 """
@@ -138,18 +133,19 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
     mb_inputs = zeros(size(inputs,1), mb_size)  
     mb_targets = zeros(size(targets,1), mb_size)  
 
-    # set up cost_history to track 1, 2, or 3 cost series
+    # set up cost_history to track 1 or 2 data series for plots
+    # lots of indirection here:  someday might add "validation"
     if size(plots,1) > 3
         warn("Only 3 plot requests permitted. Proceeding with up to 3.")
     end
 
-    valid_plots = ["Training", "Test", "Mini-batch"]
+    valid_plots = ["Training", "Test", "Learning"]
     plot_switch = Dict(pl => false for pl in valid_plots)
     for pl in plots  # plots is the input request for plots
         if in(pl, valid_plots)
                 plot_switch[pl] = true
         else
-            warn("Plots argument can only include \"Training\", \"Test\", and \"Mini-batch\". Proceeding.")
+            warn("Plots argument can only include \"Training\", \"Test\", and \"Learning\". Proceeding.")
         end
     end
 
@@ -162,17 +158,16 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
             plot_switch["Test"] = false
         end
     end
-    plot_labels = [pl for pl in keys(plot_switch) if plot_switch[pl] == true]
+    plot_labels = [pl for pl in keys(plot_switch) if plot_switch[pl] == true &&
+        pl != "Learning"]  # Learning is a separate plot, not a series label
     plot_labels = reshape(plot_labels,1,size(plot_labels,1)) # 1 x N row array
 
-    sz = plot_switch["Mini-batch"] ? n_iters * n_mb : n_iters
-    cost_history = zeros(sz, size(plot_labels,2))
-    # plot_labels = reshape(plot_labels, 1, size(plot_labels,1)) # make 1 row of columns
+    cost_history = zeros(n_iters, size(plot_labels,2))
+    fracright_history = zeros(n_iters, size(plot_labels,2))
+ 
     # set column in cost_history for each data series
-    col_mb = plot_switch["Mini-batch"] ? 1 : 0
-    col_train = plot_switch["Training"] ? col_mb + 1 : 0
-    col_test = plot_switch["Test"] ? col_mb + col_train + 1 : 0
-    col_test = col_test > 3 ? 3 : col_test
+    col_train = plot_switch["Training"] ? 1 : 0
+    col_test = plot_switch["Test"] ? col_train + 1 : 0
 
     # prepare arrays used in training 
     # theta dimensions for each layer of the neural network 
@@ -256,12 +251,18 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
                 a, a_wb, z) 
             cost_history[i, col_train] = cost_function(targets, predictions, n,
                 n, theta, lambda, output_layer)
+            if plot_switch["Learning"]
+                fracright_history[i, col_train] = accuracy(targets, predictions)
+            end
         end
         
         if plot_switch["Test"]
             predictions = feedfwd!(theta, output_layer, unit_function, class_function,
                 a_test, a_wb_test, z_test)
             cost_history[i, col_test] = cost_function(test_targets, predictions, testn, testn, theta, lambda, output_layer)
+            if plot_switch["Learning"]
+                fracright_history[i, col_test] = accuracy(test_targets, predictions)
+            end
         end
     end
     
@@ -278,10 +279,18 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
         println("Final cost test: ", cost_function(test_targets, predictions, testn, testn, theta, lambda, output_layer))
     end
 
-    # plot the progress of training cost
-    if (plot_switch["Mini-batch"] || plot_switch["Training"] || plot_switch["Test"])
-        plt = plot(cost_history, title="Cost Function", labels=plot_labels, ylims=(0, Inf))
-        display(plt)  # or can use gui()
+    # plot the progress of training cost and/or learning
+    if (plot_switch["Training"] || plot_switch["Test"])
+        plt_cost = plot(cost_history, title="Cost Function", labels=plot_labels, ylims=(0, Inf))
+        display(plt_cost)  # or can use gui()
+
+        if plot_switch["Learning"]
+            plt_learning = plot(fracright_history, title="Learning Progress",
+                labels=plot_labels, ylims=(0.0, 1.0), reuse=false) 
+                # reuse=  not a great way to open a new plot window
+            display(plt_learning)
+        end
+
         println("Press enter to close plot window..."); readline()
         closeall()
     end
