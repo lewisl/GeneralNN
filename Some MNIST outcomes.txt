@@ -77,3 +77,51 @@ Fraction correct labels predicted training: 0.997
 Final cost training: 0.10794086623438941
 Fraction correct labels predicted test: 0.9145
 Final cost test: 0.7157171288672539
+
+train_nn("digits5000by784.mat",800,200,mb_size=500,classify="softmax")
+Fraction correct labels predicted training: 0.998
+Final cost training: 0.06707120566510721
+Fraction correct labels predicted test: 0.9095
+Final cost test: 0.647869907621593
+
+train_nn("digits5000by784.mat",500,220,mb_size=500,alpha=0.3,lambda=.02,classify="softmax")
+Fraction correct labels predicted training: 0.9976
+Final cost training: 0.08240894729118192
+Fraction correct labels predicted test: 0.9015
+Final cost test: 0.6851602923158253
+
+train_nn("digits5000by784.mat",800,220,mb_size=500,alpha=0.3,lambda=.02,classify="softmax")
+Fraction correct labels predicted training: 0.9994
+Final cost training: 0.07196937748699399
+Fraction correct labels predicted test: 0.9025
+Final cost test: 0.700173737532207
+
+###################################################################
+#
+# Changed sign of regularization term
+#
+###################################################################
+
+train_nn("digits5000by784.mat",500,220,mb_size=500,alpha=0.3, lambda=.08)
+Fraction correct labels predicted training: 0.9974
+Final cost training: 0.16891528613210907
+Fraction correct labels predicted test: 0.9105
+Final cost test: 0.8465342132370346
+
+train_nn("digits5000by784.mat",500,300,mb_size=500,alpha=0.4, lambda=.08)
+Fraction correct labels predicted training: 1.0
+Final cost training: 0.19516051204377227
+Fraction correct labels predicted test: 0.9165
+Final cost test: 0.9638865248119268
+
+###################################################################
+#
+# Added batch normalized leaky ReLU units
+#
+###################################################################
+
+train_nn("digits5000by784.mat",60,[200,40],mb_size=500,alpha=0.3, lambda=0.02,plots=["Training","Test"], units="relu")
+Fraction correct labels predicted training: 0.9784
+Final cost training: 0.1788440560877504
+Fraction correct labels predicted test: 0.9315
+Final cost test: 0.39242707805561966
