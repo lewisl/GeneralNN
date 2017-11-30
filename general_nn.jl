@@ -1,6 +1,6 @@
 #TODO
-#   factor data prep
-#   factor all plotting code
+#   DONE: factor data prep
+#   DONE: factor setting up plot data structures
 #   factor learning algorithm code
 #   scale weights for cost regularization to accommodate ReLU normalization
 #   fix array type declaration?
@@ -8,7 +8,6 @@
 #   add early stopping
 #   add dropout
 #   find and fix deprecated Array declaration syntax with new syntax
-#   refactor to separate data prep, plotting, actual learning pass
 
 
 
@@ -55,7 +54,30 @@ function extract_data(matfname::String)
     return inputs, targets, test_inputs, test_targets, dotest
 end
 
+"""
+Function setup_plots(n_iters::Int64, dotest::Bool, plots::Array{String,1})
 
+Creates data structure to hold everything needed to plot progress of
+neural net training by iteration.
+
+A plotdef is a dict containing:
+
+    "plot_switch"=>plot_switch: Dict of bools for each type of results to be plotted.
+        Currently used are: "Training", "Test", "Learning".  This determines what 
+        data will be collected during training iterations and what data series will be
+        plotted.
+    "plot_labels"=>plot_labels: array of strings provides the labels to be used in the
+        plot legend. 
+    "cost_history"=>cost_history: an array of calculated cost at each iteration 
+        with iterations as rows and result types as columns.  
+        Results can be Training or Test. 
+    "fracright_history"=>fracright_history: an array of percentage of correct classification
+        each iteration with iterations as rows and result types as columns.  
+        Results can be Training or Test.  
+    "col_train"=>col_train: column of the arrays above to be used for Training results
+    "col_test"=>col_test: column of the arrays above to be used for Test results
+
+"""
 function setup_plots(n_iters::Int64, dotest::Bool, plots::Array{String,1})
     # set up cost_history to track 1 or 2 data series for plots
     # lots of indirection here:  someday might add "validation"
@@ -244,7 +266,7 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
     eps = deepcopy(mb_a)  # looks like activations of each unit above input layer
     delta = deepcopy(theta)  # structure of gradient matches theta
     # initialize before loop to set scope OUTSIDE of loop
-    predictions = deepcopy(mb_a[output_layer])  # predictions = output layer values
+    mb_predictions = deepcopy(mb_a[output_layer])  # predictions = output layer values
 
     # train the neural network and accumulate mb_cost_history
     for i = 1:n_iters  # loop for "epochs"
@@ -257,7 +279,7 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
             mb_a_wb[1][:] = vcat(ones(1,mb_size), mb_a[1])
             mb_targets[:] = targets[:, start:fin]         
 
-            predictions[:] = feedfwd!(theta, output_layer, unit_function, class_function, mb_a, 
+            mb_predictions[:] = feedfwd!(theta, output_layer, unit_function, class_function, mb_a, 
                 mb_a_wb, mb_z)  
             backprop_gradients!(theta, mb_targets, unit_function, output_layer, 
                 mb_size, mb_a, mb_a_wb, mb_z, eps, delta)  
@@ -274,10 +296,11 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
 
         # gather statistics for plotting
         if plotdef["plot_switch"]["Training"]
-            plotdef["cost_history"][i, plotdef["col_train"]] = cost_function(mb_targets, predictions, n, n, theta, lambda, output_layer)
+            plotdef["cost_history"][i, plotdef["col_train"]] = cost_function(mb_targets, 
+                mb_predictions, n, n, theta, lambda, output_layer)
             if plotdef["plot_switch"]["Learning"]
                 plotdef["fracright_history"][i, plotdef["col_train"]] = accuracy(
-                    mb_targets, predictions)
+                    mb_targets, mb_predictions)
             end
         end
         
@@ -439,27 +462,28 @@ end
 
 #  NEED TO PRE-ALLOCATE predictions_test somewhere with testn
 #  Do we need arguments for testn, test_targets?  yup
-function calc_plot_data!(i, plotdef, targets, predictions, n, theta, lambda, output_layer,
-    dotest, testn, test_targets, test_predictions, a_test, a_wb_test, z_test, 
-    unit_function, class_function, cost_function)
+#  not being used:  absurd number of complex arguments
+# function calc_plot_data!(i, plotdef, targets, predictions, n, theta, lambda, output_layer,
+#     dotest, testn, test_targets, test_predictions, a_test, a_wb_test, z_test, 
+#     unit_function, class_function, cost_function)
 
-    if plotdef["plot_switch"]["Training"]
-        plotdef["cost_history"][i, plotdef["col_train"]] = cost_function(targets, predictions, n, n, theta, lambda, output_layer)
-        if plotdef["plot_switch"]["Learning"]
-            plotdef["fracright_history"][i, plotdef["col_train"]] = accuracy(targets, predictions)
-        end
-    end
+#     if plotdef["plot_switch"]["Training"]
+#         plotdef["cost_history"][i, plotdef["col_train"]] = cost_function(targets, predictions, n, n, theta, lambda, output_layer)
+#         if plotdef["plot_switch"]["Learning"]
+#             plotdef["fracright_history"][i, plotdef["col_train"]] = accuracy(targets, predictions)
+#         end
+#     end
     
-    if plotdef["plot_switch"]["Test"]
-        test_predictions[:] = feedfwd!(theta, output_layer, unit_function, class_function,
-            a_test, a_wb_test, z_test)
-        plotdef["cost_history"][i, plotdef["col_test"]] = cost_function(test_targets, 
-            test_predictions, testn, testn, theta, lambda, output_layer)
-        if plotdef["plot_switch"]["Learning"]
-            plotdef["fracright_history"][i, plotdef["col_test"]] = accuracy(test_targets, test_predictions)
-        end
-    end
-end
+#     if plotdef["plot_switch"]["Test"]
+#         test_predictions[:] = feedfwd!(theta, output_layer, unit_function, class_function,
+#             a_test, a_wb_test, z_test)
+#         plotdef["cost_history"][i, plotdef["col_test"]] = cost_function(test_targets, 
+#             test_predictions, testn, testn, theta, lambda, output_layer)
+#         if plotdef["plot_switch"]["Learning"]
+#             plotdef["fracright_history"][i, plotdef["col_test"]] = accuracy(test_targets, test_predictions)
+#         end
+#     end
+# end
 
 
 function plot_output(plotdef)
