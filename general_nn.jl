@@ -8,7 +8,7 @@
 #   add early stopping
 #   add dropout
 #   find and fix deprecated Array declaration syntax with new syntax
-
+#   foo
 
 
 
