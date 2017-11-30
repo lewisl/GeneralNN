@@ -72,7 +72,8 @@ A plotdef is a dict containing:
         with iterations as rows and result types as columns.  
         Results can be Training or Test. 
     "fracright_history"=>fracright_history: an array of percentage of correct classification
-        each iteration with iterations as rows and result types as columns.  
+        at each iteration with iterations as rows and result types as columns. This plots
+        a so-called learning curve.  Very interesting indeed. 
         Results can be Training or Test.  
     "col_train"=>col_train: column of the arrays above to be used for Training results
     "col_test"=>col_test: column of the arrays above to be used for Test results
