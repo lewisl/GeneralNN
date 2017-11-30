@@ -151,6 +151,7 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
         alpha = 0.35
     end
 
+    # read file and extract data
     inputs, targets, test_inputs, test_targets, dotest = extract_data(matfname)
 
 
@@ -271,10 +272,24 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
             end
         end
 
-        calc_plot_data!(i, plotdef, mb_targets, predictions, n, theta, lambda, 
-            output_layer, dotest, testn, test_targets, test_predictions, 
-            a_test, a_wb_test, z_test,
-            unit_function, class_function, cost_function)
+        # gather statistics for plotting
+        if plotdef["plot_switch"]["Training"]
+            plotdef["cost_history"][i, plotdef["col_train"]] = cost_function(mb_targets, predictions, n, n, theta, lambda, output_layer)
+            if plotdef["plot_switch"]["Learning"]
+                plotdef["fracright_history"][i, plotdef["col_train"]] = accuracy(
+                    mb_targets, predictions)
+            end
+        end
+        
+        if plotdef["plot_switch"]["Test"]
+            test_predictions[:] = feedfwd!(theta, output_layer, unit_function, class_function,
+                a_test, a_wb_test, z_test)
+            plotdef["cost_history"][i, plotdef["col_test"]] = cost_function(test_targets, 
+                test_predictions, testn, testn, theta, lambda, output_layer)
+            if plotdef["plot_switch"]["Learning"]
+                plotdef["fracright_history"][i, plotdef["col_test"]] = accuracy(test_targets, test_predictions)
+            end
+        end        
 
     end
     
