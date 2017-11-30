@@ -1,13 +1,14 @@
 #TODO
-#   FIX: Bugs from not quite removing mini-batch plotting
-#   ADD: plot learning curve
-#   which results from the mini-batch am I plotting?
+#   factor data prep
+#   factor all plotting code
+#   factor learning algorithm code
 #   scale weights for cost regularization to accommodate ReLU normalization
 #   fix array type declaration?
 #   implement momentum
 #   add early stopping
 #   add dropout
 #   find and fix deprecated Array declaration syntax with new syntax
+#   refactor to separate data prep, plotting, actual learning pass
 
 
 
@@ -26,6 +27,78 @@ using Plots
 pyplot()  # initialize the backend used by Plots
 @pyimport seaborn  # prettier charts
 
+
+function extract_data(matfname::String)
+    # read the data
+    df = matread(matfname)
+
+    # Split into train and test datasets, if we have them
+    # transpose examples as columns to optimize for julia column-dominant operations
+    # e.g.:  rows of a single column are features; each column is an example data point
+    if in("train", keys(df))
+        inputs = df["train"]["x"]'  
+        targets = df["train"]["y"]'
+    else
+        inputs = df["x"]'
+        targets = df["y"]'
+    end
+    if in("test", keys(df))
+        dotest = true
+        test_inputs = df["test"]["x"]'  # note transpose operator
+        test_targets = df["test"]["y"]'
+        testn = size(test_inputs,2)
+    else
+        dotest = false
+        test_inputs = zeros(0,0)
+        test_targets = zeros(0,0)
+    end
+    return inputs, targets, test_inputs, test_targets, dotest
+end
+
+
+function setup_plots(n_iters::Int64, dotest::Bool, plots::Array{String,1})
+    # set up cost_history to track 1 or 2 data series for plots
+    # lots of indirection here:  someday might add "validation"
+    if size(plots,1) > 3
+        warn("Only 3 plot requests permitted. Proceeding with up to 3.")
+    end
+
+    valid_plots = ["Training", "Test", "Learning"]
+    plot_switch = Dict(pl => false for pl in valid_plots)
+    for pl in plots  # plots is the input request for plots
+        if in(pl, valid_plots)
+                plot_switch[pl] = true
+        else
+            warn("Plots argument can only include \"Training\", \"Test\", and \"Learning\". Proceeding.")
+        end
+    end
+
+    # must have test data to plot test results
+    if dotest  # test data is present
+        # nothing to change
+    else
+        if plot_switch["Test"]  # input requested plotting test cost
+            warn("Can't plot test cost. No test data. Proceeding.")
+            plot_switch["Test"] = false
+        end
+    end
+    plot_labels = [pl for pl in keys(plot_switch) if plot_switch[pl] == true &&
+        pl != "Learning"]  # Learning is a separate plot, not a series label
+    plot_labels = reshape(plot_labels,1,size(plot_labels,1)) # 1 x N row array
+
+    cost_history = zeros(n_iters, size(plot_labels,2))
+    fracright_history = zeros(n_iters, size(plot_labels,2))  # shouldn't if not plotting Learning
+ 
+    # set column in cost_history for each data series
+    col_train = plot_switch["Training"] ? 1 : 0
+    col_test = plot_switch["Test"] ? col_train + 1 : 0
+
+    return Dict("plot_switch"=>plot_switch, "plot_labels"=>plot_labels, 
+        "cost_history"=>cost_history, "fracright_history"=>fracright_history, 
+        "col_train"=>col_train, "col_test"=>col_test)
+end
+
+
 """
 Method to call train_nn with a single integer as the number of hidden units
 in a single hidden layer.
@@ -39,7 +112,6 @@ end
 
 
 """
-
     function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}, alpha=0.35,
         mb_size=0, lambda=0.015, classify="softmax", units="sigmoid", plots=["Training"])
 
@@ -79,26 +151,8 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
         alpha = 0.35
     end
 
-    # read the data
-    df = matread(matfname)
+    inputs, targets, test_inputs, test_targets, dotest = extract_data(matfname)
 
-    # Split into train and test datasets, if we have them
-    # transpose examples as columns to optimize for julia column-dominant operations
-    if in("train", keys(df))
-        inputs = df["train"]["x"]'  
-        targets = df["train"]["y"]'
-    else
-        inputs = df["x"]'
-        targets = df["y"]'
-    end
-    if in("test", keys(df))
-        dotest = true
-        test_inputs = df["test"]["x"]'
-        test_targets = df["test"]["y"]'
-        testn = size(test_inputs,2)
-    else
-        dotest = false
-    end
 
     # set some useful variables
     k,n = size(inputs)  # number of features k by no. of examples n
@@ -133,41 +187,8 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
     mb_inputs = zeros(size(inputs,1), mb_size)  
     mb_targets = zeros(size(targets,1), mb_size)  
 
-    # set up cost_history to track 1 or 2 data series for plots
-    # lots of indirection here:  someday might add "validation"
-    if size(plots,1) > 3
-        warn("Only 3 plot requests permitted. Proceeding with up to 3.")
-    end
-
-    valid_plots = ["Training", "Test", "Learning"]
-    plot_switch = Dict(pl => false for pl in valid_plots)
-    for pl in plots  # plots is the input request for plots
-        if in(pl, valid_plots)
-                plot_switch[pl] = true
-        else
-            warn("Plots argument can only include \"Training\", \"Test\", and \"Learning\". Proceeding.")
-        end
-    end
-
-    # must have test data to plot test results
-    if dotest  # test data is present
-        # nothing to change
-    else
-        if plot_switch["Test"]  # input requested plotting test cost
-            warn("Can't plot test cost. No test data. Proceeding.")
-            plot_switch["Test"] = false
-        end
-    end
-    plot_labels = [pl for pl in keys(plot_switch) if plot_switch[pl] == true &&
-        pl != "Learning"]  # Learning is a separate plot, not a series label
-    plot_labels = reshape(plot_labels,1,size(plot_labels,1)) # 1 x N row array
-
-    cost_history = zeros(n_iters, size(plot_labels,2))
-    fracright_history = zeros(n_iters, size(plot_labels,2))
- 
-    # set column in cost_history for each data series
-    col_train = plot_switch["Training"] ? 1 : 0
-    col_test = plot_switch["Test"] ? col_train + 1 : 0
+    # setup data structures for plotting
+    plotdef = setup_plots(n_iters , dotest, plots)
 
     # prepare arrays used in training 
     # theta dimensions for each layer of the neural network 
@@ -213,25 +234,29 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
     a, a_wb, z = preallocate_feedfwd(inputs, theta, output_layer, n)
     mb_a, mb_a_wb, mb_z = preallocate_feedfwd(mb_inputs, theta, output_layer, mb_size)
     if dotest
+        testn = size(test_inputs,2)
         a_test, a_wb_test, z_test = preallocate_feedfwd(test_inputs, theta, output_layer, testn)
+        test_predictions = deepcopy(a_test[output_layer])
     end
 
     # initialize matrices for back propagation to enable update-in-place for speed
     eps = deepcopy(mb_a)  # looks like activations of each unit above input layer
     delta = deepcopy(theta)  # structure of gradient matches theta
+    # initialize before loop to set scope OUTSIDE of loop
+    predictions = deepcopy(mb_a[output_layer])  # predictions = output layer values
 
     # train the neural network and accumulate mb_cost_history
     for i = 1:n_iters  # loop for "epochs"
         for j = 1:n_mb  # loop for mini-batches
 
-            # grab the mini-batch subset of the data
+            # grab the mini-batch subset of the data for the input layer 1
             start = (j - 1) * mb_size + 1
             fin = start + mb_size - 1
             mb_a[1][:] = inputs[:,start:fin]  # input layer activation for mini-batch
             mb_a_wb[1][:] = vcat(ones(1,mb_size), mb_a[1])
             mb_targets[:] = targets[:, start:fin]         
 
-            feedfwd!(theta, output_layer, unit_function, class_function, mb_a, 
+            predictions[:] = feedfwd!(theta, output_layer, unit_function, class_function, mb_a, 
                 mb_a_wb, mb_z)  
             backprop_gradients!(theta, mb_targets, unit_function, output_layer, 
                 mb_size, mb_a, mb_a_wb, mb_z, eps, delta)  
@@ -246,24 +271,11 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
             end
         end
 
-        if plot_switch["Training"]
-            predictions = feedfwd!(theta, output_layer, unit_function, class_function,
-                a, a_wb, z) 
-            cost_history[i, col_train] = cost_function(targets, predictions, n,
-                n, theta, lambda, output_layer)
-            if plot_switch["Learning"]
-                fracright_history[i, col_train] = accuracy(targets, predictions)
-            end
-        end
-        
-        if plot_switch["Test"]
-            predictions = feedfwd!(theta, output_layer, unit_function, class_function,
-                a_test, a_wb_test, z_test)
-            cost_history[i, col_test] = cost_function(test_targets, predictions, testn, testn, theta, lambda, output_layer)
-            if plot_switch["Learning"]
-                fracright_history[i, col_test] = accuracy(test_targets, predictions)
-            end
-        end
+        calc_plot_data!(i, plotdef, mb_targets, predictions, n, theta, lambda, 
+            output_layer, dotest, testn, test_targets, test_predictions, 
+            a_test, a_wb_test, z_test,
+            unit_function, class_function, cost_function)
+
     end
     
     # output training statistics
@@ -280,20 +292,7 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
     end
 
     # plot the progress of training cost and/or learning
-    if (plot_switch["Training"] || plot_switch["Test"])
-        plt_cost = plot(cost_history, title="Cost Function", labels=plot_labels, ylims=(0, Inf))
-        display(plt_cost)  # or can use gui()
-
-        if plot_switch["Learning"]
-            plt_learning = plot(fracright_history, title="Learning Progress",
-                labels=plot_labels, ylims=(0.0, 1.0), reuse=false) 
-                # reuse=  not a great way to open a new plot window
-            display(plt_learning)
-        end
-
-        println("Press enter to close plot window..."); readline()
-        closeall()
-    end
+    plot_output(plotdef)
 
     return theta
 end  # function train_nn
@@ -420,6 +419,51 @@ function relu_gradient(z::Array{Float64,2})
         end
     end
     return ret
+end
+
+
+#  NEED TO PRE-ALLOCATE predictions_test somewhere with testn
+#  Do we need arguments for testn, test_targets?  yup
+function calc_plot_data!(i, plotdef, targets, predictions, n, theta, lambda, output_layer,
+    dotest, testn, test_targets, test_predictions, a_test, a_wb_test, z_test, 
+    unit_function, class_function, cost_function)
+
+    if plotdef["plot_switch"]["Training"]
+        plotdef["cost_history"][i, plotdef["col_train"]] = cost_function(targets, predictions, n, n, theta, lambda, output_layer)
+        if plotdef["plot_switch"]["Learning"]
+            plotdef["fracright_history"][i, plotdef["col_train"]] = accuracy(targets, predictions)
+        end
+    end
+    
+    if plotdef["plot_switch"]["Test"]
+        test_predictions[:] = feedfwd!(theta, output_layer, unit_function, class_function,
+            a_test, a_wb_test, z_test)
+        plotdef["cost_history"][i, plotdef["col_test"]] = cost_function(test_targets, 
+            test_predictions, testn, testn, theta, lambda, output_layer)
+        if plotdef["plot_switch"]["Learning"]
+            plotdef["fracright_history"][i, plotdef["col_test"]] = accuracy(test_targets, test_predictions)
+        end
+    end
+end
+
+
+function plot_output(plotdef)
+    # plot the progress of training cost and/or learning
+    if (plotdef["plot_switch"]["Training"] || plotdef["plot_switch"]["Test"])
+        plt_cost = plot(plotdef["cost_history"], title="Cost Function", 
+            labels=plotdef["plot_labels"], ylims=(0, Inf))
+        display(plt_cost)  # or can use gui()
+
+        if plotdef["plot_switch"]["Learning"]
+            plt_learning = plot(plotdef["fracright_history"], title="Learning Progress",
+                labels=plotdef["plot_labels"], ylims=(0.0, 1.0), reuse=false) 
+                # reuse=  not a great way to open a new plot window
+            display(plt_learning)
+        end
+
+        println("Press enter to close plot window..."); readline()
+        closeall()
+    end
 end
 
 
