@@ -1,3 +1,8 @@
+# TODO
+#   add ability to use all of the data
+#   add a seed for rand to enable a consistent choice or use system entropy
+
+
 # open an MNIST .mat file and save it as a matlab file
 # for running mnist digit recognition tests
 
@@ -6,9 +11,9 @@ using MAT
 const mnist_test = 1028  
 const mnist_cols = 784  # bitmap dimensions of each digit
 
-function mkdigits(matoutname, eachtrain=1000)
+function mkdigits(matoutname, training_samples=1000; makeall=false)
     # assumes mnist_all.mat is in current directory
-    eachtest = floor(Int, .5 * eachtrain)
+    test_samples = floor(Int, .5 * training_samples)
     
     # check if output file exists and ask permission to overwrite
     if isfile(matoutname)
@@ -35,45 +40,65 @@ function mkdigits(matoutname, eachtrain=1000)
 
     
     for i = 0:9
-        # training
+        # training samples
         sourcekey = "train$i"
         examples = size(df[sourcekey],1)  # this is NOT constant:  different for each digit
-        if eachtrain > examples
-            warn("Number of examples $eachtrain for each digit exceeds available train data $examples. Rerun with lower input.")
-            close(outfile)
-            return
+        # if training_samples > examples
+        #     warn("Number of training examples $training_samples for each digit\n exceeds available train data $examples. Rerun with lower input.")
+        #     close(outfile)
+        #     return
+        # end
+        if makeall  # use all samples for each digit
+            select = collect(1:examples)
+            training_samples = examples
+        else  
+            if training_samples > examples
+                warn("Number of training examples $training_samples for each digit\n exceeds available train data $examples. Rerun with lower input.")
+                close(outfile)
+                return
+            end
+            select = rand(1:examples,training_samples)  # random subset of cnt training_samples 
         end
-        select = rand(1:examples,eachtrain)
-        train["x"] = vcat(train["x"], df[sourcekey][select,:])
-        # use 10 for "0" hand-written digits when outputing
-        if i == 0
+        train["x"] = vcat(train["x"], df[sourcekey][select,:])  # append rows for the next digit
+    
+        if i == 0  # use 10 for "0" hand-written digits when outputting
             train["y"] = vcat(train["y"],
-                repmat(reshape(eye(10)[10,:],1,10),eachtrain,1))
+                repmat(reshape(eye(10)[10,:],1,10),training_samples,1))
         else
             train["y"] = vcat(train["y"],
-                repmat(reshape(eye(10)[i,:],1,10),eachtrain,1))            
+                repmat(reshape(eye(10)[i,:],1,10),training_samples,1))            
         end
 
-        # test
+        # test samples
         sourcekey = "test$i"
         examples = size(df[sourcekey],1)  # this is NOT constant:  different for each digit
-        if eachtest > examples
-            warn("Number of examples $eachtest for each digit exceeds available test data $examples. Rerun with lower input.")
-            close(outfile)
-            return
+        # if test_samples > examples
+        #     warn("Number of test examples $test_samples for each digit\n exceeds available test data $examples. Rerun with lower input.")
+        #     close(outfile)
+        #     return
+        # end
+        if makeall
+            select = collect(1:examples)
+            test_samples = examples
+        else   
+            if test_samples > examples
+                warn("Number of examples $test_samples for each digit exceeds available test data $examples. Rerun with lower input.")
+                close(outfile)
+                return
+            end
+            select = rand(1:examples,test_samples)
         end
-        select = rand(1:examples,eachtest)
         test["x"] = vcat(test["x"], df[sourcekey][select,:])
         if i == 0
             test["y"] = vcat(test["y"],
-                repmat(reshape(eye(10)[10,:],1,10),eachtest,1))
+                repmat(reshape(eye(10)[10,:],1,10),test_samples,1))
         else
             test["y"] = vcat(test["y"],
-                repmat(reshape(eye(10)[i,:],1,10),eachtest,1))        
+                repmat(reshape(eye(10)[i,:],1,10),test_samples,1))        
         end
     end
 
-    #remove first row of each array
+    #remove first row of each array  -- I kinda forget why
     train["x"] = train["x"][2:end,:]
     train["y"] = train["y"][2:end,:]
     test["x"] = test["x"][2:end,:]
