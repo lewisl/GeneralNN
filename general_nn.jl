@@ -1,6 +1,7 @@
 #TODO
-#   DONE: factor data prep
-#   DONE: factor setting up plot data structures
+#   DONE: add code timing to enable comparison of different hyper parameters
+#   Done: factored gathering stats into a nested function
+#   Create a more consistent testing regime:  same weight initialization, same data, independent validation set
 #   factor learning algorithm code
 #   scale weights for cost regularization to accommodate ReLU normalization
 #   fix array type declaration?
@@ -152,12 +153,44 @@ classify may be "softmax" or "sigmoid", which applies only to the output layer.
 units in other layers may be "sigmoid" or "relu".
 """
 function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha=0.35,
-    mb_size=0, lambda=0.015, classify="softmax", units="sigmoid", plots=["Training"])
+    mb_size=0, lambda=0.015, classify="softmax", units="sigmoid", plots=["Training", "Learning"])
     # creates a nn with 1 input layer, up to 3 hidden layers as an array input,
     # and output units matching the dimensions of the training data y
     # returns theta
     # layers must be 1, 2, or 3 hidden layers. In addition, there will always be
     # 1 input layer and 1 output layer. So, total layers will be 3, 4, or 5.
+
+
+    # this a nested function to isolate stats collection from the main line
+    # all the containing function variables are available
+    function gather_stats!(i)  # i is the loop counter where this is called: i has loop scope
+        if plotdef["plot_switch"]["Training"]
+            plotdef["cost_history"][i, plotdef["col_train"]] = cost_function(mb_targets, 
+                mb_predictions, n, n, theta, lambda, output_layer)
+            if plotdef["plot_switch"]["Learning"]
+                plotdef["fracright_history"][i, plotdef["col_train"]] = accuracy(
+                    mb_targets, mb_predictions)
+            end
+        end
+        
+        if plotdef["plot_switch"]["Test"]
+            test_predictions[:] = feedfwd!(theta, output_layer, unit_function, class_function,
+                a_test, a_wb_test, z_test)
+            plotdef["cost_history"][i, plotdef["col_test"]] = cost_function(test_targets, 
+                test_predictions, testn, testn, theta, lambda, output_layer)
+            if plotdef["plot_switch"]["Learning"]
+                plotdef["fracright_history"][i, plotdef["col_test"]] = accuracy(test_targets, test_predictions)
+            end
+        end     
+    end  # function gather_stats
+
+
+    ##########################################################
+    #   function general_nn main line
+    ##########################################################
+
+    # start the cpu clock
+    tic()
 
     #check inputs and prepare data
     if ndims(n_hid) != 1
@@ -296,28 +329,11 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
         end
 
         # gather statistics for plotting
-        if plotdef["plot_switch"]["Training"]
-            plotdef["cost_history"][i, plotdef["col_train"]] = cost_function(mb_targets, 
-                mb_predictions, n, n, theta, lambda, output_layer)
-            if plotdef["plot_switch"]["Learning"]
-                plotdef["fracright_history"][i, plotdef["col_train"]] = accuracy(
-                    mb_targets, mb_predictions)
-            end
-        end
-        
-        if plotdef["plot_switch"]["Test"]
-            test_predictions[:] = feedfwd!(theta, output_layer, unit_function, class_function,
-                a_test, a_wb_test, z_test)
-            plotdef["cost_history"][i, plotdef["col_test"]] = cost_function(test_targets, 
-                test_predictions, testn, testn, theta, lambda, output_layer)
-            if plotdef["plot_switch"]["Learning"]
-                plotdef["fracright_history"][i, plotdef["col_test"]] = accuracy(test_targets, test_predictions)
-            end
-        end        
-
+        gather_stats!(i)    # i has scope internal to the loop
     end
     
     # output training statistics
+    toc()  # print cpu time since tic()
     predictions = feedfwd!(theta, output_layer, unit_function, class_function, a, a_wb, z)
     println("Fraction correct labels predicted training: ", accuracy(targets, predictions))
     println("Final cost training: ", cost_function(targets, predictions, n,
@@ -334,6 +350,7 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
     plot_output(plotdef)
 
     return theta
+
 end  # function train_nn
 
 
