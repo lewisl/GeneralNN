@@ -1,8 +1,4 @@
 #TODO
-#   Done: allow up to 9 hidden layers
-#   Done: seed random number generator to create repeatable weight initialization
-#   DONE: remove deprecated @devec and use @. and .= where possible
-#   DONE: speed up relu by 75% by pre-allocating array result for unit function
 #   use views to speed up working with and without the bias term
 #   speed up softmax calculation with pre-allocation of variables
 #   Create a more consistent testing regime:  independent validation set
@@ -318,7 +314,7 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
             start = (j - 1) * mb_size + 1
             fin = start + mb_size - 1
             mb_a[1][:] = inputs[:,start:fin]  # input layer activation for mini-batch
-            mb_a_wb[1][:] = vcat(ones(1,mb_size), mb_a[1])
+            # mb_a_wb[1][:] = vcat(ones(1,mb_size), mb_a[1])
             mb_targets[:] = targets[:, start:fin]         
 
             mb_predictions[:] = feedfwd!(theta, output_layer, unit_function, class_function, mb_a, 
@@ -361,21 +357,27 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
 end  # function train_nn
 
 
+# use view instead of copy of large arrays
 function preallocate_feedfwd(inputs, theta, output_layer, n)
-    a = [inputs]
+    # a = [inputs]
     a_wb = [vcat(ones(1, n), inputs)] # input layer with bias column, never changed in loop
     z = [zeros(2,2)] # not used for input layer
     for i = 2:output_layer-1
         push!(z, zeros(size(theta[i] * a_wb[i-1])))  # z2 and up...  ...output layer set after loop
-        push!(a, zeros(size(z[i])))  # a2 and up...  ...output layer set after loop
-        push!(a_wb, vcat(ones(1, n), a[i]))  # a2_wb and up... ...but not output layer    
+        # push!(a, zeros(size(z[i])))  # a2 and up...  ...output layer set after loop
+        push!(a_wb, vcat(ones(1, n), z[i]))  # a2_wb and up... ...but not output layer    
     end
     push!(z, zeros(size(theta[output_layer],1),n))  # z output layer z[output_layer]  similar(targets)  zeros(size(theta[output_layer],1),n)
-    push!(a, zeros(size(theta[output_layer],1),n))  # a output layer a[output_layer]  similar(targets)
+    push!(a_wb, vcat(ones(1, n), zeros(size(theta[output_layer],1),n)))  # a_wb[output_layer] not used
+    # create a for each layer as view on a_wb to exclude row 1 which contains ones for bias term
+    a = []
+    for i = 1:output_layer
+        push!(a, view(a_wb[i], 2:size(a_wb[i],1), :))
+    end
     return a, a_wb, z
 end
 
-
+# don't need assignment to a_wb[ii] because a[ii] is a view--values already same
 function feedfwd!(theta, output_layer, unit_function, class_function, a, a_wb, z)
     # modifies a, a_wb, z in place
     # send it all of the data or a mini-batch
@@ -387,7 +389,7 @@ function feedfwd!(theta, output_layer, unit_function, class_function, a, a_wb, z
     @fastmath for ii = 2:output_layer-1  # ii is the current layer
         z[ii][:] = theta[ii] * a_wb[ii-1]
         a[ii][:] = unit_function(z[ii])
-        a_wb[ii][2:end, :] = a[ii]  
+        # a_wb[ii][2:end, :] = a[ii]  
     end
     @fastmath z[output_layer][:] = theta[output_layer] * a_wb[output_layer-1]
     a[output_layer][:] = class_function(z[output_layer])
