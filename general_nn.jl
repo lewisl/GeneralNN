@@ -1,9 +1,5 @@
 #TODO
-#   Done: allow up to 9 hidden layers
-#   Done: seed random number generator to create repeatable weight initialization
-#   DONE: remove deprecated @devec and use @. and .= where possible
-#   DONE: speed up relu by 75% by pre-allocating array result for unit function
-#   use views to speed up working with and without the bias term
+#   remove deprecated @devec and use @. and .= where possible
 #   speed up softmax calculation with pre-allocation of variables
 #   Create a more consistent testing regime:  independent validation set
 #   factor learning algorithm code
@@ -278,9 +274,9 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
     end
 
     if units == "sigmoid"
-        unit_function = sigmoid
+        unit_function = sigmoid!
     elseif units == "relu"
-        unit_function = relu
+        unit_function = relu!
     end
 
     # setup cost function -- now there's only one.  someday there'll be others.
@@ -375,7 +371,7 @@ function preallocate_feedfwd(inputs, theta, output_layer, n)
     return a, a_wb, z
 end
 
-
+# try update in place at unit_function
 function feedfwd!(theta, output_layer, unit_function, class_function, a, a_wb, z)
     # modifies a, a_wb, z in place
     # send it all of the data or a mini-batch
@@ -386,7 +382,8 @@ function feedfwd!(theta, output_layer, unit_function, class_function, a, a_wb, z
     # feed forward from inputs to output layer predictions
     @fastmath for ii = 2:output_layer-1  # ii is the current layer
         z[ii][:] = theta[ii] * a_wb[ii-1]
-        a[ii][:] = unit_function(z[ii])
+        # a[ii][:] = unit_function(z[ii])
+        unit_function(z[ii],a[ii])
         a_wb[ii][2:end, :] = a[ii]  
     end
     @fastmath z[output_layer][:] = theta[output_layer] * a_wb[output_layer-1]
@@ -403,9 +400,9 @@ function backprop_gradients!(theta, targets, unit_function, output_layer, mb_siz
 
     oneovermb = 1.0 / mb_size
 
-    if unit_function == sigmoid
+    if unit_function == sigmoid!
         gradient_function = sigmoid_gradient
-    elseif unit_function == relu
+    elseif unit_function == relu!
         gradient_function = relu_gradient
     end
 
@@ -439,25 +436,26 @@ function cross_entropy_cost(targets, predictions, n, mb_size, theta, lambda, out
     return cost
 end
 
-
-function sigmoid(z::Array{Float64,2})
-    ret = similar(z)
-    ret = 1.0 ./ (1.0 .+ exp.(-z))
-    return ret
+# try update in place
+function sigmoid!(z::Array{Float64,2}, a::Array{Float64,2})
+    # ret = similar(z)
+    a[:] = 1.0 ./ (1.0 .+ exp.(-z))
+    # return ret
 end
 
-
-function relu(z::Array{Float64,2})
+# try update in place
+function relu!(z::Array{Float64,2}, a::Array{Float64,2})
 # this is normalized leaky relu
-    zn = similar(z)
-    ret = similar(z)  # pre-allocate and set type vastly improves speed
-    zn[:] = (z .- mean(z,1)) ./ (std(z,1))
+    # zn = similar(z)
+    # ret = similar(z)  # pre-allocate and set type vastly improves speed
+    a[:] = (z .- mean(z,1)) ./ (std(z,1))
     for j = 1:size(z,2)
         for i = 1:size(z,1)
-            @. ret[i,j] = zn[i,j] > 0.0 ? zn[i,j] : .01 * zn[i,j]
+            # @. ret[i,j] = zn[i,j] > 0.0 ? zn[i,j] : .01 * zn[i,j]
+            @. a[i,j] = a[i,j] > 0.0 ? a[i,j] : .01 * a[i,j]
         end
     end
-    return ret
+    # return ret
 end
 
 
