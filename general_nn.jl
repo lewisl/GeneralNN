@@ -1,6 +1,5 @@
 #TODO
 #   remove deprecated @devec and use @. and .= where possible
-#   speed up softmax calculation with pre-allocation of variables
 #   Create a more consistent testing regime:  independent validation set
 #   factor learning algorithm code
 #   scale weights for cost regularization to accommodate ReLU normalization
@@ -174,7 +173,7 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
         end
         
         if plotdef["plot_switch"]["Test"]
-            test_predictions[:] = feedfwd!(theta, output_layer, unit_function!, class_function,
+            test_predictions[:] = feedfwd!(theta, output_layer, unit_function!, class_function!,
                 a_test, a_wb_test, z_test)
             plotdef["cost_history"][i, plotdef["col_test"]] = cost_function(test_targets, 
                 test_predictions, testn, testn, theta, lambda, output_layer)
@@ -263,14 +262,14 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
     # use either sigmoid or softmax for output layer with multiple classification
     if theta_dims[output_layer][1] > 1  # more than one output (unit)
         if classify == "sigmoid"
-            class_function = sigmoid
+            class_function! = sigmoid!
         elseif classify == "softmax"
-            class_function = softmax
+            class_function! = softmax!
         else
             error("Function to classify output labels must be \"sigmoid\" or \"softmax\".")
         end
     else
-        class_function = sigmoid  # for one output (unit)
+        class_function! = sigmoid!  # for one output (unit)
     end
 
     if units == "sigmoid"
@@ -317,7 +316,7 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
             mb_a_wb[1][:] = vcat(ones(1,mb_size), mb_a[1])
             mb_targets[:] = targets[:, start:fin]         
 
-            mb_predictions[:] = feedfwd!(theta, output_layer, unit_function!, class_function, mb_a, 
+            mb_predictions[:] = feedfwd!(theta, output_layer, unit_function!, class_function!, mb_a, 
                 mb_a_wb, mb_z)  
             backprop_gradients!(theta, mb_targets, unit_function!, output_layer, 
                 mb_size, mb_a, mb_a_wb, mb_z, eps, delta)  
@@ -337,14 +336,14 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
     
     # output training statistics
     toc()  # print cpu time since tic()
-    predictions = feedfwd!(theta, output_layer, unit_function!, class_function, a, a_wb, z)
+    predictions = feedfwd!(theta, output_layer, unit_function!, class_function!, a, a_wb, z)
     println("Fraction correct labels predicted training: ", accuracy(targets, predictions))
     println("Final cost training: ", cost_function(targets, predictions, n,
                     n, theta, lambda, output_layer))
 
     # output test statistics
     if dotest     
-        predictions = feedfwd!(theta, output_layer, unit_function!, class_function, a_test, a_wb_test, z_test)
+        predictions = feedfwd!(theta, output_layer, unit_function!, class_function!, a_test, a_wb_test, z_test)
         println("Fraction correct labels predicted test: ", accuracy(test_targets, predictions))
         println("Final cost test: ", cost_function(test_targets, predictions, testn, testn, theta, lambda, output_layer))
     end
@@ -372,7 +371,7 @@ function preallocate_feedfwd(inputs, theta, output_layer, n)
 end
 
 # try update in place at unit_function!
-function feedfwd!(theta, output_layer, unit_function!, class_function, a, a_wb, z)
+function feedfwd!(theta, output_layer, unit_function!, class_function!, a, a_wb, z)
     # modifies a, a_wb, z in place
     # send it all of the data or a mini-batch
     # receives intermediate storage of a, a_wb, z to reduce memory allocations
@@ -387,7 +386,7 @@ function feedfwd!(theta, output_layer, unit_function!, class_function, a, a_wb, 
         a_wb[ii][2:end, :] = a[ii]  
     end
     @fastmath z[output_layer][:] = theta[output_layer] * a_wb[output_layer-1]
-    a[output_layer][:] = class_function(z[output_layer])
+    class_function!(z[output_layer], a[output_layer])
 end
 
 
@@ -453,10 +452,12 @@ function relu!(z::Array{Float64,2}, a::Array{Float64,2})
 end
 
 
-function softmax(atop::Array{Float64,2})  # TODO try this with devec
-    f = atop .- maximum(atop,1)  # atop => activation of top layer
-    expf = exp.(f)  # this gets called within a loop and exp() is expensive
-    return @fastmath expf ./ sum(expf, 1)  
+function softmax!(z::Array{Float64,2}, a::Array{Float64,2})  # TODO try this with devec
+    expf = similar(a)
+    f = similar(a)
+    f[:] = z .- maximum(z,1)  # atop => activation of top layer
+    expf[:] = exp.(f)  # this gets called within a loop and exp() is expensive
+    a[:] = @fastmath expf ./ sum(expf, 1)  
 end
 
 
@@ -646,18 +647,18 @@ function predict(inputs, theta)
     # setup class function
     if t > 1  # more than one output (unit)
         if classify == "sigmoid"
-            class_function = sigmoid
+            class_function! = sigmoid!
         elseif classify == "softmax"
-            class_function = softmax
+            class_function! = softmax!
         else
             error("Function to classify output labels must be \"sigmoid\" or \"softmax\".")
         end
     else
-        class_function = sigmoid  # for one output (unit)
+        class_function! = sigmoid!  # for one output (unit)
     end    
  
     a_test, a_wb_test, z_test = preallocate_feedfwd(inputs, theta, output_layer, n)
-    predictions = feedfwd!(theta, output_layer, unit_function!, class_function, a_test, 
+    predictions = feedfwd!(theta, output_layer, unit_function!, class_function!, a_test, 
         a_wb_test, z_test)
 end
 
