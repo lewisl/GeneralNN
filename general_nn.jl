@@ -174,7 +174,7 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
         end
         
         if plotdef["plot_switch"]["Test"]
-            test_predictions[:] = feedfwd!(theta, output_layer, unit_function, class_function,
+            test_predictions[:] = feedfwd!(theta, output_layer, unit_function!, class_function,
                 a_test, a_wb_test, z_test)
             plotdef["cost_history"][i, plotdef["col_test"]] = cost_function(test_targets, 
                 test_predictions, testn, testn, theta, lambda, output_layer)
@@ -274,9 +274,9 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
     end
 
     if units == "sigmoid"
-        unit_function = sigmoid!
+        unit_function! = sigmoid!
     elseif units == "relu"
-        unit_function = relu!
+        unit_function! = relu!
     end
 
     # setup cost function -- now there's only one.  someday there'll be others.
@@ -317,9 +317,9 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
             mb_a_wb[1][:] = vcat(ones(1,mb_size), mb_a[1])
             mb_targets[:] = targets[:, start:fin]         
 
-            mb_predictions[:] = feedfwd!(theta, output_layer, unit_function, class_function, mb_a, 
+            mb_predictions[:] = feedfwd!(theta, output_layer, unit_function!, class_function, mb_a, 
                 mb_a_wb, mb_z)  
-            backprop_gradients!(theta, mb_targets, unit_function, output_layer, 
+            backprop_gradients!(theta, mb_targets, unit_function!, output_layer, 
                 mb_size, mb_a, mb_a_wb, mb_z, eps, delta)  
 
             # calculate new theta
@@ -337,14 +337,14 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
     
     # output training statistics
     toc()  # print cpu time since tic()
-    predictions = feedfwd!(theta, output_layer, unit_function, class_function, a, a_wb, z)
+    predictions = feedfwd!(theta, output_layer, unit_function!, class_function, a, a_wb, z)
     println("Fraction correct labels predicted training: ", accuracy(targets, predictions))
     println("Final cost training: ", cost_function(targets, predictions, n,
                     n, theta, lambda, output_layer))
 
     # output test statistics
     if dotest     
-        predictions = feedfwd!(theta, output_layer, unit_function, class_function, a_test, a_wb_test, z_test)
+        predictions = feedfwd!(theta, output_layer, unit_function!, class_function, a_test, a_wb_test, z_test)
         println("Fraction correct labels predicted test: ", accuracy(test_targets, predictions))
         println("Final cost test: ", cost_function(test_targets, predictions, testn, testn, theta, lambda, output_layer))
     end
@@ -371,8 +371,8 @@ function preallocate_feedfwd(inputs, theta, output_layer, n)
     return a, a_wb, z
 end
 
-# try update in place at unit_function
-function feedfwd!(theta, output_layer, unit_function, class_function, a, a_wb, z)
+# try update in place at unit_function!
+function feedfwd!(theta, output_layer, unit_function!, class_function, a, a_wb, z)
     # modifies a, a_wb, z in place
     # send it all of the data or a mini-batch
     # receives intermediate storage of a, a_wb, z to reduce memory allocations
@@ -382,8 +382,8 @@ function feedfwd!(theta, output_layer, unit_function, class_function, a, a_wb, z
     # feed forward from inputs to output layer predictions
     @fastmath for ii = 2:output_layer-1  # ii is the current layer
         z[ii][:] = theta[ii] * a_wb[ii-1]
-        # a[ii][:] = unit_function(z[ii])
-        unit_function(z[ii],a[ii])
+        # a[ii][:] = unit_function!(z[ii])
+        unit_function!(z[ii],a[ii])
         a_wb[ii][2:end, :] = a[ii]  
     end
     @fastmath z[output_layer][:] = theta[output_layer] * a_wb[output_layer-1]
@@ -391,7 +391,7 @@ function feedfwd!(theta, output_layer, unit_function, class_function, a, a_wb, z
 end
 
 
-function backprop_gradients!(theta, targets, unit_function, output_layer, mb_size, a, a_wb, z, eps, delta)
+function backprop_gradients!(theta, targets, unit_function!, output_layer, mb_size, a, a_wb, z, eps, delta)
     # argument delta holds the computed gradients
     # modifies eps, delta in place--caller uses delta
     # use for iterations in training
@@ -400,9 +400,9 @@ function backprop_gradients!(theta, targets, unit_function, output_layer, mb_siz
 
     oneovermb = 1.0 / mb_size
 
-    if unit_function == sigmoid!
+    if unit_function! == sigmoid!
         gradient_function = sigmoid_gradient
-    elseif unit_function == relu!
+    elseif unit_function! == relu!
         gradient_function = relu_gradient
     end
 
@@ -438,24 +438,18 @@ end
 
 # try update in place
 function sigmoid!(z::Array{Float64,2}, a::Array{Float64,2})
-    # ret = similar(z)
     a[:] = 1.0 ./ (1.0 .+ exp.(-z))
-    # return ret
 end
 
 # try update in place
 function relu!(z::Array{Float64,2}, a::Array{Float64,2})
 # this is normalized leaky relu
-    # zn = similar(z)
-    # ret = similar(z)  # pre-allocate and set type vastly improves speed
     a[:] = (z .- mean(z,1)) ./ (std(z,1))
     for j = 1:size(z,2)
         for i = 1:size(z,1)
-            # @. ret[i,j] = zn[i,j] > 0.0 ? zn[i,j] : .01 * zn[i,j]
             @. a[i,j] = a[i,j] > 0.0 ? a[i,j] : .01 * a[i,j]
         end
     end
-    # return ret
 end
 
 
@@ -663,7 +657,7 @@ function predict(inputs, theta)
     end    
  
     a_test, a_wb_test, z_test = preallocate_feedfwd(inputs, theta, output_layer, n)
-    predictions = feedfwd!(theta, output_layer, unit_function, class_function, a_test, 
+    predictions = feedfwd!(theta, output_layer, unit_function!, class_function, a_test, 
         a_wb_test, z_test)
 end
 
