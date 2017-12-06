@@ -1,10 +1,13 @@
 #TODO
-#   DONE: add code timing to enable comparison of different hyper parameters
-#   Done: factored gathering stats into a nested function
-#   Create a more consistent testing regime:  same weight initialization, same data, independent validation set
+#   Done: allow up to 9 hidden layers
+#   Done: seed random number generator to create repeatable weight initialization
+#   DONE: remove deprecated @devec and use @. and .= where possible
+#   DONE: speed up relu by 75% by pre-allocating array result for unit function
+#   use views to speed up working with and without the bias term
+#   speed up softmax calculation with pre-allocation of variables
+#   Create a more consistent testing regime:  independent validation set
 #   factor learning algorithm code
 #   scale weights for cost regularization to accommodate ReLU normalization
-#   fix array type declaration?
 #   implement momentum
 #   add early stopping
 #   add dropout
@@ -162,8 +165,9 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
 
 
     # this a nested function to isolate stats collection from the main line
-    # all the containing function variables are available
-    function gather_stats!(i)  # i is the loop counter where this is called: i has loop scope
+    # all the containing function variables are available except i, the loop
+    # counter, which has loop scope and has to be passed
+    function gather_stats!(i)  
         if plotdef["plot_switch"]["Training"]
             plotdef["cost_history"][i, plotdef["col_train"]] = cost_function(mb_targets, 
                 mb_predictions, n, n, theta, lambda, output_layer)
@@ -192,11 +196,15 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
     # start the cpu clock
     tic()
 
+    # seed random number generator.  For runs of identical models the same weight initialization
+    # will be used, given the number of parameters to be estimated.
+    srand(70653)  # seed int value is meaningless
+
     #check inputs and prepare data
     if ndims(n_hid) != 1
         error("Input n_hid must be a vector.")
-    elseif size(n_hid,1) > 3
-        error("n_hid can only contain 1 to 3 integer values for 1 to 3 hidden layers.")
+    elseif size(n_hid,1) > 9
+        error("n_hid can only contain 1 to 9 integer values for 1 to 9 hidden layers.")
     end
 
     if alpha < 0.00001
@@ -216,16 +224,15 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
     t = size(targets,1)  # number of output units
     n_hid_layers = size(n_hid, 1)
     output_layer = 2 + n_hid_layers # input layer is 1, output layer is highest value
-    mb = mb_size  # shortcut
     lamovern = lambda / (2 * n)  # need this because @devec won't do division. 
         
     #setup mini-batch
     if mb_size == 0
-        mb_size = n  # cause 1 (mini-)batch with all of the examples
+        mb_size = n  # use 1 (mini-)batch with all of the examples
     elseif mb_size > n
         mb_size = n
     elseif mb_size < 1
-        mb_size = 1
+        mb_size = n
     elseif mod(n, mb_size) != 0
         error("Mini-batch size $mb_size does not divide evenly into samples $n.")
     end
@@ -276,7 +283,7 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
         unit_function = relu
     end
 
-    # setup cost function
+    # setup cost function -- now there's only one.  someday there'll be others.
     cost_function = cross_entropy_cost
 
     # theta = weight matrices in a collection for all calculated layers (e.g., not the input layer)
@@ -302,6 +309,7 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
     # initialize before loop to set scope OUTSIDE of loop
     mb_predictions = deepcopy(mb_a[output_layer])  # predictions = output layer values
 
+    # added dot equals
     # train the neural network and accumulate mb_cost_history
     for i = 1:n_iters  # loop for "epochs"
         for j = 1:n_mb  # loop for mini-batches
@@ -322,14 +330,13 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
             @fastmath for ii = 2:output_layer
                 # regularization term added when lambda > 0
                 if lambda > 0.0  
-                    delta[ii][:, 2:end] = delta[ii][:, 2:end] .+ lamovern .* theta[ii][:,2:end]  # don't regularize bias
+                    delta[ii][:, 2:end] .= delta[ii][:, 2:end] .+ lamovern .* theta[ii][:,2:end]  # don't regularize bias
                 end
                 theta[ii][:] = theta[ii] .- (alpha .* delta[ii])  
             end
         end
 
-        # gather statistics for plotting
-        gather_stats!(i)    # i has scope internal to the loop
+        gather_stats!(i)    # i has loop scope -- other variables available at outer function scope
     end
     
     # output training statistics
@@ -387,14 +394,14 @@ function feedfwd!(theta, output_layer, unit_function, class_function, a, a_wb, z
 end
 
 
-function backprop_gradients!(theta, targets, unit_function, output_layer, mb, a, a_wb, z, eps, delta)
+function backprop_gradients!(theta, targets, unit_function, output_layer, mb_size, a, a_wb, z, eps, delta)
     # argument delta holds the computed gradients
     # modifies eps, delta in place--caller uses delta
     # use for iterations in training
     # send it all of the data or a mini-batch
     # receives intermediate storage of a, a_wb, z, eps, delta to reduce memory allocations
 
-    oneovermb = 1.0 / mb
+    oneovermb = 1.0 / mb_size
 
     if unit_function == sigmoid
         gradient_function = sigmoid_gradient
@@ -414,18 +421,19 @@ end
 
 
 # suitable cost function for sigmoid and softmax(?)
-function cross_entropy_cost(targets, predictions, n, mb, theta, lambda, output_layer)
+# added 2 extra dots to regterm expression
+function cross_entropy_cost(targets, predictions, n, mb_size, theta, lambda, output_layer)
     # n is count of all samples in data set--use with regularization term
-    # mb is count of all samples used in training batch--use with cost
+    # mb_size is count of all samples used in training batch--use with cost
     # these may be equal
-    @devec cost = (-1.0 ./ mb) .* sum(targets .* log(predictions) .+ 
+    @devec cost = (-1.0 ./ mb_size) .* sum(targets .* log(predictions) .+ 
         (1.0 .- targets) .* log(1.0 .- predictions))
     @fastmath if lambda > 0.0
         # need to fix hidden layer regularization for normalized ReLU
         # because the weights grow because the activations (z) are so small (mean = 0)
         # regterm = lambda/(2.0 * n) * sum([sum(theta[i][:, 2:end] .* theta[i][:, 2:end]) 
         #     for i in 2:output_layer]) 
-        regterm = lambda/(2.0 * n) * sum(theta[output_layer][:, 2:end] .* theta[output_layer][:, 2:end]) 
+        regterm = lambda/(2.0 * n) .* sum(theta[output_layer][:, 2:end] .* theta[output_layer][:, 2:end]) 
         cost = cost + regterm
     end
     return cost
@@ -433,18 +441,20 @@ end
 
 
 function sigmoid(z::Array{Float64,2})
-    @devec  ret = 1.0 ./ (1.0 .+ exp(-z))
+    ret = similar(z)
+    ret = 1.0 ./ (1.0 .+ exp.(-z))
     return ret
 end
 
 
 function relu(z::Array{Float64,2})
 # this is normalized leaky relu
-    ret = similar(z)
-    zn = (z .- mean(z,1)) ./ (std(z,1))
+    zn = similar(z)
+    ret = similar(z)  # pre-allocate and set type vastly improves speed
+    zn[:] = (z .- mean(z,1)) ./ (std(z,1))
     for j = 1:size(z,2)
         for i = 1:size(z,1)
-            ret[i,j] = zn[i,j] > 0.0 ? zn[i,j] : .01 * zn[i,j]
+            @. ret[i,j] = zn[i,j] > 0.0 ? zn[i,j] : .01 * zn[i,j]
         end
     end
     return ret
@@ -458,14 +468,17 @@ function softmax(atop::Array{Float64,2})  # TODO try this with devec
 end
 
 
+# @devec is worth a 5% improvement overall!, not just for this function
 function sigmoid_gradient(z::Array{Float64,2})
     # derivative of sigmoid function
-    sig = sigmoid(z)
-    @devec ret = sig .* (1 .- sig)
+    sig = similar(z)
+    ret = similar(z)
+    sig[:] = sigmoid(z)
+    @devec ret[:] = sig .* (1.0 .- sig)   # 
     return ret  
 end
 
-
+# added similar z
 function relu_gradient(z::Array{Float64,2})
     # don't have to normalize z again as gradient depends only on sign
     ret = similar(z)
@@ -478,37 +491,11 @@ function relu_gradient(z::Array{Float64,2})
 end
 
 
-#  NEED TO PRE-ALLOCATE predictions_test somewhere with testn
-#  Do we need arguments for testn, test_targets?  yup
-#  not being used:  absurd number of complex arguments
-# function calc_plot_data!(i, plotdef, targets, predictions, n, theta, lambda, output_layer,
-#     dotest, testn, test_targets, test_predictions, a_test, a_wb_test, z_test, 
-#     unit_function, class_function, cost_function)
-
-#     if plotdef["plot_switch"]["Training"]
-#         plotdef["cost_history"][i, plotdef["col_train"]] = cost_function(targets, predictions, n, n, theta, lambda, output_layer)
-#         if plotdef["plot_switch"]["Learning"]
-#             plotdef["fracright_history"][i, plotdef["col_train"]] = accuracy(targets, predictions)
-#         end
-#     end
-    
-#     if plotdef["plot_switch"]["Test"]
-#         test_predictions[:] = feedfwd!(theta, output_layer, unit_function, class_function,
-#             a_test, a_wb_test, z_test)
-#         plotdef["cost_history"][i, plotdef["col_test"]] = cost_function(test_targets, 
-#             test_predictions, testn, testn, theta, lambda, output_layer)
-#         if plotdef["plot_switch"]["Learning"]
-#             plotdef["fracright_history"][i, plotdef["col_test"]] = accuracy(test_targets, test_predictions)
-#         end
-#     end
-# end
-
-
 function plot_output(plotdef)
     # plot the progress of training cost and/or learning
     if (plotdef["plot_switch"]["Training"] || plotdef["plot_switch"]["Test"])
         plt_cost = plot(plotdef["cost_history"], title="Cost Function", 
-            labels=plotdef["plot_labels"], ylims=(0, Inf))
+            labels=plotdef["plot_labels"], ylims=(0.0, Inf))
         display(plt_cost)  # or can use gui()
 
         if plotdef["plot_switch"]["Learning"]
