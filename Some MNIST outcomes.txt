@@ -188,3 +188,25 @@ Fraction correct labels predicted training: 0.9706333333333333
 Final cost training: 0.16959709325555233
 Fraction correct labels predicted test: 0.9575
 Final cost test: 0.24665895255185644
+
+train_nn("digitsallby784.mat",100,[300,300,300], mb_size=500,alpha=0.2, lambda=0.3, plots=["Test","Training", "Learning"], units="relu", classify="softmax")
+elapsed time: 697.888814827 seconds
+Fraction correct labels predicted training: 0.97465
+Final cost training: 0.15301949125411304
+Fraction correct labels predicted test: 0.9651
+Final cost test: 0.20521796241879303
+
+## best to date
+train_nn("digitsallby784.mat",100,[600,300], mb_size=500,alpha=0.2, lambda=0.3, plots=["Test","Training", "Learning"], units="relu", classify="softmax")
+elapsed time: 840.329659171 seconds
+Fraction correct labels predicted training: 0.9934666666666667
+Final cost training: 0.04881191677001406
+Fraction correct labels predicted test: 0.9769
+Final cost test: 0.14123801688389284
+
+train_nn("digitsallby784.mat",100,[600,300,150], mb_size=500,alpha=0.2, lambda=0.3, plots=["Test","Training", "Learning"], units="relu", classify="softmax")
+elapsed time: 1173.420634332 seconds
+Fraction correct labels predicted training: 0.9931
+Final cost training: 0.04677884419175935
+Fraction correct labels predicted test: 0.9749
+Final cost test: 0.15658995949430218
