@@ -130,7 +130,7 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
     classify="softmax", units="sigmoid")
 
     # this a nested function to isolate stats collection from the main line
-    # all the containing function variables are available except i, the loop
+    # all the outer function variables are available as if global except i, the loop
     # counter, which has loop scope and has to be passed
     function gather_stats!(i)  
         if plotdef["plot_switch"]["Training"]
@@ -159,7 +159,7 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
         end     
     end  # function gather_stats
 
-   ##########################################################
+    ##########################################################
     #   function run_training main line
     ##########################################################
 
@@ -191,9 +191,9 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
     n_mb = Int(n / mb_size)  # number of mini-batches
 
     if mb_size < n
-        # randomize order of samples: 
+        # randomize order of all training samples: 
             # labels in training data sometimes in a block, which will make
-            # mini-batch train badly because a batch might not contain mix of labels
+            # mini-batch train badly because a batch will not contain mix of labels
         sel_index = randperm(n)
         inputs[:] = inputs[:, sel_index]
         targets[:] = targets[:, sel_index]  
@@ -255,7 +255,7 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
     end
 
     # initialize matrices for back propagation to enable update-in-place for speed
-    eps = deepcopy(mb_a)  # looks like activations of each unit above input layer
+    epsilon = deepcopy(mb_a)  # looks like activations of each unit above input layer
     delta = deepcopy(theta)  # structure of gradient matches theta
     # initialize before loop to set scope OUTSIDE of loop
     mb_predictions = deepcopy(mb_a[output_layer])  # predictions = output layer values
@@ -266,16 +266,16 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
         for j = 1:n_mb  # loop for mini-batches
 
             # grab the mini-batch subset of the data for the input layer 1
-            start = (j - 1) * mb_size + 1
-            fin = start + mb_size - 1
-            mb_a[1][:] = inputs[:,start:fin]  # input layer activation for mini-batch
+            first_sample = (j - 1) * mb_size + 1
+            last_sample = first_sample + mb_size - 1
+            mb_a[1][:] = inputs[:,first_sample:last_sample]  # input layer activation for mini-batch
             mb_a_wb[1][:] = vcat(ones(1,mb_size), mb_a[1])
-            mb_targets[:] = targets[:, start:fin]         
+            mb_targets[:] = targets[:, first_sample:last_sample]         
 
             mb_predictions[:] = feedfwd!(theta, output_layer, unit_function!, class_function!, mb_a, 
                 mb_a_wb, mb_z)  
             backprop_gradients!(theta, mb_targets, unit_function!, output_layer, 
-                mb_size, mb_a, mb_a_wb, mb_z, eps, delta)  
+                mb_size, mb_a, mb_a_wb, mb_z, epsilon, delta)  
 
             # calculate new theta
             @fastmath for ii = 2:output_layer
@@ -358,12 +358,12 @@ function feedfwd!(theta, output_layer, unit_function!, class_function!, a, a_wb,
 end
 
 
-function backprop_gradients!(theta, targets, unit_function!, output_layer, mb_size, a, a_wb, z, eps, delta)
+function backprop_gradients!(theta, targets, unit_function!, output_layer, mb_size, a, a_wb, z, epsilon, delta)
     # argument delta holds the computed gradients
-    # modifies eps, delta in place--caller uses delta
+    # modifies epsilon, delta in place--caller uses delta
     # use for iterations in training
     # send it all of the data or a mini-batch
-    # receives intermediate storage of a, a_wb, z, eps, delta to reduce memory allocations
+    # receives intermediate storage of a, a_wb, z, epsilon, delta to reduce memory allocations
 
     oneovermb = 1.0 / mb_size
 
@@ -373,11 +373,11 @@ function backprop_gradients!(theta, targets, unit_function!, output_layer, mb_si
         gradient_function = relu_gradient
     end
 
-    eps[output_layer][:] = a[output_layer] .- targets  # eps is epsilon
-    @fastmath delta[output_layer][:] = oneovermb .* (eps[output_layer] * a_wb[output_layer-1]')
+    epsilon[output_layer][:] = a[output_layer] .- targets 
+    @fastmath delta[output_layer][:] = oneovermb .* (epsilon[output_layer] * a_wb[output_layer-1]')
     @fastmath for jj = (output_layer - 1):-1:2  # don't do input layer
-        eps[jj][:] = theta[jj+1][:, 2:end]' * eps[jj+1] .* gradient_function(z[jj]) 
-        delta[jj][:] = oneovermb .* (eps[jj] * a_wb[jj-1]') 
+        epsilon[jj][:] = theta[jj+1][:, 2:end]' * epsilon[jj+1] .* gradient_function(z[jj]) 
+        delta[jj][:] = oneovermb .* (epsilon[jj] * a_wb[jj-1]') 
     end
     # println(z[2])
     # println(gradient_function(z[2]))
