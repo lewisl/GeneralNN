@@ -1,7 +1,6 @@
 #TODO
 #   remove deprecated @devec and use @. and .= where possible
 #   Create a more consistent testing regime:  independent validation set
-#   factor learning algorithm code
 #   scale weights for cost regularization to accommodate ReLU normalization
 #   implement momentum
 #   add early stopping
@@ -26,109 +25,6 @@ pyplot()  # initialize the backend used by Plots
 @pyimport seaborn  # prettier charts
 
 
-function extract_data(matfname::String)
-    # read the data
-    df = matread(matfname)
-
-    # Split into train and test datasets, if we have them
-    # transpose examples as columns to optimize for julia column-dominant operations
-    # e.g.:  rows of a single column are features; each column is an example data point
-    if in("train", keys(df))
-        inputs = df["train"]["x"]'  
-        targets = df["train"]["y"]'
-    else
-        inputs = df["x"]'
-        targets = df["y"]'
-    end
-    if in("test", keys(df))
-        dotest = true
-        test_inputs = df["test"]["x"]'  # note transpose operator
-        test_targets = df["test"]["y"]'
-        testn = size(test_inputs,2)
-    else
-        dotest = false
-        test_inputs = zeros(0,0)
-        test_targets = zeros(0,0)
-    end
-    return inputs, targets, test_inputs, test_targets, dotest
-end
-
-"""
-Function setup_plots(n_iters::Int64, dotest::Bool, plots::Array{String,1})
-
-Creates data structure to hold everything needed to plot progress of
-neural net training by iteration.
-
-A plotdef is a dict containing:
-
-    "plot_switch"=>plot_switch: Dict of bools for each type of results to be plotted.
-        Currently used are: "Training", "Test", "Learning".  This determines what 
-        data will be collected during training iterations and what data series will be
-        plotted.
-    "plot_labels"=>plot_labels: array of strings provides the labels to be used in the
-        plot legend. 
-    "cost_history"=>cost_history: an array of calculated cost at each iteration 
-        with iterations as rows and result types as columns.  
-        Results can be Training or Test. 
-    "fracright_history"=>fracright_history: an array of percentage of correct classification
-        at each iteration with iterations as rows and result types as columns. This plots
-        a so-called learning curve.  Very interesting indeed. 
-        Results can be Training or Test.  
-    "col_train"=>col_train: column of the arrays above to be used for Training results
-    "col_test"=>col_test: column of the arrays above to be used for Test results
-
-"""
-function setup_plots(n_iters::Int64, dotest::Bool, plots::Array{String,1})
-    # set up cost_history to track 1 or 2 data series for plots
-    # lots of indirection here:  someday might add "validation"
-    if size(plots,1) > 3
-        warn("Only 3 plot requests permitted. Proceeding with up to 3.")
-    end
-
-    valid_plots = ["Training", "Test", "Learning", "Cost"]
-    plot_switch = Dict(pl => false for pl in valid_plots)
-    for pl in plots  # plots is the input request for plots
-        if in(pl, valid_plots)
-                plot_switch[pl] = true
-        else
-            warn("Plots argument can only include \"Training\", \"Test\", \"Learning\", and \"Cost\".\nProceeding.")
-        end
-    end
-
-    # must have test data to plot test results
-    if dotest  # test data is present
-        # nothing to change
-    else
-        if plot_switch["Test"]  # input requested plotting test cost
-            warn("Can't plot test cost. No test data. Proceeding.")
-            plot_switch["Test"] = false
-        end
-    end
-
-    plot_labels = [pl for pl in keys(plot_switch) if plot_switch[pl] == true &&
-        (pl != "Learning" && pl != "Cost")]  # Cost, Learning are separate plots, not series labels
-    plot_labels = reshape(plot_labels,1,size(plot_labels,1)) # 1 x N row array
-
-    plotdef = Dict("plot_switch"=>plot_switch, "plot_labels"=>plot_labels)
-
-    if plot_switch["Cost"]
-        cost_history = zeros(n_iters, size(plot_labels,2))
-        plotdef["cost_history"] = cost_history
-    end
-    if plot_switch["Learning"]
-        fracright_history = zeros(n_iters, size(plot_labels,2))
-        plotdef["fracright_history"] = fracright_history
-    end
- 
-    # set column in cost_history for each data series
-    col_train = plot_switch["Training"] ? 1 : 0
-    col_test = plot_switch["Test"] ? col_train + 1 : 0
-
-    plotdef["col_train"] = col_train
-    plotdef["col_test"] = col_test
-
-    return plotdef
-end
 
 
 """
@@ -153,7 +49,7 @@ end
         lambda  ::= regularization rate
         mb_size ::= mini-batch size
 
-Train sigmoid/softmax neural networks up to 5 layers.  Detects
+Train sigmoid/softmax neural networks up to 11 layers.  Detects
 number of output labels from data. Detects number of features from data. Enables
 any size mini-batches that divide evenly into number of examples.  Plots 
 by any choice of per "Learning", "Training" iteration (epoch), and for "Test" data.
@@ -161,13 +57,77 @@ classify may be "softmax" or "sigmoid", which applies only to the output layer.
 units in other layers may be "sigmoid" or "relu".
 """
 function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha=0.35,
-    mb_size=0, lambda=0.015, classify="softmax", units="sigmoid", plots=["Training", "Learning"])
-    # creates a nn with 1 input layer, up to 3 hidden layers as an array input,
+    mb_size::Int64=0, lambda::Float64=0.015, classify::String="softmax", 
+    units::String="sigmoid", plots::Array{String,1}=["Training", "Learning"])
+    # creates a nn with 1 input layer, up to 9 hidden layers as an array input,
     # and output units matching the dimensions of the training data y
     # returns theta
-    # layers must be 1, 2, or 3 hidden layers. In addition, there will always be
-    # 1 input layer and 1 output layer. So, total layers will be 3, 4, or 5.
 
+    #check inputs
+    if n_iters < 0
+        error("Input n_iters must be an integer greater than 0")
+    end
+
+    if ndims(n_hid) != 1
+        error("Input n_hid must be a vector.")
+    elseif size(n_hid,1) > 9
+        error("n_hid can only contain 1 to 9 integer values for 1 to 9 hidden layers.")
+    end
+
+    if alpha < 0.00001
+        warn("Alpha learning rate set too small. Setting to default 0.35")
+        alpha = 0.35
+    elseif alpha > 1.0
+        warn("Alpha learning rate set too large. Setting to defaut 0.35")
+        alpha = 0.35
+    end
+
+    if mb_size < 0
+        error("Input mb_size must be an integer greater than 0")
+    end
+
+    if lambda < 0.00001
+        warn("Lambda regularization rate set too small. Setting to default 0.015")
+        lambda = 0.015
+    elseif lambda > 1.0
+        warn("Lambda regularization rate set too large. Setting to defaut 0.015")
+        lambda = 0.015
+    end
+
+    if !in(classify, ["softmax", "sigmoid"])
+        warn("classify must be \"softmax\" or \"sigmoid\". Setting to default \"softmax\".")
+        classify = "softmax"
+    end
+
+    if !in(units, ["relu", "sigmoid"])
+        error("units must be \"relu\" or \"sigmoid\".")
+    end
+
+    valid_plots = ["Training", "Test", "Learning", "Cost"]
+    new_plots = [pl for pl in valid_plots if in(pl, plots)]  
+    if sort(new_plots) != sort(plots)
+        warn("Plots argument can only include \"Training\", \"Test\", \"Learning\", and \"Cost\".\nProceeding with default [\"Training\", \"Learning\"].")
+        new_plots = ["Training", "Learning"]
+    end
+
+    # read file and extract data
+    inputs, targets, test_inputs, test_targets = extract_data(matfname)
+
+    # create plot definition
+    dotest = size(test_inputs, 1) > 0
+    plotdef = setup_plots(n_iters, dotest, new_plots)
+
+    theta = run_training(inputs, targets, test_inputs, test_targets, n_iters, plotdef,
+        n_hid, alpha, mb_size, lambda, classify, units);
+
+    return theta;
+
+end
+
+
+function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64, plotdef,
+    n_hid::Array{Int64,1}, alpha=0.35, mb_size=0, lambda=0.015, 
+    classify="softmax", units="sigmoid")
 
     # this a nested function to isolate stats collection from the main line
     # all the containing function variables are available except i, the loop
@@ -199,9 +159,8 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
         end     
     end  # function gather_stats
 
-
-    ##########################################################
-    #   function general_nn main line
+   ##########################################################
+    #   function run_training main line
     ##########################################################
 
     # start the cpu clock
@@ -209,26 +168,7 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
 
     # seed random number generator.  For runs of identical models the same weight initialization
     # will be used, given the number of parameters to be estimated.
-    srand(70653)  # seed int value is meaningless
-
-    #check inputs and prepare data
-    if ndims(n_hid) != 1
-        error("Input n_hid must be a vector.")
-    elseif size(n_hid,1) > 9
-        error("n_hid can only contain 1 to 9 integer values for 1 to 9 hidden layers.")
-    end
-
-    if alpha < 0.00001
-        warn("Alpha learning rate set too small. Setting to default 0.35")
-        alpha = 0.35
-    elseif alpha > 1.0
-        warn("Alpha learning rate set too large. Setting to defaut 0.35")
-        alpha = 0.35
-    end
-
-    # read file and extract data
-    inputs, targets, test_inputs, test_targets, dotest = extract_data(matfname)
-
+    srand(70653)  # seed int value is meaningless    
 
     # set some useful variables
     k,n = size(inputs)  # number of features k by no. of examples n
@@ -236,6 +176,7 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
     n_hid_layers = size(n_hid, 1)
     output_layer = 2 + n_hid_layers # input layer is 1, output layer is highest value
     lamovern = lambda / (2 * n)  # need this because @devec won't do division. 
+    dotest = size(test_inputs, 1) > 0
         
     #setup mini-batch
     if mb_size == 0
@@ -262,10 +203,7 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
     mb_inputs = zeros(size(inputs,1), mb_size)  
     mb_targets = zeros(size(targets,1), mb_size)  
 
-    # setup data structures for plotting
-    plotdef = setup_plots(n_iters , dotest, plots)
-
-    # prepare arrays used in training 
+    # prepare variable theta to hold network weights 
     # theta dimensions for each layer of the neural network 
     #    this follows the convention that the outputs to the current layer activation
     #    are rows of theta and the inputs from the layer below are columns
@@ -275,6 +213,7 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
     end
     push!(theta_dims, [t, n_hid[end]+ 1]) # weight dimensions for the output layer
 
+    # choose functions to be used in neural net architecture
     # use either sigmoid or softmax for output layer with multiple classification
     if theta_dims[output_layer][1] > 1  # more than one output (unit)
         if classify == "sigmoid"
@@ -297,6 +236,7 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
     # setup cost function -- now there's only one.  someday there'll be others.
     cost_function = cross_entropy_cost
 
+    # initialize and pre-allocate data structures to hold neural net training data
     # theta = weight matrices in a collection for all calculated layers (e.g., not the input layer)
     # initialize random weight parameters including bias term
     theta = [zeros(2,2)] # initialize collection of 2d float arrays: input layer 1 not used
@@ -320,8 +260,8 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
     # initialize before loop to set scope OUTSIDE of loop
     mb_predictions = deepcopy(mb_a[output_layer])  # predictions = output layer values
 
-    # added dot equals
-    # train the neural network and accumulate mb_cost_history
+
+    # train the neural network and gather stats by iteration
     for i = 1:n_iters  # loop for "epochs"
         for j = 1:n_mb  # loop for mini-batches
 
@@ -379,9 +319,9 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
     # plot the progress of training cost and/or learning
     plot_output(plotdef)
 
-    return theta
+    return theta;
 
-end  # function train_nn
+end  # function run_training
 
 
 function preallocate_feedfwd(inputs, theta, output_layer, n)
@@ -463,13 +403,13 @@ function cross_entropy_cost(targets, predictions, n, mb_size, theta, lambda, out
     return cost
 end
 
-# try update in place
-function sigmoid!(z::Array{Float64,2}, a::Array{Float64,2})
+
+function sigmoid!(z::Array{Float64,2}, a::Array{Float64,2})  # update a in place
     a[:] = 1.0 ./ (1.0 .+ exp.(-z))
 end
 
-# try update in place
-function relu!(z::Array{Float64,2}, a::Array{Float64,2})
+
+function relu!(z::Array{Float64,2}, a::Array{Float64,2})  # update a in place
 # this is normalized leaky relu
     a[:] = (z .- mean(z,1)) ./ (std(z,1))
     for j = 1:size(z,2)
@@ -494,12 +434,12 @@ function sigmoid_gradient(z::Array{Float64,2})
     # derivative of sigmoid function
     sig = similar(z)
     ret = similar(z)
-    sig[:] = sigmoid(z)
-    @devec ret[:] = sig .* (1.0 .- sig)   # 
+    sigmoid!(z, sig)
+    @devec ret[:] = sig .* (1.0 .- sig)
     return ret  
 end
 
-# added similar z
+
 function relu_gradient(z::Array{Float64,2})
     # don't have to normalize z again as gradient depends only on sign
     ret = similar(z)
@@ -529,11 +469,107 @@ function plot_output(plotdef)
             display(plt_learning)
         end
 
-        if isdefined(:plt_cost) || isdefined(:plt_learning)
+        if (plotdef["plot_switch"]["Cost"] || plotdef["plot_switch"]["Learning"])
             println("Press enter to close plot window..."); readline()
             closeall()
         end
     end
+end
+
+
+function extract_data(matfname::String)
+    # read the data
+    df = matread(matfname)
+
+    # Split into train and test datasets, if we have them
+    # transpose examples as columns to optimize for julia column-dominant operations
+    # e.g.:  rows of a single column are features; each column is an example data point
+    if in("train", keys(df))
+        inputs = df["train"]["x"]'  
+        targets = df["train"]["y"]'
+    else
+        inputs = df["x"]'
+        targets = df["y"]'
+    end
+    if in("test", keys(df))
+        test_inputs = df["test"]["x"]'  # note transpose operator
+        test_targets = df["test"]["y"]'
+    else
+        test_inputs = zeros(0,0)
+        test_targets = zeros(0,0)
+    end
+    return inputs, targets, test_inputs, test_targets
+end
+
+
+"""
+Function setup_plots(n_iters::Int64, dotest::Bool, plots::Array{String,1})
+
+Creates data structure to hold everything needed to plot progress of
+neural net training by iteration.
+
+A plotdef is a dict containing:
+
+    "plot_switch"=>plot_switch: Dict of bools for each type of results to be plotted.
+        Currently used are: "Training", "Test", "Learning".  This determines what 
+        data will be collected during training iterations and what data series will be
+        plotted.
+    "plot_labels"=>plot_labels: array of strings provides the labels to be used in the
+        plot legend. 
+    "cost_history"=>cost_history: an array of calculated cost at each iteration 
+        with iterations as rows and result types as columns.  
+        Results can be Training or Test. 
+    "fracright_history"=>fracright_history: an array of percentage of correct classification
+        at each iteration with iterations as rows and result types as columns. This plots
+        a so-called learning curve.  Very interesting indeed. 
+        Results can be Training or Test.  
+    "col_train"=>col_train: column of the arrays above to be used for Training results
+    "col_test"=>col_test: column of the arrays above to be used for Test results
+
+"""
+function setup_plots(n_iters::Int64, dotest::Bool, plots::Array{String,1})
+    # set up cost_history to track 1 or 2 data series for plots
+    # lots of indirection here:  someday might add "validation"
+    if size(plots,1) > 3
+        warn("Only 3 plot requests permitted. Proceeding with up to 3.")
+    end
+
+    valid_plots = ["Training", "Test", "Learning", "Cost"]
+    plot_switch = Dict(pl => in(pl, plots) for pl in valid_plots)
+
+    # must have test data to plot test results
+    if dotest  # test data is present
+        # nothing to change
+    else
+        if plot_switch["Test"]  # input requested plotting test cost
+            warn("Can't plot test cost. No test data. Proceeding.")
+            plot_switch["Test"] = false
+        end
+    end
+
+    plot_labels = [pl for pl in keys(plot_switch) if plot_switch[pl] == true &&
+        (pl != "Learning" && pl != "Cost")]  # Cost, Learning are separate plots, not series labels
+    plot_labels = reshape(plot_labels,1,size(plot_labels,1)) # 1 x N row array required by pyplot
+
+    plotdef = Dict("plot_switch"=>plot_switch, "plot_labels"=>plot_labels)
+
+    if plot_switch["Cost"]
+        cost_history = zeros(n_iters, size(plot_labels,2))
+        plotdef["cost_history"] = cost_history
+    end
+    if plot_switch["Learning"]
+        fracright_history = zeros(n_iters, size(plot_labels,2))
+        plotdef["fracright_history"] = fracright_history
+    end
+ 
+    # set column in cost_history for each data series
+    col_train = plot_switch["Training"] ? 1 : 0
+    col_test = plot_switch["Test"] ? col_train + 1 : 0
+
+    plotdef["col_train"] = col_train
+    plotdef["col_test"] = col_test
+
+    return plotdef
 end
 
 
