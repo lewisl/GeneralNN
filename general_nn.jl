@@ -85,13 +85,13 @@ function setup_plots(n_iters::Int64, dotest::Bool, plots::Array{String,1})
         warn("Only 3 plot requests permitted. Proceeding with up to 3.")
     end
 
-    valid_plots = ["Training", "Test", "Learning"]
+    valid_plots = ["Training", "Test", "Learning", "Cost"]
     plot_switch = Dict(pl => false for pl in valid_plots)
     for pl in plots  # plots is the input request for plots
         if in(pl, valid_plots)
                 plot_switch[pl] = true
         else
-            warn("Plots argument can only include \"Training\", \"Test\", and \"Learning\". Proceeding.")
+            warn("Plots argument can only include \"Training\", \"Test\", \"Learning\", and \"Cost\".\nProceeding.")
         end
     end
 
@@ -104,20 +104,30 @@ function setup_plots(n_iters::Int64, dotest::Bool, plots::Array{String,1})
             plot_switch["Test"] = false
         end
     end
+
     plot_labels = [pl for pl in keys(plot_switch) if plot_switch[pl] == true &&
-        pl != "Learning"]  # Learning is a separate plot, not a series label
+        (pl != "Learning" && pl != "Cost")]  # Cost, Learning are separate plots, not series labels
     plot_labels = reshape(plot_labels,1,size(plot_labels,1)) # 1 x N row array
 
-    cost_history = zeros(n_iters, size(plot_labels,2))
-    fracright_history = zeros(n_iters, size(plot_labels,2))  # shouldn't if not plotting Learning
+    plotdef = Dict("plot_switch"=>plot_switch, "plot_labels"=>plot_labels)
+
+    if plot_switch["Cost"]
+        cost_history = zeros(n_iters, size(plot_labels,2))
+        plotdef["cost_history"] = cost_history
+    end
+    if plot_switch["Learning"]
+        fracright_history = zeros(n_iters, size(plot_labels,2))
+        plotdef["fracright_history"] = fracright_history
+    end
  
     # set column in cost_history for each data series
     col_train = plot_switch["Training"] ? 1 : 0
     col_test = plot_switch["Test"] ? col_train + 1 : 0
 
-    return Dict("plot_switch"=>plot_switch, "plot_labels"=>plot_labels, 
-        "cost_history"=>cost_history, "fracright_history"=>fracright_history, 
-        "col_train"=>col_train, "col_test"=>col_test)
+    plotdef["col_train"] = col_train
+    plotdef["col_test"] = col_test
+
+    return plotdef
 end
 
 
@@ -126,7 +136,7 @@ Method to call train_nn with a single integer as the number of hidden units
 in a single hidden layer.
 """
 function train_nn(matfname::String, n_iters::Int64, n_hid::Int64; alpha=0.35,
-    mb_size=0, lambda=0.015, classify="softmax", units="sigmoid", plots=["Training"])
+    mb_size=0, lambda=0.015, classify="softmax", units="sigmoid", plots=["Training", "Learning"])
 
     train_nn(matfname, n_iters, [n_hid], alpha=alpha,
     mb_size=mb_size, lambda=lambda, classify=classify, units=units, plots=plots)
@@ -135,7 +145,7 @@ end
 
 """
     function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}, alpha=0.35,
-        mb_size=0, lambda=0.015, classify="softmax", units="sigmoid", plots=["Training"])
+        mb_size=0, lambda=0.015, classify="softmax", units="sigmoid", plots=["Training", "Learning"])
 
     returns theta -- the model weights
     key inputs:
@@ -164,8 +174,10 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
     # counter, which has loop scope and has to be passed
     function gather_stats!(i)  
         if plotdef["plot_switch"]["Training"]
-            plotdef["cost_history"][i, plotdef["col_train"]] = cost_function(mb_targets, 
-                mb_predictions, n, n, theta, lambda, output_layer)
+            if plotdef["plot_switch"]["Cost"]
+                plotdef["cost_history"][i, plotdef["col_train"]] = cost_function(mb_targets, 
+                    mb_predictions, n, n, theta, lambda, output_layer)
+            end
             if plotdef["plot_switch"]["Learning"]
                 plotdef["fracright_history"][i, plotdef["col_train"]] = accuracy(
                     mb_targets, mb_predictions)
@@ -173,11 +185,15 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
         end
         
         if plotdef["plot_switch"]["Test"]
-            test_predictions[:] = feedfwd!(theta, output_layer, unit_function!, class_function!,
-                a_test, a_wb_test, z_test)
-            plotdef["cost_history"][i, plotdef["col_test"]] = cost_function(test_targets, 
-                test_predictions, testn, testn, theta, lambda, output_layer)
+            if plotdef["plot_switch"]["Cost"]
+                test_predictions[:] = feedfwd!(theta, output_layer, unit_function!, class_function!,
+                    a_test, a_wb_test, z_test)
+                plotdef["cost_history"][i, plotdef["col_test"]] = cost_function(test_targets, 
+                    test_predictions, testn, testn, theta, lambda, output_layer)
+            end
             if plotdef["plot_switch"]["Learning"]
+                test_predictions[:] = feedfwd!(theta, output_layer, unit_function!, class_function!,
+                    a_test, a_wb_test, z_test)
                 plotdef["fracright_history"][i, plotdef["col_test"]] = accuracy(test_targets, test_predictions)
             end
         end     
@@ -341,6 +357,18 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
     println("Final cost training: ", cost_function(targets, predictions, n,
                     n, theta, lambda, output_layer))
 
+    # output improvement of last 10 iterations for test samples
+    if plotdef["plot_switch"]["Test"]
+        if plotdef["plot_switch"]["Learning"]
+            println("Test data accuracy in final 10 iterations:")
+            printdata = plotdef["fracright_history"][end-10+1:end, plotdef["col_test"]]
+            for i=1:10
+                @printf("%0.3f : ", printdata[i])
+            end
+            print("\n")
+        end        
+    end 
+
     # output test statistics
     if dotest     
         predictions = feedfwd!(theta, output_layer, unit_function!, class_function!, a_test, a_wb_test, z_test)
@@ -487,19 +515,24 @@ end
 function plot_output(plotdef)
     # plot the progress of training cost and/or learning
     if (plotdef["plot_switch"]["Training"] || plotdef["plot_switch"]["Test"])
-        plt_cost = plot(plotdef["cost_history"], title="Cost Function", 
-            labels=plotdef["plot_labels"], ylims=(0.0, Inf))
-        display(plt_cost)  # or can use gui()
+
+        if plotdef["plot_switch"]["Cost"]
+            plt_cost = plot(plotdef["cost_history"], title="Cost Function", 
+                labels=plotdef["plot_labels"], ylims=(0.0, Inf))
+            display(plt_cost)  # or can use gui()
+        end
 
         if plotdef["plot_switch"]["Learning"]
             plt_learning = plot(plotdef["fracright_history"], title="Learning Progress",
                 labels=plotdef["plot_labels"], ylims=(0.0, 1.0), reuse=false) 
-                # reuse=  not a great way to open a new plot window
+                # reuse=false  open a new plot window
             display(plt_learning)
         end
 
-        println("Press enter to close plot window..."); readline()
-        closeall()
+        if isdefined(:plt_cost) || isdefined(:plt_learning)
+            println("Press enter to close plot window..."); readline()
+            closeall()
+        end
     end
 end
 
