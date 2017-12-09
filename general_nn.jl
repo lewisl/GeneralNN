@@ -1,11 +1,9 @@
 #TODO
-#   remove deprecated @devec and use @. and .= where possible
 #   Create a more consistent testing regime:  independent validation set
 #   scale weights for cost regularization to accommodate ReLU normalization
 #   implement momentum
 #   add early stopping
 #   add dropout
-#   find and fix deprecated Array declaration syntax with new syntax
 
 
 
@@ -390,8 +388,8 @@ function cross_entropy_cost(targets, predictions, n, mb_size, theta, lambda, out
     # n is count of all samples in data set--use with regularization term
     # mb_size is count of all samples used in training batch--use with cost
     # these may be equal
-    @devec cost = (-1.0 ./ mb_size) .* sum(targets .* log(predictions) .+ 
-        (1.0 .- targets) .* log(1.0 .- predictions))
+    cost = (-1.0 ./ mb_size) .* sum(targets .* log.(predictions) .+ 
+        (1.0 .- targets) .* log.(1.0 .- predictions))
     @fastmath if lambda > 0.0
         # need to fix hidden layer regularization for normalized ReLU
         # because the weights grow because the activations (z) are so small (mean = 0)
@@ -435,7 +433,7 @@ function sigmoid_gradient(z::Array{Float64,2})
     sig = similar(z)
     ret = similar(z)
     sigmoid!(z, sig)
-    @devec ret[:] = sig .* (1.0 .- sig)
+    @. ret[:] = sig .* (1.0 .- sig)
     return ret  
 end
 
