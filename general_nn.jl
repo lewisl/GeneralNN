@@ -1,12 +1,16 @@
 #TODO
 #   modify normalized leaky relu: don't normalize the bias?  add a linear transform
-#       to the normalized result rho*z + beta with rho and beta being trained for 
+#       to the normalized result gamma*z + beta with rho and beta being trained for 
 #       each unit
+#   should we apply learning rate, alpha, to bias term?  YES
+#   split bias out of weight matrix--make it easy to use or not
+#   split stats from the plotdef
 #   should the normalization be part of calculating z or a separate step?
 #   Create a more consistent testing regime:  independent validation set
-#   scale weights for cost regularization to accommodate ReLU normalization
+#   scale weights for cost regularization to accommodate ReLU normalization?
 #   implement momentum
 #   add early stopping
+#   implement L1 regularization
 #   add dropout
 
 
@@ -24,7 +28,7 @@ using PyCall
 using Plots
 pyplot()  # initialize the backend used by Plots
 @pyimport seaborn  # prettier charts
-using ImageView
+# using ImageView    BIG BUG HERE--SEGFAULT--REPORTED
 
 
 
@@ -177,6 +181,7 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
     t = size(targets,1)  # number of output units
     n_hid_layers = size(n_hid, 1)
     output_layer = 2 + n_hid_layers # input layer is 1, output layer is highest value
+    hid_layers = collect(2:2+n_hid_layers-1)
     lamovern = lambda / (2 * n)  # need this because @devec won't do division. 
     dotest = size(test_inputs, 1) > 0
         
@@ -280,12 +285,12 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
                 mb_size, mb_a, mb_a_wb, mb_z, epsilon, delta)  
 
             # calculate new theta
-            @fastmath for ii = 2:output_layer
+            @fastmath for il = 2:output_layer
                 # regularization term added when lambda > 0
                 if lambda > 0.0  
-                    delta[ii][:, 2:end] .= delta[ii][:, 2:end] .+ lamovern .* theta[ii][:,2:end]  # don't regularize bias
+                    delta[il][:, 2:end] .= delta[il][:, 2:end] .+ lamovern .* theta[il][:,2:end]  # don't regularize bias
                 end
-                theta[ii][:] = theta[ii] .- (alpha .* delta[ii])  
+                theta[il][:] = theta[il] .- (alpha .* delta[il])  
             end
         end
 
@@ -330,7 +335,7 @@ function preallocate_feedfwd(inputs, theta, output_layer, n)
     a = [inputs]
     a_wb = [vcat(ones(1, n), inputs)] # input layer with bias column, never changed in loop
     z = [zeros(2,2)] # not used for input layer
-    for i = 2:output_layer-1
+    for i = 2:output_layer-1  # hidden layers
         push!(z, zeros(size(theta[i] * a_wb[i-1])))  # z2 and up...  ...output layer set after loop
         push!(a, zeros(size(z[i])))  # a2 and up...  ...output layer set after loop
         push!(a_wb, vcat(ones(1, n), a[i]))  # a2_wb and up... ...but not output layer    
@@ -349,10 +354,10 @@ function feedfwd!(theta, output_layer, unit_function!, class_function!, a, a_wb,
     # x[:] enables replace in place--reduce allocations, speed up loop
 
     # feed forward from inputs to output layer predictions
-    @fastmath for ii = 2:output_layer-1  # ii is the current layer
-        z[ii][:] = theta[ii] * a_wb[ii-1]
-        unit_function!(z[ii],a[ii])
-        a_wb[ii][2:end, :] = a[ii]  
+    @fastmath for il = 2:output_layer-1  # hidden layers
+        z[il][:] = theta[il] * a_wb[il-1]
+        unit_function!(z[il],a[il])
+        a_wb[il][2:end, :] = a[il]  
     end
     @fastmath z[output_layer][:] = theta[output_layer] * a_wb[output_layer-1]
     class_function!(z[output_layer], a[output_layer])
@@ -415,7 +420,7 @@ function n_l_relu!(z::Array{Float64,2}, a::Array{Float64,2})  # update a in plac
     a[:] = (z .- mean(z,1)) ./ (std(z,1))
     for j = 1:size(z,2)
         for i = 1:size(z,1)
-            @. a[i,j] = a[i,j] > 0.0 ? a[i,j] : .01 * a[i,j]
+            @. a[i,j] = a[i,j] >= 0.0 ? a[i,j] : .01 * a[i,j]
         end
     end
 end
