@@ -72,11 +72,7 @@ function mkdigits(matoutname, training_samples=1000; makeall=false)
         # test samples
         sourcekey = "test$i"
         examples = size(df[sourcekey],1)  # this is NOT constant:  different for each digit
-        # if test_samples > examples
-        #     warn("Number of test examples $test_samples for each digit\n exceeds available test data $examples. Rerun with lower input.")
-        #     close(outfile)
-        #     return
-        # end
+
         if makeall
             select = collect(1:examples)
             test_samples = examples

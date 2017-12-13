@@ -1,4 +1,8 @@
 #TODO
+#   modify normalized leaky relu: don't normalize the bias?  add a linear transform
+#       to the normalized result rho*z + beta with rho and beta being trained for 
+#       each unit
+#   should the normalization be part of calculating z or a separate step?
 #   Create a more consistent testing regime:  independent validation set
 #   scale weights for cost regularization to accommodate ReLU normalization
 #   implement momentum
@@ -16,11 +20,11 @@
 
 
 using MAT
-using Devectorize
 using PyCall
 using Plots
 pyplot()  # initialize the backend used by Plots
 @pyimport seaborn  # prettier charts
+using ImageView
 
 
 
@@ -112,7 +116,7 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
     inputs, targets, test_inputs, test_targets = extract_data(matfname)
 
     # create plot definition
-    dotest = size(test_inputs, 1) > 0
+    dotest = size(test_inputs, 1) > 0  # it's true there is test data
     plotdef = setup_plots(n_iters, dotest, new_plots)
 
     theta = run_training(inputs, targets, test_inputs, test_targets, n_iters, plotdef,
@@ -228,7 +232,7 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
     if units == "sigmoid"
         unit_function! = sigmoid!
     elseif units == "relu"
-        unit_function! = relu!
+        unit_function! = n_l_relu!
     end
 
     # setup cost function -- now there's only one.  someday there'll be others.
@@ -252,7 +256,7 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
         test_predictions = deepcopy(a_test[output_layer])
     end
 
-    # initialize matrices for back propagation to enable update-in-place for speed
+    # pre-allocate matrices for back propagation to enable update-in-place for speed
     epsilon = deepcopy(mb_a)  # looks like activations of each unit above input layer
     delta = deepcopy(theta)  # structure of gradient matches theta
     # initialize before loop to set scope OUTSIDE of loop
@@ -347,7 +351,6 @@ function feedfwd!(theta, output_layer, unit_function!, class_function!, a, a_wb,
     # feed forward from inputs to output layer predictions
     @fastmath for ii = 2:output_layer-1  # ii is the current layer
         z[ii][:] = theta[ii] * a_wb[ii-1]
-        # a[ii][:] = unit_function!(z[ii])
         unit_function!(z[ii],a[ii])
         a_wb[ii][2:end, :] = a[ii]  
     end
@@ -367,7 +370,7 @@ function backprop_gradients!(theta, targets, unit_function!, output_layer, mb_si
 
     if unit_function! == sigmoid!
         gradient_function = sigmoid_gradient
-    elseif unit_function! == relu!
+    elseif unit_function! == n_l_relu!
         gradient_function = relu_gradient
     end
 
@@ -407,7 +410,7 @@ function sigmoid!(z::Array{Float64,2}, a::Array{Float64,2})  # update a in place
 end
 
 
-function relu!(z::Array{Float64,2}, a::Array{Float64,2})  # update a in place
+function n_l_relu!(z::Array{Float64,2}, a::Array{Float64,2})  # update a in place
 # this is normalized leaky relu
     a[:] = (z .- mean(z,1)) ./ (std(z,1))
     for j = 1:size(z,2)
@@ -539,8 +542,8 @@ function setup_plots(n_iters::Int64, dotest::Bool, plots::Array{String,1})
     if dotest  # test data is present
         # nothing to change
     else
-        if plot_switch["Test"]  # input requested plotting test cost
-            warn("Can't plot test cost. No test data. Proceeding.")
+        if plot_switch["Test"]  # input requested plotting test data results
+            warn("Can't plot test data. No test data. Proceeding.")
             plot_switch["Test"] = false
         end
     end
@@ -727,6 +730,17 @@ function predict(inputs, theta)
     a_test, a_wb_test, z_test = preallocate_feedfwd(inputs, theta, output_layer, n)
     predictions = feedfwd!(theta, output_layer, unit_function!, class_function!, a_test, 
         a_wb_test, z_test)
+end
+
+
+"""
+Pass a dim1 x dim2 by 1 column vector holding the image data to display it.
+Also pass the dimensions as 2 element vector (default is [28,28]).
+"""
+function display_mnist_digit(digit_data, digit_dims=[28,28])
+    imshow(reshape(digit_data, digit_dims...)'); # transpose because inputs were transposed
+    println("Press enter to close image window..."); readline()
+    ImageView.closeall()
 end
 
 
