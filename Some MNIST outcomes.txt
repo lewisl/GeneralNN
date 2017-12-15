@@ -240,3 +240,23 @@ Test data accuracy in final 10 iterations:
 0.977 : 0.977 : 0.977 : 0.977 : 0.978 : 0.978 : 0.978 : 0.978 : 0.978 : 0.978 : 
 Fraction correct labels predicted test: 0.9779
 Final cost test: 0.13297381150769655
+
+## best with 10000 examples
+train_nn("digits10000by784.mat",100,[100],mb_size=250,alpha=.25,lambda=0.25,plots=["Test", "Learning"], units="relu", classify="softmax");
+elapsed time: 31.11208358 seconds
+Fraction correct labels predicted training: 0.9958
+Final cost training: 0.08337605485616179
+Test data accuracy in final 10 iterations:
+0.950 : 0.950 : 0.950 : 0.950 : 0.950 : 0.950 : 0.951 : 0.951 : 0.951 : 0.951 : 
+Fraction correct labels predicted test: 0.9506
+Final cost test: 0.3052441662053007
+
+
+train_nn("digits10000by784.mat",100,[220],mb_size=250,alpha=.25,lambda=0.02,plots=["Test", "Learning"], units="relu", classify="softmax");
+elapsed time: 49.5032301 seconds
+Fraction correct labels predicted training: 0.9992
+Final cost training: 0.03587943860972734
+Test data accuracy in final 10 iterations:
+0.950 : 0.950 : 0.949 : 0.950 : 0.950 : 0.950 : 0.950 : 0.951 : 0.951 : 0.951 : 
+Fraction correct labels predicted test: 0.9512
+Final cost test: 0.31203458218358393

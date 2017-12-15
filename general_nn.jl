@@ -1,8 +1,8 @@
 #TODO
+#   check if divisor of lambda should be minibatch size
 #   modify normalized leaky relu: don't normalize the bias?  add a linear transform
 #       to the normalized result gamma*z + beta with rho and beta being trained for 
 #       each unit
-#   should we apply learning rate, alpha, to bias term?  YES
 #   split stats from the plotdef
 #   should the normalization be part of calculating z or a separate step?
 #   Create a more consistent testing regime:  independent validation set
@@ -138,6 +138,7 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
     # all the outer function variables are available as if global except i, the loop
     # counter, which has loop scope and has to be passed
     function gather_stats!(i)  
+
         if plotdef["plot_switch"]["Training"]
             if plotdef["plot_switch"]["Cost"]
                 plotdef["cost_history"][i, plotdef["col_train"]] = cost_function(mb_targets, 
@@ -186,7 +187,6 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
     layer_units = [k, n_hid..., t]
 
     # miscellaneous
-    lamovern = lambda / (2.0 * n)  # need this because @devec won't do division. 
     dotest = size(test_inputs, 1) > 0
         
     #setup mini-batch
@@ -200,6 +200,7 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
         error("Mini-batch size $mb_size does not divide evenly into samples $n.")
     end
     n_mb = Int(n / mb_size)  # number of mini-batches
+    lamovern = lambda / (2.0 * mb_size)  # need this because @devec won't do division. 
 
     if mb_size < n
         # randomize order of all training samples: 
@@ -256,6 +257,7 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
         push!(theta, rand(theta_dims[i]...) .* (2.0 * interval) .- interval)
     end
     # initialize bias used to calculate z, input to activation, at every layer except input
+    # bias = [rand(size(th, 1)) .* (2.0 * interval) .- interval for th in theta]
     bias = [zeros(size(th, 1)) for th in theta]
 
     # initialize batch normalization parameters gamma and beta
@@ -268,11 +270,11 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
     end
 
     # pre-allocate matrices used in training by layer to enable update-in-place for speed
-    a, z = preallocate_feedfwd(inputs, theta, output_layer, n)  # a_wb,
-    mb_a, mb_z = preallocate_feedfwd(mb_inputs, theta, output_layer, mb_size)  # mb_a_wb, 
+    a, z = preallocate_feedfwd(inputs, theta, output_layer, n)  
+    mb_a, mb_z = preallocate_feedfwd(mb_inputs, theta, output_layer, mb_size)  
     if dotest
         testn = size(test_inputs,2)
-        a_test, z_test = preallocate_feedfwd(test_inputs, theta, output_layer, testn)  # a_wb_test, 
+        a_test, z_test = preallocate_feedfwd(test_inputs, theta, output_layer, testn) 
         test_predictions = deepcopy(a_test[output_layer])
     end
 
@@ -333,17 +335,14 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
             # mb_a_wb[1][:] = vcat(ones(1,mb_size), mb_a[1])
             mb_targets[:] = targets[:, first_sample:last_sample]         
 
-            mb_predictions[:] = feedfwd!(theta, bias, output_layer, unit_function!, class_function!, mb_a, mb_z)  # mb_a_wb,
+            mb_predictions[:] = feedfwd!(theta, bias, output_layer, unit_function!, class_function!, mb_a, mb_z)  
             backprop_gradients!(theta, bias, mb_targets, unit_function!, output_layer, 
-                mb_size, mb_a, mb_z, epsilon, delta, delta_b)  # mb_a_wb,
+                mb_size, mb_a, mb_z, epsilon, delta, delta_b)  
 
-            # calculate new theta
-            # how do we update bias given derivative of bias drops out as zero?
             @fastmath for il = 2:output_layer
-                # regularization term added when lambda > 0
+                # L2 regularization term added when lambda > 0
                 if lambda > 0.0  
-                    delta[il][:, 2:end] .= delta[il][:, 2:end] .+ lamovern .* theta[il][:,2:end]  # don't regularize bias
-                    delta[il] .= delta[il] .+ (lamovern .* theta[il])
+                    delta[il][:] = delta[il] .+ lamovern .* theta[il]
                 end
                 theta[il][:] = theta[il] .- (alpha .* delta[il])  
                 bias[il][:] = bias[il] .-  (alpha .* delta_b[il])
@@ -390,17 +389,15 @@ end  # function run_training
 
 function preallocate_feedfwd(inputs, theta, output_layer, n)
     a = [inputs]
-    # a_wb = [vcat(ones(1, n), inputs)] # input layer with bias row, never changed in loop
     z = [zeros(2,2)] # not used for input layer
     for i = 2:output_layer-1  # hidden layers
-        push!(z, zeros(size(theta[i] * a[i-1])))  # a_wb  z2 and up...  ...output layer set after loop
-        push!(a, zeros(size(z[i])))  # a2 and up...  ...output layer set after loop
-        # push!(a_wb, vcat(ones(1, n), a[i]))  # a2_wb and up... ...but not output layer    
+        push!(z, zeros(size(theta[i] * a[i-1])))  # z2 and up...  ...output layer set after loop
+        push!(a, zeros(size(z[i])))  #  and up...  ...output layer set after loop
     end
-    push!(z, zeros(size(theta[output_layer],1),n))  # z output layer z[output_layer]  similar(targets)  zeros(size(theta[output_layer],1),n)
-    push!(a, zeros(size(theta[output_layer],1),n))  # a output layer a[output_layer]  similar(targets)
+    push!(z, zeros(size(theta[output_layer],1),n))  
+    push!(a, zeros(size(theta[output_layer],1),n))  
 
-    return a, z  # a, a_wb, z
+    return a, z  
 end
 
 
@@ -415,7 +412,6 @@ function feedfwd!(theta, bias, output_layer, unit_function!, class_function!, a,
     @fastmath for il = 2:output_layer-1  # hidden layers
         z[il][:] = theta[il] * a[il-1] .+ bias[il]
         unit_function!(z[il],a[il])
-        # a_wb[il][2:end, :] = a[il]  
     end
     @fastmath z[output_layer][:] = theta[output_layer] * a[output_layer-1] .+ bias[output_layer]
     class_function!(z[output_layer], a[output_layer])
@@ -440,22 +436,17 @@ function backprop_gradients!(theta, bias, targets, unit_function!, output_layer,
     end
 
     epsilon[output_layer][:] = a[output_layer] .- targets 
-    # @fastmath delta[output_layer][:] = oneovermb .* (epsilon[output_layer] * a_wb[output_layer-1]')
     @fastmath delta[output_layer][:] = oneovermb .* (epsilon[output_layer] * 
         a[output_layer-1]')
     @fastmath for jj = (output_layer - 1):-1:2  # for hidden layers
-        # epsilon[jj][:] = theta[jj+1][:, 2:end]' * epsilon[jj+1] .* gradient_function(z[jj]) 
         epsilon[jj][:] = theta[jj+1]' * epsilon[jj+1] .* gradient_function(z[jj]) 
-        # delta[jj][:] = oneovermb .* (epsilon[jj] * a_wb[jj-1]') 
         delta[jj][:] = oneovermb .* (epsilon[jj] * a[jj-1]') 
-        delta_b[jj][:] = sum(epsilon[jj],2)  # multiplying times a column of 1's is summing the row
+        delta_b[jj][:] = oneovermb .* sum(epsilon[jj],2)  # multiplying times a column of 1's is summing the row
     end
 
 end
 
 
-# suitable cost function for sigmoid and softmax(?)
-# added 2 extra dots to regterm expression
 function cross_entropy_cost(targets, predictions, n, mb_size, theta, lambda, output_layer)
     # n is count of all samples in data set--use with regularization term
     # mb_size is count of all samples used in training batch--use with cost
