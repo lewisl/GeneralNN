@@ -3,7 +3,6 @@
 #       to the normalized result gamma*z + beta with rho and beta being trained for 
 #       each unit
 #   should we apply learning rate, alpha, to bias term?  YES
-#   split bias out of weight matrix--make it easy to use or not
 #   split stats from the plotdef
 #   should the normalization be part of calculating z or a separate step?
 #   Create a more consistent testing regime:  independent validation set
@@ -152,14 +151,14 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
         
         if plotdef["plot_switch"]["Test"]
             if plotdef["plot_switch"]["Cost"]
-                test_predictions[:] = feedfwd!(theta, output_layer, unit_function!, class_function!,
-                    a_test, a_wb_test, z_test)
+                test_predictions[:] = feedfwd!(theta, bias, output_layer, unit_function!, class_function!,
+                    a_test, z_test)  # a_wb_test, 
                 plotdef["cost_history"][i, plotdef["col_test"]] = cost_function(test_targets, 
                     test_predictions, testn, testn, theta, lambda, output_layer)
             end
             if plotdef["plot_switch"]["Learning"]
-                test_predictions[:] = feedfwd!(theta, output_layer, unit_function!, class_function!,
-                    a_test, a_wb_test, z_test)
+                test_predictions[:] = feedfwd!(theta, bias, output_layer, unit_function!, class_function!,
+                    a_test,  z_test)  # a_wb_test,
                 plotdef["fracright_history"][i, plotdef["col_test"]] = accuracy(test_targets, test_predictions)
             end
         end     
@@ -179,10 +178,15 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
     # set some useful variables
     k,n = size(inputs)  # number of features k by no. of examples n
     t = size(targets,1)  # number of output units
+
+    # layers
     n_hid_layers = size(n_hid, 1)
     output_layer = 2 + n_hid_layers # input layer is 1, output layer is highest value
     hid_layers = collect(2:2+n_hid_layers-1)
-    lamovern = lambda / (2 * n)  # need this because @devec won't do division. 
+    layer_units = [k, n_hid..., t]
+
+    # miscellaneous
+    lamovern = lambda / (2.0 * n)  # need this because @devec won't do division. 
     dotest = size(test_inputs, 1) > 0
         
     #setup mini-batch
@@ -212,13 +216,13 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
 
     # prepare variable theta to hold network weights 
     # theta dimensions for each layer of the neural network 
-    #    this follows the convention that the outputs to the current layer activation
+    #    this follows the convention that the outputs of the current layer activation
     #    are rows of theta and the inputs from the layer below are columns
     theta_dims = [[k, 1]] # "weight" dimensions for the input layer--not used
     for i = 2:output_layer-1
-        push!(theta_dims, [n_hid[i-1], theta_dims[i-1][1] + 1])  # 2nd index at each layer includes bias term
+        push!(theta_dims, [n_hid[i-1], theta_dims[i-1][1]]) #  + 1 # 2nd index at each layer includes bias term
     end
-    push!(theta_dims, [t, n_hid[end]+ 1]) # weight dimensions for the output layer
+    push!(theta_dims, [t, n_hid[end]]) #  + 1 # weight dimensions for the output layer
 
     # choose functions to be used in neural net architecture
     # use either sigmoid or softmax for output layer with multiple classification
@@ -251,19 +255,69 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
     for i = 2:output_layer
         push!(theta, rand(theta_dims[i]...) .* (2.0 * interval) .- interval)
     end
+    # initialize bias used to calculate z, input to activation, at every layer except input
+    bias = [zeros(size(th, 1)) for th in theta]
+
+    # initialize batch normalization parameters gamma and beta
+    # vector at each layer corresponding to no. of inputs from preceding layer, roughly "features"
+    if units == "relu"  # for now, assume we always batch normalize relu
+        # gamma = scaling factor for normalization variance
+        gamma = [ones(i) for i in layer_units]  # no batch norm. of output layer
+        # beta = bias, or new mean instead of zero
+        beta = [zeros(i) for i in layer_units]
+    end
 
     # pre-allocate matrices used in training by layer to enable update-in-place for speed
-    a, a_wb, z = preallocate_feedfwd(inputs, theta, output_layer, n)
-    mb_a, mb_a_wb, mb_z = preallocate_feedfwd(mb_inputs, theta, output_layer, mb_size)
+    a, z = preallocate_feedfwd(inputs, theta, output_layer, n)  # a_wb,
+    mb_a, mb_z = preallocate_feedfwd(mb_inputs, theta, output_layer, mb_size)  # mb_a_wb, 
     if dotest
         testn = size(test_inputs,2)
-        a_test, a_wb_test, z_test = preallocate_feedfwd(test_inputs, theta, output_layer, testn)
+        a_test, z_test = preallocate_feedfwd(test_inputs, theta, output_layer, testn)  # a_wb_test, 
         test_predictions = deepcopy(a_test[output_layer])
     end
+
+    # println("sizes of weight matrices")
+    # for th in theta
+    #     print(size(th), " | ")
+    # end
+    # println()
+
+    # println("sizes of bias matrices")
+    # for th in bias
+    #     print(size(th), " | ")
+    # end
+    # println()
+
+    # println("sizes of a matrices")
+    # for th in a
+    #     print(size(th), " | ")
+    # end
+    # println()
+
+    # println("sizes of a_wb matrices")
+    # for th in a_wb
+    #     print(size(th), " | ")
+    # end
+    # println()
+
+    # println("sizes of z matrices")
+    # for th in z
+    #     print(size(th), " | ")
+    # end
+    # println()
+
+    # println("sizes of gamma matrices")
+    # for th in gamma
+    #     print(size(th), " | ")
+    # end
+    # println()
+
+    # error("done for now--get rid of this")
 
     # pre-allocate matrices for back propagation to enable update-in-place for speed
     epsilon = deepcopy(mb_a)  # looks like activations of each unit above input layer
     delta = deepcopy(theta)  # structure of gradient matches theta
+    delta_b = deepcopy(bias)
     # initialize before loop to set scope OUTSIDE of loop
     mb_predictions = deepcopy(mb_a[output_layer])  # predictions = output layer values
 
@@ -276,21 +330,23 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
             first_sample = (j - 1) * mb_size + 1
             last_sample = first_sample + mb_size - 1
             mb_a[1][:] = inputs[:,first_sample:last_sample]  # input layer activation for mini-batch
-            mb_a_wb[1][:] = vcat(ones(1,mb_size), mb_a[1])
+            # mb_a_wb[1][:] = vcat(ones(1,mb_size), mb_a[1])
             mb_targets[:] = targets[:, first_sample:last_sample]         
 
-            mb_predictions[:] = feedfwd!(theta, output_layer, unit_function!, class_function!, mb_a, 
-                mb_a_wb, mb_z)  
-            backprop_gradients!(theta, mb_targets, unit_function!, output_layer, 
-                mb_size, mb_a, mb_a_wb, mb_z, epsilon, delta)  
+            mb_predictions[:] = feedfwd!(theta, bias, output_layer, unit_function!, class_function!, mb_a, mb_z)  # mb_a_wb,
+            backprop_gradients!(theta, bias, mb_targets, unit_function!, output_layer, 
+                mb_size, mb_a, mb_z, epsilon, delta, delta_b)  # mb_a_wb,
 
             # calculate new theta
+            # how do we update bias given derivative of bias drops out as zero?
             @fastmath for il = 2:output_layer
                 # regularization term added when lambda > 0
                 if lambda > 0.0  
                     delta[il][:, 2:end] .= delta[il][:, 2:end] .+ lamovern .* theta[il][:,2:end]  # don't regularize bias
+                    delta[il] .= delta[il] .+ (lamovern .* theta[il])
                 end
                 theta[il][:] = theta[il] .- (alpha .* delta[il])  
+                bias[il][:] = bias[il] .-  (alpha .* delta_b[il])
             end
         end
 
@@ -299,7 +355,7 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
     
     # output training statistics
     toc()  # print cpu time since tic()
-    predictions = feedfwd!(theta, output_layer, unit_function!, class_function!, a, a_wb, z)
+    predictions = feedfwd!(theta, bias, output_layer, unit_function!, class_function!, a, z)  # a_wb,
     println("Fraction correct labels predicted training: ", accuracy(targets, predictions))
     println("Final cost training: ", cost_function(targets, predictions, n,
                     n, theta, lambda, output_layer))
@@ -318,7 +374,8 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
 
     # output test statistics
     if dotest     
-        predictions = feedfwd!(theta, output_layer, unit_function!, class_function!, a_test, a_wb_test, z_test)
+        predictions = feedfwd!(theta, bias, output_layer, unit_function!, class_function!, a_test, 
+            z_test) # a_wb_test,
         println("Fraction correct labels predicted test: ", accuracy(test_targets, predictions))
         println("Final cost test: ", cost_function(test_targets, predictions, testn, testn, theta, lambda, output_layer))
     end
@@ -333,20 +390,21 @@ end  # function run_training
 
 function preallocate_feedfwd(inputs, theta, output_layer, n)
     a = [inputs]
-    a_wb = [vcat(ones(1, n), inputs)] # input layer with bias column, never changed in loop
+    # a_wb = [vcat(ones(1, n), inputs)] # input layer with bias row, never changed in loop
     z = [zeros(2,2)] # not used for input layer
     for i = 2:output_layer-1  # hidden layers
-        push!(z, zeros(size(theta[i] * a_wb[i-1])))  # z2 and up...  ...output layer set after loop
+        push!(z, zeros(size(theta[i] * a[i-1])))  # a_wb  z2 and up...  ...output layer set after loop
         push!(a, zeros(size(z[i])))  # a2 and up...  ...output layer set after loop
-        push!(a_wb, vcat(ones(1, n), a[i]))  # a2_wb and up... ...but not output layer    
+        # push!(a_wb, vcat(ones(1, n), a[i]))  # a2_wb and up... ...but not output layer    
     end
     push!(z, zeros(size(theta[output_layer],1),n))  # z output layer z[output_layer]  similar(targets)  zeros(size(theta[output_layer],1),n)
     push!(a, zeros(size(theta[output_layer],1),n))  # a output layer a[output_layer]  similar(targets)
-    return a, a_wb, z
+
+    return a, z  # a, a_wb, z
 end
 
-# try update in place at unit_function!
-function feedfwd!(theta, output_layer, unit_function!, class_function!, a, a_wb, z)
+
+function feedfwd!(theta, bias, output_layer, unit_function!, class_function!, a, z) # a_wb,
     # modifies a, a_wb, z in place
     # send it all of the data or a mini-batch
     # receives intermediate storage of a, a_wb, z to reduce memory allocations
@@ -355,16 +413,18 @@ function feedfwd!(theta, output_layer, unit_function!, class_function!, a, a_wb,
 
     # feed forward from inputs to output layer predictions
     @fastmath for il = 2:output_layer-1  # hidden layers
-        z[il][:] = theta[il] * a_wb[il-1]
+        z[il][:] = theta[il] * a[il-1] .+ bias[il]
         unit_function!(z[il],a[il])
-        a_wb[il][2:end, :] = a[il]  
+        # a_wb[il][2:end, :] = a[il]  
     end
-    @fastmath z[output_layer][:] = theta[output_layer] * a_wb[output_layer-1]
+    @fastmath z[output_layer][:] = theta[output_layer] * a[output_layer-1] .+ bias[output_layer]
     class_function!(z[output_layer], a[output_layer])
 end
 
 
-function backprop_gradients!(theta, targets, unit_function!, output_layer, mb_size, a, a_wb, z, epsilon, delta)
+# how do we update bias given derivative of bias drops out as zero?
+function backprop_gradients!(theta, bias, targets, unit_function!, output_layer, mb_size, a, z,
+    epsilon, delta, delta_b)  # a_wb, 
     # argument delta holds the computed gradients
     # modifies epsilon, delta in place--caller uses delta
     # use for iterations in training
@@ -380,13 +440,17 @@ function backprop_gradients!(theta, targets, unit_function!, output_layer, mb_si
     end
 
     epsilon[output_layer][:] = a[output_layer] .- targets 
-    @fastmath delta[output_layer][:] = oneovermb .* (epsilon[output_layer] * a_wb[output_layer-1]')
-    @fastmath for jj = (output_layer - 1):-1:2  # don't do input layer
-        epsilon[jj][:] = theta[jj+1][:, 2:end]' * epsilon[jj+1] .* gradient_function(z[jj]) 
-        delta[jj][:] = oneovermb .* (epsilon[jj] * a_wb[jj-1]') 
+    # @fastmath delta[output_layer][:] = oneovermb .* (epsilon[output_layer] * a_wb[output_layer-1]')
+    @fastmath delta[output_layer][:] = oneovermb .* (epsilon[output_layer] * 
+        a[output_layer-1]')
+    @fastmath for jj = (output_layer - 1):-1:2  # for hidden layers
+        # epsilon[jj][:] = theta[jj+1][:, 2:end]' * epsilon[jj+1] .* gradient_function(z[jj]) 
+        epsilon[jj][:] = theta[jj+1]' * epsilon[jj+1] .* gradient_function(z[jj]) 
+        # delta[jj][:] = oneovermb .* (epsilon[jj] * a_wb[jj-1]') 
+        delta[jj][:] = oneovermb .* (epsilon[jj] * a[jj-1]') 
+        delta_b[jj][:] = sum(epsilon[jj],2)  # multiplying times a column of 1's is summing the row
     end
-    # println(z[2])
-    # println(gradient_function(z[2]))
+
 end
 
 
@@ -732,9 +796,9 @@ function predict(inputs, theta)
         class_function! = sigmoid!  # for one output (unit)
     end    
  
-    a_test, a_wb_test, z_test = preallocate_feedfwd(inputs, theta, output_layer, n)
+    a_test,  z_test = preallocate_feedfwd(inputs, theta, output_layer, n)  # a_wb_test,
     predictions = feedfwd!(theta, output_layer, unit_function!, class_function!, a_test, 
-        a_wb_test, z_test)
+        z_test) # a_wb_test, 
 end
 
 
