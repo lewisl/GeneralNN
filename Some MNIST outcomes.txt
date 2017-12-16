@@ -260,3 +260,21 @@ Test data accuracy in final 10 iterations:
 0.950 : 0.950 : 0.949 : 0.950 : 0.950 : 0.950 : 0.950 : 0.951 : 0.951 : 0.951 : 
 Fraction correct labels predicted test: 0.9512
 Final cost test: 0.31203458218358393
+
+###################################################################
+#
+# Cleaned up weight update algebra
+#
+###################################################################
+
+
+
+train_nn("digits10000by784.mat",100,[100],mb_size=250,alpha=.25,lambda=0.008,plots=["Test", "Learning"], units="relu", classify="softmax");
+elapsed time: 29.34007379 seconds
+Fraction correct labels predicted training: 0.9264
+Final cost training: 0.5609053993509575
+Test data accuracy in final 10 iterations:
+0.921 : 0.921 : 0.921 : 0.921 : 0.921 : 0.921 : 0.921 : 0.921 : 0.921 : 0.921 : 
+Fraction correct labels predicted test: 0.9208
+Final cost test: 0.591900993267963
+

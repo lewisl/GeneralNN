@@ -1,6 +1,9 @@
 #TODO
-#   check if divisor of lambda should be minibatch size
-#   modify normalized leaky relu: don't normalize the bias?  add a linear transform
+#   clean up the algebra for weight & bias updates
+#   what is the right divisor for lambda    all sources but Ng say nothing
+#   should we pre-allocate the backprop gradient? prob.
+#   DONE: move gradient_function assignment outside of loop!
+#   modify normalized leaky relu: add a linear transform
 #       to the normalized result gamma*z + beta with rho and beta being trained for 
 #       each unit
 #   split stats from the plotdef
@@ -199,8 +202,8 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
     elseif mod(n, mb_size) != 0
         error("Mini-batch size $mb_size does not divide evenly into samples $n.")
     end
-    n_mb = Int(n / mb_size)  # number of mini-batches
-    lamovern = lambda / (2.0 * mb_size)  # need this because @devec won't do division. 
+    n_mb = Int(n / mb_size)  # number of mini-batches 
+    alphaovermb = alpha / mb_size
 
     if mb_size < n
         # randomize order of all training samples: 
@@ -245,6 +248,12 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
         unit_function! = n_l_relu!
     end
 
+    if unit_function! == sigmoid!
+        gradient_function! = sigmoid_gradient!
+    elseif unit_function! == n_l_relu!
+        gradient_function! = relu_gradient!
+    end
+
     # setup cost function -- now there's only one.  someday there'll be others.
     cost_function = cross_entropy_cost
 
@@ -262,10 +271,10 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
 
     # initialize batch normalization parameters gamma and beta
     # vector at each layer corresponding to no. of inputs from preceding layer, roughly "features"
+    # gamma = scaling factor for normalization variance
+    # beta = bias, or new mean instead of zero
     if units == "relu"  # for now, assume we always batch normalize relu
-        # gamma = scaling factor for normalization variance
-        gamma = [ones(i) for i in layer_units]  # no batch norm. of output layer
-        # beta = bias, or new mean instead of zero
+        gamma = [ones(i) for i in layer_units]  
         beta = [zeros(i) for i in layer_units]
     end
 
@@ -296,12 +305,6 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
     # end
     # println()
 
-    # println("sizes of a_wb matrices")
-    # for th in a_wb
-    #     print(size(th), " | ")
-    # end
-    # println()
-
     # println("sizes of z matrices")
     # for th in z
     #     print(size(th), " | ")
@@ -318,10 +321,11 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
 
     # pre-allocate matrices for back propagation to enable update-in-place for speed
     epsilon = deepcopy(mb_a)  # looks like activations of each unit above input layer
-    delta = deepcopy(theta)  # structure of gradient matches theta
+    delta_w = deepcopy(theta)  # structure of gradient matches theta
     delta_b = deepcopy(bias)
     # initialize before loop to set scope OUTSIDE of loop
     mb_predictions = deepcopy(mb_a[output_layer])  # predictions = output layer values
+    mb_grad = deepcopy(mb_z)
 
 
     # train the neural network and gather stats by iteration
@@ -329,23 +333,26 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
         for j = 1:n_mb  # loop for mini-batches
 
             # grab the mini-batch subset of the data for the input layer 1
-            first_sample = (j - 1) * mb_size + 1
-            last_sample = first_sample + mb_size - 1
-            mb_a[1][:] = inputs[:,first_sample:last_sample]  # input layer activation for mini-batch
-            # mb_a_wb[1][:] = vcat(ones(1,mb_size), mb_a[1])
-            mb_targets[:] = targets[:, first_sample:last_sample]         
+            first_example = (j - 1) * mb_size + 1
+            last_example = first_example + mb_size - 1
+            mb_a[1][:] = inputs[:,first_example:last_example]  # input layer activation for mini-batch
+            mb_targets[:] = targets[:, first_example:last_example]         
 
             mb_predictions[:] = feedfwd!(theta, bias, output_layer, unit_function!, class_function!, mb_a, mb_z)  
-            backprop_gradients!(theta, bias, mb_targets, unit_function!, output_layer, 
-                mb_size, mb_a, mb_z, epsilon, delta, delta_b)  
+            backprop_gradients!(theta, bias, mb_targets, unit_function!, gradient_function!, 
+                output_layer, mb_a, mb_z, epsilon, delta_w, delta_b, mb_grad)  
 
-            @fastmath for il = 2:output_layer
-                # L2 regularization term added when lambda > 0
-                if lambda > 0.0  
-                    delta[il][:] = delta[il] .+ lamovern .* theta[il]
+            # update weights and bias
+            @fastmath for il = 2:output_layer               
+                if lambda > 0.0  # L2 regularization term added when lambda > 0
+                    # error: dimensions don't match
+                    theta[il][:] = theta[il] .- ((alphaovermb .* delta_w[il]) .+ 
+                        (lambda .* theta[il]))
+                else
+                    theta[il][:] -= alphaovermb .* delta_w[il]
                 end
-                theta[il][:] = theta[il] .- (alpha .* delta[il])  
-                bias[il][:] = bias[il] .-  (alpha .* delta_b[il])
+                
+                bias[il][:] -= alphaovermb .* delta_b[il]
             end
         end
 
@@ -386,7 +393,7 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
 
 end  # function run_training
 
-
+# simplify and move inline using explicit dimensions
 function preallocate_feedfwd(inputs, theta, output_layer, n)
     a = [inputs]
     z = [zeros(2,2)] # not used for input layer
@@ -402,11 +409,8 @@ end
 
 
 function feedfwd!(theta, bias, output_layer, unit_function!, class_function!, a, z) # a_wb,
-    # modifies a, a_wb, z in place
+    # modifies a, a_wb, z in place to reduce memory allocations
     # send it all of the data or a mini-batch
-    # receives intermediate storage of a, a_wb, z to reduce memory allocations
-    # x is the activation of the input layer, a[1]
-    # x[:] enables replace in place--reduce allocations, speed up loop
 
     # feed forward from inputs to output layer predictions
     @fastmath for il = 2:output_layer-1  # hidden layers
@@ -418,30 +422,21 @@ function feedfwd!(theta, bias, output_layer, unit_function!, class_function!, a,
 end
 
 
-# how do we update bias given derivative of bias drops out as zero?
-function backprop_gradients!(theta, bias, targets, unit_function!, output_layer, mb_size, a, z,
-    epsilon, delta, delta_b)  # a_wb, 
-    # argument delta holds the computed gradients
-    # modifies epsilon, delta in place--caller uses delta
+function backprop_gradients!(theta, bias, targets, unit_function!, gradient_function!,
+    output_layer, a, z, epsilon, delta_w, delta_b, grad)  # a_wb, 
+    # argument delta_w holds the computed gradients for weights, delta_b for bias
+    # modifies epsilon, delta_w in place--caller uses delta_w, delta_b
     # use for iterations in training
     # send it all of the data or a mini-batch
-    # receives intermediate storage of a, a_wb, z, epsilon, delta to reduce memory allocations
-
-    oneovermb = 1.0 / mb_size
-
-    if unit_function! == sigmoid!
-        gradient_function = sigmoid_gradient
-    elseif unit_function! == n_l_relu!
-        gradient_function = relu_gradient
-    end
+    # intermediate storage of a, a_wb, z, epsilon, delta_w, delta_b reduces memory allocations
 
     epsilon[output_layer][:] = a[output_layer] .- targets 
-    @fastmath delta[output_layer][:] = oneovermb .* (epsilon[output_layer] * 
-        a[output_layer-1]')
+    @fastmath delta_w[output_layer][:] = epsilon[output_layer] * a[output_layer-1]'
     @fastmath for jj = (output_layer - 1):-1:2  # for hidden layers
-        epsilon[jj][:] = theta[jj+1]' * epsilon[jj+1] .* gradient_function(z[jj]) 
-        delta[jj][:] = oneovermb .* (epsilon[jj] * a[jj-1]') 
-        delta_b[jj][:] = oneovermb .* sum(epsilon[jj],2)  # multiplying times a column of 1's is summing the row
+        gradient_function!(z[jj], grad[jj])
+        epsilon[jj][:] = theta[jj+1]' * epsilon[jj+1] .* grad[jj]    # ient_function(z[jj]) 
+        delta_w[jj][:] = epsilon[jj] * a[jj-1]'
+        delta_b[jj][:] = sum(epsilon[jj],2)  # multiplying times a column of 1's is summing the row
     end
 
 end
@@ -465,13 +460,13 @@ function cross_entropy_cost(targets, predictions, n, mb_size, theta, lambda, out
 end
 
 
-function sigmoid!(z::Array{Float64,2}, a::Array{Float64,2})  # update a in place
+function sigmoid!(z::Array{Float64,2}, a::Array{Float64,2}) 
     a[:] = 1.0 ./ (1.0 .+ exp.(-z))
 end
 
 
-function n_l_relu!(z::Array{Float64,2}, a::Array{Float64,2})  # update a in place
-# this is normalized leaky relu
+function n_l_relu!(z::Array{Float64,2}, a::Array{Float64,2}) 
+    # this is normalized leaky relu
     a[:] = (z .- mean(z,1)) ./ (std(z,1))
     for j = 1:size(z,2)
         for i = 1:size(z,1)
@@ -491,25 +486,31 @@ end
 
 
 # @devec is worth a 5% improvement overall!, not just for this function
-function sigmoid_gradient(z::Array{Float64,2})
+function sigmoid_gradient!(z::Array{Float64,2}, grad::Array{Float64,2})
     # derivative of sigmoid function
-    sig = similar(z)
-    ret = similar(z)
-    sigmoid!(z, sig)
-    @. ret[:] = sig .* (1.0 .- sig)
-    return ret  
+    # sig = similar(z)
+    # ret = similar(z)
+    sigmoid!(z, grad)
+    # @. ret[:] = sig .* (1.0 .- sig)
+    grad[:] = grad .* (1.0 .- grad)
+    # return ret  
 end
 
 
-function relu_gradient(z::Array{Float64,2})
+function relu_gradient!(z::Array{Float64,2}, grad::Array{Float64,2})
     # don't have to normalize z again as gradient depends only on sign
-    ret = similar(z)
-    for j = 1:size(z,2)
-        for i = 1:size(z,1)
-            ret[i,j] = z[i,j] > 0.0 ? 1.0 : .01
+    # ret = similar(z)
+    # for j = 1:size(z,2)
+    #     for i = 1:size(z,1)
+    #         ret[i,j] = z[i,j] > 0.0 ? 1.0 : .01
+    #     end
+    # end
+    # return ret
+    for j = 1:size(z, 2)
+        for i = 1:size(z, 1)
+            grad[i,j] = z[i,j] > 0.0 ? 1.0 : .01
         end
     end
-    return ret
 end
 
 
