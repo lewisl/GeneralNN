@@ -1,19 +1,16 @@
 #TODO
-#   clean up the algebra for weight & bias updates
-#   what is the right divisor for lambda    all sources but Ng say nothing
-#   should we pre-allocate the backprop gradient? prob.
-#   DONE: move gradient_function assignment outside of loop!
+#   try dividing lambda by no. of parameters in a layer (even though it doesn't make any sense)
 #   modify normalized leaky relu: add a linear transform
 #       to the normalized result gamma*z + beta with rho and beta being trained for 
 #       each unit
-#   split stats from the plotdef
-#   should the normalization be part of calculating z or a separate step?
-#   Create a more consistent testing regime:  independent validation set
-#   scale weights for cost regularization to accommodate ReLU normalization?
 #   implement momentum
 #   add early stopping
 #   implement L1 regularization
 #   add dropout
+#   split stats from the plotdef
+#   Create a more consistent testing regime:  independent validation set
+#   scale weights for cost regularization to accommodate ReLU normalization?
+
 
 
 
@@ -94,12 +91,12 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
         error("Input mb_size must be an integer greater than 0")
     end
 
-    if lambda < 0.00001
-        warn("Lambda regularization rate set too small. Setting to default 0.015")
-        lambda = 0.015
-    elseif lambda > 1.0
-        warn("Lambda regularization rate set too large. Setting to defaut 0.015")
-        lambda = 0.015
+    if lambda < 0.0
+        warn("Lambda regularization rate must be positive floating point value. Setting to 0.")
+        lambda = 0.0
+    elseif lambda > 5.0
+        warn("Lambda regularization rate set too large. Setting to defaut 5.0")
+        lambda = 5.0
     end
 
     if !in(classify, ["softmax", "sigmoid"])
@@ -203,7 +200,7 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
         error("Mini-batch size $mb_size does not divide evenly into samples $n.")
     end
     n_mb = Int(n / mb_size)  # number of mini-batches 
-    alphaovermb = alpha / mb_size
+    alphaovermb = alpha / mb_size  # calc once, use in loop
 
     if mb_size < n
         # randomize order of all training samples: 
@@ -224,38 +221,10 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
     #    are rows of theta and the inputs from the layer below are columns
     theta_dims = [[k, 1]] # "weight" dimensions for the input layer--not used
     for i = 2:output_layer-1
-        push!(theta_dims, [n_hid[i-1], theta_dims[i-1][1]]) #  + 1 # 2nd index at each layer includes bias term
+        push!(theta_dims, [n_hid[i-1], theta_dims[i-1][1]]) 
     end
     push!(theta_dims, [t, n_hid[end]]) #  + 1 # weight dimensions for the output layer
 
-    # choose functions to be used in neural net architecture
-    # use either sigmoid or softmax for output layer with multiple classification
-    if theta_dims[output_layer][1] > 1  # more than one output (unit)
-        if classify == "sigmoid"
-            class_function! = sigmoid!
-        elseif classify == "softmax"
-            class_function! = softmax!
-        else
-            error("Function to classify output labels must be \"sigmoid\" or \"softmax\".")
-        end
-    else
-        class_function! = sigmoid!  # for one output (unit)
-    end
-
-    if units == "sigmoid"
-        unit_function! = sigmoid!
-    elseif units == "relu"
-        unit_function! = n_l_relu!
-    end
-
-    if unit_function! == sigmoid!
-        gradient_function! = sigmoid_gradient!
-    elseif unit_function! == n_l_relu!
-        gradient_function! = relu_gradient!
-    end
-
-    # setup cost function -- now there's only one.  someday there'll be others.
-    cost_function = cross_entropy_cost
 
     # initialize and pre-allocate data structures to hold neural net training data
     # theta = weight matrices in a collection for all calculated layers (e.g., not the input layer)
@@ -286,6 +255,36 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
         a_test, z_test = preallocate_feedfwd(test_inputs, theta, output_layer, testn) 
         test_predictions = deepcopy(a_test[output_layer])
     end
+
+    # choose or define functions to be used in neural net architecture
+    if theta_dims[output_layer][1] > 1  # more than one output (unit)
+        if classify == "sigmoid"
+            class_function! = sigmoid!
+        elseif classify == "softmax"
+            class_function! = softmax!
+        else
+            error("Function to classify output labels must be \"sigmoid\" or \"softmax\".")
+        end
+    else
+        class_function! = sigmoid!  # for one output (unit)
+    end
+
+    if units == "sigmoid"
+        unit_function! = sigmoid!
+    elseif units == "relu"
+        unit_function! = n_l_relu!
+    end
+
+    if unit_function! == sigmoid!
+        gradient_function! = sigmoid_gradient!
+    elseif unit_function! == n_l_relu!
+        gradient_function! = relu_gradient!
+    end
+
+    # setup cost function -- now there's only one.  someday there'll be others.
+    cost_function = cross_entropy_cost
+
+    if lambda > 0.0
 
     # println("sizes of weight matrices")
     # for th in theta
@@ -345,7 +344,6 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
             # update weights and bias
             @fastmath for il = 2:output_layer               
                 if lambda > 0.0  # L2 regularization term added when lambda > 0
-                    # error: dimensions don't match
                     theta[il][:] = theta[il] .- ((alphaovermb .* delta_w[il]) .+ 
                         (lambda .* theta[il]))
                 else
@@ -393,7 +391,7 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
 
 end  # function run_training
 
-# simplify and move inline using explicit dimensions
+
 function preallocate_feedfwd(inputs, theta, output_layer, n)
     a = [inputs]
     z = [zeros(2,2)] # not used for input layer
@@ -408,7 +406,7 @@ function preallocate_feedfwd(inputs, theta, output_layer, n)
 end
 
 
-function feedfwd!(theta, bias, output_layer, unit_function!, class_function!, a, z) # a_wb,
+function feedfwd!(theta, bias, output_layer, unit_function!, class_function!, a, z) 
     # modifies a, a_wb, z in place to reduce memory allocations
     # send it all of the data or a mini-batch
 
@@ -468,7 +466,7 @@ end
 function n_l_relu!(z::Array{Float64,2}, a::Array{Float64,2}) 
     # this is normalized leaky relu
     a[:] = (z .- mean(z,1)) ./ (std(z,1))
-    for j = 1:size(z,2)
+    for j = 1:size(z,2)  # down each column for speed
         for i = 1:size(z,1)
             @. a[i,j] = a[i,j] >= 0.0 ? a[i,j] : .01 * a[i,j]
         end
@@ -487,26 +485,13 @@ end
 
 # @devec is worth a 5% improvement overall!, not just for this function
 function sigmoid_gradient!(z::Array{Float64,2}, grad::Array{Float64,2})
-    # derivative of sigmoid function
-    # sig = similar(z)
-    # ret = similar(z)
     sigmoid!(z, grad)
-    # @. ret[:] = sig .* (1.0 .- sig)
     grad[:] = grad .* (1.0 .- grad)
-    # return ret  
 end
 
 
 function relu_gradient!(z::Array{Float64,2}, grad::Array{Float64,2})
-    # don't have to normalize z again as gradient depends only on sign
-    # ret = similar(z)
-    # for j = 1:size(z,2)
-    #     for i = 1:size(z,1)
-    #         ret[i,j] = z[i,j] > 0.0 ? 1.0 : .01
-    #     end
-    # end
-    # return ret
-    for j = 1:size(z, 2)
+    for j = 1:size(z, 2)  # calculate down a column for speed
         for i = 1:size(z, 1)
             grad[i,j] = z[i,j] > 0.0 ? 1.0 : .01
         end
