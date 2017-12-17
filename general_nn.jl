@@ -1,5 +1,4 @@
 #TODO
-#   try dividing lambda by no. of parameters in a layer (even though it doesn't make any sense)
 #   modify normalized leaky relu: add a linear transform
 #       to the normalized result gamma*z + beta with rho and beta being trained for 
 #       each unit
@@ -37,10 +36,12 @@ Method to call train_nn with a single integer as the number of hidden units
 in a single hidden layer.
 """
 function train_nn(matfname::String, n_iters::Int64, n_hid::Int64; alpha=0.35,
-    mb_size=0, lambda=0.015, classify="softmax", units="sigmoid", plots=["Training", "Learning"])
+    mb_size=0, lambda=0.015, scale_reg::Bool=false, classify="softmax", 
+    units="sigmoid", plots=["Training", "Learning"])
 
-    train_nn(matfname, n_iters, [n_hid], alpha=alpha,
-    mb_size=mb_size, lambda=lambda, classify=classify, units=units, plots=plots)
+    train_nn(matfname, n_iters, [n_hid]; alpha=alpha,
+    mb_size=mb_size, lambda=lambda, scale_reg=scale_reg,
+    classify=classify, units=units, plots=plots)
 end
 
 
@@ -62,7 +63,7 @@ classify may be "softmax" or "sigmoid", which applies only to the output layer.
 units in other layers may be "sigmoid" or "relu".
 """
 function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha=0.35,
-    mb_size::Int64=0, lambda::Float64=0.015, classify::String="softmax", 
+    mb_size::Int64=0, lambda::Float64=0.015, scale_reg::Bool=false, classify::String="softmax", 
     units::String="sigmoid", plots::Array{String,1}=["Training", "Learning"])
     # creates a nn with 1 input layer, up to 9 hidden layers as an array input,
     # and output units matching the dimensions of the training data y
@@ -123,7 +124,7 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
     plotdef = setup_plots(n_iters, dotest, new_plots)
 
     theta = run_training(inputs, targets, test_inputs, test_targets, n_iters, plotdef,
-        n_hid, alpha, mb_size, lambda, classify, units);
+        n_hid, alpha, mb_size, lambda, scale_reg, classify, units);
 
     return theta;
 
@@ -131,7 +132,7 @@ end
 
 
 function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64, plotdef,
-    n_hid::Array{Int64,1}, alpha=0.35, mb_size=0, lambda=0.015, 
+    n_hid::Array{Int64,1}, alpha=0.35, mb_size=0, lambda=0.015, scale_reg=false,
     classify="softmax", units="sigmoid")
 
     # this a nested function to isolate stats collection from the main line
@@ -284,7 +285,19 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
     # setup cost function -- now there's only one.  someday there'll be others.
     cost_function = cross_entropy_cost
 
-    if lambda > 0.0
+    # three alternatives for weight update function
+    weight_update_noreg(theta, delta, il) = theta .- (alphaovermb .* delta)
+    weight_update_scale_reg(theta, delta, il) = (theta .- ((alphaovermb .* delta) .+
+        (lambda / layer_units[il] .* theta)))
+    weight_update_reg(theta, delta, il) = theta .- ((alphaovermb .* delta) .+ (lambda .* theta))
+
+    if lambda <= 0.0
+        weight_update = weight_update_noreg
+    elseif scale_reg
+        weight_update = weight_update_scale_reg  
+    else 
+        weight_update = weight_update_reg
+    end   
 
     # println("sizes of weight matrices")
     # for th in theta
@@ -343,13 +356,7 @@ function run_training(inputs, targets, test_inputs, test_targets, n_iters::Int64
 
             # update weights and bias
             @fastmath for il = 2:output_layer               
-                if lambda > 0.0  # L2 regularization term added when lambda > 0
-                    theta[il][:] = theta[il] .- ((alphaovermb .* delta_w[il]) .+ 
-                        (lambda .* theta[il]))
-                else
-                    theta[il][:] -= alphaovermb .* delta_w[il]
-                end
-                
+                theta[il][:] = weight_update(theta[il], delta_w[il], il)
                 bias[il][:] -= alphaovermb .* delta_b[il]
             end
         end
