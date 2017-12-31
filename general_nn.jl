@@ -14,6 +14,7 @@
 #   split stats from the plotdef
 #   Create a more consistent testing regime:  independent validation set
 #   scale weights for cost regularization to accommodate ReLU normalization?
+#   separate plots data structure from stats data structure
 
 
 
@@ -220,40 +221,10 @@ function extract_data(matfname::String)
 end
 
 
-
 function run_training(train::Model_data, test::Model_data, n_iters::Int64, plotdef, 
     n_hid::Array{Int64,1}, alpha=0.35, mb_size=0, lambda=0.015, scale_reg=false, 
     batch_norm_bool=false, classify="softmax", units="sigmoid")
 
-    # nested function to isolate stats collection from the main line
-    # all the outer function variables are available as if global except i, the loop
-    # counter, which has loop scope and has to be passed
-    function gather_stats!(i)  
-
-        if plotdef["plot_switch"]["Training"]
-            if plotdef["plot_switch"]["Cost"]
-                plotdef["cost_history"][i, plotdef["col_train"]] = cost_function(train.mb_targets, 
-                    train.mb_predictions, n, n, p.theta, lambda, output_layer)
-            end
-            if plotdef["plot_switch"]["Learning"]
-                plotdef["fracright_history"][i, plotdef["col_train"]] = accuracy(
-                    train.mb_targets, train.mb_predictions)
-            end
-        end
-        
-        if plotdef["plot_switch"]["Test"]
-            if plotdef["plot_switch"]["Cost"]
-                test_predictions[:] = feedfwd!(p, test.a, test.z, fwd_functions)  
-                plotdef["cost_history"][i, plotdef["col_test"]] = cost_function(test.targets, 
-                    test.predictions, testn, testn, p.theta, lambda, output_layer)
-            end
-            if plotdef["plot_switch"]["Learning"]
-                test.predictions[:] = feedfwd!(p, test.a, test.z, output_layer, fwd_functions)  
-                plotdef["fracright_history"][i, plotdef["col_test"]] = accuracy(test.targets, 
-                    test.predictions)
-            end
-        end     
-    end  # function gather_stats
 
     ##########################################################
     #   function run_training pre-allocate and initialize variables
@@ -474,14 +445,16 @@ function run_training(train::Model_data, test::Model_data, n_iters::Int64, plotd
 
             backprop_gradients!(p, train, back_functions, output_layer)
 
-            @fastmath for il = 2:output_layer  # update weights and bias             
+            # update weights and bias 
+            @fastmath for il = 2:output_layer              
                 p.theta[il][:] = weight_update!(p.theta[il], p.delta_w[il], il)
                 p.bias[il][:] -= alphaovermb .* p.delta_b[il]  # Need a bias update function I think
                 # TODO need gam and bet updates
             end
         end
 
-        gather_stats!(i)  # i has loop scope -- other variables scope at outer function
+        gather_stats!(i, plotdef, train, test, p, cost_function, fwd_functions, n,
+            lambda, output_layer)  
     end
     
     # output training statistics
@@ -799,6 +772,35 @@ function setup_plots(n_iters::Int64, dotest::Bool, plots::Array{String,1})
 
     return plotdef
 end
+
+
+function gather_stats!(i, plotdef, train, test, p, cost_function, fwd_functions, n, 
+    lambda, output_layer)  
+
+    if plotdef["plot_switch"]["Training"]
+        if plotdef["plot_switch"]["Cost"]
+            plotdef["cost_history"][i, plotdef["col_train"]] = cost_function(train.mb_targets, 
+                train.mb_predictions, n, n, p.theta, lambda, output_layer)
+        end
+        if plotdef["plot_switch"]["Learning"]
+            plotdef["fracright_history"][i, plotdef["col_train"]] = accuracy(
+                train.mb_targets, train.mb_predictions)
+        end
+    end
+    
+    if plotdef["plot_switch"]["Test"]
+        if plotdef["plot_switch"]["Cost"]
+            test_predictions[:] = feedfwd!(p, test.a, test.z, fwd_functions)  
+            plotdef["cost_history"][i, plotdef["col_test"]] = cost_function(test.targets, 
+                test.predictions, testn, testn, p.theta, lambda, output_layer)
+        end
+        if plotdef["plot_switch"]["Learning"]
+            test.predictions[:] = feedfwd!(p, test.a, test.z, output_layer, fwd_functions)  
+            plotdef["fracright_history"][i, plotdef["col_test"]] = accuracy(test.targets, 
+                test.predictions)
+        end
+    end     
+end  # function gather_stats
 
 
 function accuracy(targets, predictions)
