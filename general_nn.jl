@@ -1,5 +1,20 @@
+
+
+# Includes the following functions to run directly:
+#    train_nn() -- train sigmoid/softmax neural networks for up to 5 layers
+#    test_score() -- cost and accuracy given test data and saved theta
+#    save_theta() -- save theta, which is returned by train_nn
+#    predictions_vector() -- predictions given x and saved theta
+
+
+#DONE
+#   rename Learned_parameters to NN_parameters; add field output_layer
+#   rename backprop_gradients! to backprop!
+#   Fix normalization calculation of mean and std along correct dimension
+
 #TODO
-#   add backprop update of bias for the output layer--little effect
+#   clean up pre-allocation code
+#   separate the backprop for normalizing layer and scaling layer
 #   what is the divisor for lambda in the regterm of cost????
 #   better way to handle test not using mini-batches
 #   modify normalized leaky relu: add a linear transform
@@ -17,16 +32,6 @@
 #   separate plots data structure from stats data structure
 
 
-
-
-
-# Includes the following functions to run directly:
-#   train_nn() -- train sigmoid/softmax neural networks for up to 5 layers
-#   test_score() -- cost and accuracy given test data and saved theta
-#   save_theta() -- save theta, which is returned by train_nn
-#   predictions_vector() -- predictions given x and saved theta
-
-
 using MAT
 using PyCall
 using Plots
@@ -34,59 +39,110 @@ pyplot()  # initialize the backend used by Plots
 @pyimport seaborn  # prettier charts
 # using ImageView    BIG BUG HERE--SEGFAULT--REPORTED
 
-
-mutable struct Learned_parameters  # holds model parameters learned by training-->pre-allocate and initialize
+"holds model parameters learned by training-->pre-allocate and initialize"
+mutable struct NN_parameters  
     theta::Array{Array{Float64,2},1}
     theta_dims::Array{Array{Int64,1},1}
     bias::Array{Array{Float64,1},1}
-    gam::Array{Array{Float64,1},1}  
-    bet::Array{Array{Float64,1},1}  
     delta_w::Array{Array{Float64,2},1}  
     delta_b::Array{Array{Float64,1},1}  
-    delta_gam::Array{Array{Float64,1},1}
-    delta_bet::Array{Array{Float64,1},1} 
+    output_layer::Int64
 
-    Learned_parameters() = new(
+    # empty constructor
+    NN_parameters() = new(                  
         Array{Array{Float64,2},1}(0),    # theta::Array{Array{Float64,2}}
-        Array{Array{Int64,2},1}(0),    # theta_dims::Array{Array{Int64,2}}
+        Array{Array{Int64,2},1}(0),      # theta_dims::Array{Array{Int64,2}}
         Array{Array{Float64,2},1}(0),    # bias::Array{Array{Float64,1}}
-        Array{Array{Float64,1},1}(0),    # gam::Array{Array{Float64,1}}
-        Array{Array{Float64,1},1}(0),    # bet::Array{Array{Float64,1}}
         Array{Array{Float64,2},1}(0),    # delta_w
         Array{Array{Float64,2},1}(0),    # delta_b  
-        Array{Array{Float64,2},1}(0),    # delta_gam
-        Array{Array{Float64,2},1}(0)     # delta_bet
+        0                                # output_layer
     )
 end
 
+# "hold examples and all layer outputs-->pre-allocate to reduce memory allocations and improve speed"
+# mutable struct Model_data  
+#     inputs::Array{Float64,2}  # k features by n examples
+#     targets::Array{Float64,2} # labels for each example
+#     a::Array{Array{Float64,2},1}
+#     z::Array{Array{Float64,2},1}
+#     predictions::Array{Float64,2}
+#     mb_a::Array{Array{Float64,2},1}
+#     mb_z::Array{Array{Float64,2},1}
+#     z_norm::Array{Array{Float64,2},1}  # same size as mb_z
+#     z_scale::Array{Array{Float64,2},1}  # same size as mb_z, often called "y"
+#     mb_inputs::Array{Float64,2}
+#     mb_targets::Array{Float64,2}
+#     mb_grad::Array{Array{Float64,2},1}
+#     mb_predictions::Array{Float64,2}  # ::Array{Float64,2}
+#     mb_epsilon::Array{Array{Float64,2},1}
 
-mutable struct Model_data  # hold examples and all layer outputs-->pre-allocate
+#     Model_data() = new(
+#         Array{Float64,2}(2,2),          # inputs
+#         Array{Float64,2}(2,2),          # targets
+#         Array{Array{Float64,2},1}(0),   # a
+#         Array{Array{Float64,2},1}(0),   # z
+#         Array{Float64,2}(2,2),          # predictions  TODO: use the a[output_layer]???
+#         Array{Array{Float64,2},1}(0),   # mb_a
+#         Array{Array{Float64,2},1}(0),   # mb_z
+#         Array{Array{Float64,2},1}(0),   # z_norm -- only pre-allocate if batch_norm
+#         Array{Array{Float64,2},1}(0),   # z_scale -- only pre-allocate if batch_norm
+#         Array{Float64,2}(2,2),          # mb_inputs
+#         Array{Float64,2}(2,2),          # mb_targets
+#         Array{Array{Float64,2},1}(0),   # mb_grad
+#         Array{Float64,2}(2,2),          # mb_predictions   TODO: use the mb_a[output_layer]??? 
+#         Array{Array{Float64,2},1}(0)    # mb_epsilon
+#     )
+# end
+
+"hold examples and all layer outputs-->pre-allocate to reduce memory allocations and improve speed"
+mutable struct Model_data  
     inputs::Array{Float64,2}  # k features by n examples
     targets::Array{Float64,2} # labels for each example
     a::Array{Array{Float64,2},1}
     z::Array{Array{Float64,2},1}
-    predictions::Array{Float64,2}
-    mb_a::Array{Array{Float64,2},1}
-    mb_z::Array{Array{Float64,2},1}
-    mb_inputs::Array{Float64,2}
-    mb_targets::Array{Float64,2}
-    mb_grad::Array{Array{Float64,2},1}
-    mb_predictions::Array{Float64,2}  # ::Array{Float64,2}
-    mb_epsilon::Array{Array{Float64,2},1}
+    z_norm::Array{Array{Float64,2},1}  # same size as z
+    z_scale::Array{Array{Float64,2},1}  # same size as z, often called "y"
+    grad::Array{Array{Float64,2},1}
+    epsilon::Array{Array{Float64,2},1}
 
     Model_data() = new(
         Array{Float64,2}(2,2),          # inputs
         Array{Float64,2}(2,2),          # targets
         Array{Array{Float64,2},1}(0),   # a
         Array{Array{Float64,2},1}(0),   # z
-        Array{Float64,2}(2,2),          # predictions::Array{Float64,2}
-        Array{Array{Float64,2},1}(0),   # mb_a
-        Array{Array{Float64,2},1}(0),   # mb_z
-        Array{Float64,2}(2,2),          # mb_inputs
-        Array{Float64,2}(2,2),          # mb_targets
-        Array{Array{Float64,2},1}(0),          # mb_grad
-        Array{Float64,2}(2,2),          # mb_predictions    
-        Array{Array{Float64,2},1}(0)    # mb_epsilon
+        Array{Array{Float64,2},1}(0),   # z_norm -- only pre-allocate if batch_norm
+        Array{Array{Float64,2},1}(0),   # z_scale -- only pre-allocate if batch_norm
+        Array{Array{Float64,2},1}(0),   # grad
+        Array{Array{Float64,2},1}(0)    # epsilon
+    )
+end
+
+"batch normalization parameters and data for backprop"
+mutable struct Batch_norm_back_data  # 
+    gam::Array{Array{Float64,1},1}  
+    bet::Array{Array{Float64,1},1}  
+    delta_gam::Array{Array{Float64,1},1}
+    delta_bet::Array{Array{Float64,1},1} 
+    delta_z_norm::Array{Array{Float64,2},1}  # same size as z
+    delta_z_scale::Array{Array{Float64,2},1}  # same size as z
+    delta_z::Array{Array{Float64,2},1}  # same size as z
+    mu::Array{Array{Float64,1},1}  # same size as bias = no. of layer units
+    stddev::Array{Array{Float64,1},1} #    ditto
+    mu_run::Array{Array{Float64,1},1}
+    std_run::Array{Array{Float64,1},1}
+
+    Batch_norm_back_data() = new(
+        Array{Array{Float64,1},1}(0),    # gam::Array{Array{Float64,1}}
+        Array{Array{Float64,1},1}(0),    # bet::Array{Array{Float64,1}}
+        Array{Array{Float64,2},1}(0),    # delta_gam
+        Array{Array{Float64,2},1}(0),    # delta_bet
+        Array{Array{Float64,2},1}(0),    # delta_z_norm
+        Array{Array{Float64,2},1}(0),    # delta_z_scale
+        Array{Array{Float64,2},1}(0),    # delta_z
+        Array{Array{Float64,1},1}(0),    # mu
+        Array{Array{Float64,1},1}(0),    # stddev
+        Array{Array{Float64,1},1}(0),    # mu_run
+        Array{Array{Float64,1},1}(0)     # std_run
     )
 end
 
@@ -96,11 +152,11 @@ Method to call train_nn with a single integer as the number of hidden units
 in a single hidden layer.
 """
 function train_nn(matfname::String, n_iters::Int64, n_hid::Int64; alpha=0.35,
-    mb_size=0, lambda=0.015, scale_reg::Bool=false, batch_norm_bool::Bool=false, classify="softmax", 
+    mb_size=0, lambda=0.015, scale_reg::Bool=false, batch_norm::Bool=false, classify="softmax", 
     units="sigmoid", plots=["Training", "Learning"])
 
     train_nn(matfname, n_iters, [n_hid]; alpha=alpha,
-    mb_size=mb_size, lambda=lambda, scale_reg=scale_reg, batch_norm_bool=batch_norm_bool,
+    mb_size=mb_size, lambda=lambda, scale_reg=scale_reg, batch_norm=batch_norm,
     classify=classify, units=units, plots=plots)
 end
 
@@ -123,7 +179,7 @@ classify may be "softmax" or "sigmoid", which applies only to the output layer.
 Units in other layers may be "sigmoid" or "relu".
 """
 function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha=0.35,
-    mb_size::Int64=0, lambda::Float64=0.015, scale_reg::Bool=false, batch_norm_bool::Bool=false,
+    mb_size::Int64=0, lambda::Float64=0.015, scale_reg::Bool=false, batch_norm::Bool=false,
     classify::String="softmax", units::String="sigmoid", 
     plots::Array{String,1}=["Training", "Learning"])
 
@@ -181,15 +237,12 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
     # read file and extract data
     train.inputs, train.targets, test.inputs, test.targets = extract_data(matfname)
 
-    # setup_data!(d)
-    # setup_learned_parameters!(p)
-
     # create plot definition
     dotest = size(test.inputs, 1) > 0  # it's true there is test data
     plotdef = setup_plots(n_iters, dotest, new_plots)
 
     theta = run_training(train, test, n_iters, plotdef,
-        n_hid, alpha, mb_size, lambda, scale_reg, batch_norm_bool, classify, units);
+        n_hid, alpha, mb_size, lambda, scale_reg, batch_norm, classify, units);
 
     return theta;
 
@@ -221,13 +274,13 @@ function extract_data(matfname::String)
 end
 
 
-function run_training(train::Model_data, test::Model_data, n_iters::Int64, plotdef, 
-    n_hid::Array{Int64,1}, alpha=0.35, mb_size=0, lambda=0.015, scale_reg=false, 
-    batch_norm_bool=false, classify="softmax", units="sigmoid")
+function run_training(train::Model_data, test::Model_data, n_iters::Int64, 
+    plotdef, n_hid::Array{Int64,1}, alpha=0.35, mb_size=0, lambda=0.015, scale_reg=false, 
+    batch_norm=false, classify="softmax", units="sigmoid")
 
 
     ##########################################################
-    #   function run_training pre-allocate and initialize variables
+    #   pre-allocate and initialize variables
     ##########################################################
 
     # start the cpu clock
@@ -244,7 +297,6 @@ function run_training(train::Model_data, test::Model_data, n_iters::Int64, plotd
     # layers
     n_hid_layers = size(n_hid, 1)
     output_layer = 2 + n_hid_layers # input layer is 1, output layer is highest value
-    hid_layers = collect(2:2+n_hid_layers-1)
     layer_units = [k, n_hid..., t]
 
     # miscellaneous
@@ -272,27 +324,22 @@ function run_training(train::Model_data, test::Model_data, n_iters::Int64, plotd
         train.targets[:] = train.targets[:, sel_index]  
     end
 
-    # pre-allocate mini-batch inputs and targets
-    train.mb_inputs = zeros(k, mb_size)  
-    train.mb_targets = zeros(t, mb_size)  
+    # initialize and pre-allocate data structures to hold neural net training data
+    # theta = weight matrices for all calculated layers (e.g., not the input layer)
+    # bias = bias term used for every layer but input
 
-    # prepare variable theta to hold network weights 
     # theta dimensions for each layer of the neural network 
     #    this follows the convention that the outputs of the current layer activation
     #    are rows of theta and the inputs from the layer below are columns
-    p = Learned_parameters()  # p holds all the parameters that will be traied
+    p = NN_parameters()  # p holds all the parameters that will be trained and some metadata
     push!(p.theta_dims, [k, 1]) # weight dimensions for the input layer
     for i = 2:output_layer-1  # hidden layers
         push!(p.theta_dims, [n_hid[i-1], p.theta_dims[i-1][1]]) 
     end
     push!(p.theta_dims, [t, n_hid[end]])  # weight dimensions for the output layer
+    p.output_layer = output_layer
 
-
-    # initialize and pre-allocate data structures to hold neural net training data
-    # theta = weight matrices in a collection for all calculated layers (e.g., not the input layer)
-    # bias = bias term used for every layer but input
-    # initialize random weight parameters and zeros for bias
-    p.theta = [zeros(2,2)] # initialize collection of 2d float arrays: input layer 1 not used
+    p.theta = [zeros(2,2)] # layer 1 not used
     interval = 0.5 # random weights will be generated in [-interval, interval]
     for i = 2:output_layer
         push!(p.theta, rand(p.theta_dims[i]...) .* (2.0 * interval) .- interval)
@@ -301,32 +348,58 @@ function run_training(train::Model_data, test::Model_data, n_iters::Int64, plotd
     p.delta_w = deepcopy(p.theta)  # structure of gradient matches theta
     p.delta_b = deepcopy(p.bias)
 
-    # initialize batch normalization parameters gamma and beta
-    # vector at each layer corresponding to no. of inputs from preceding layer, roughly "features"
-    # gamma = scaling factor for normalization variance
-    # beta = bias, or new mean instead of zero
-    # should batch normalize for relu, can do for other unit functions
-    p.gam = [ones(i) for i in layer_units]  # gamma is builtin function
-    p.bet = [zeros(i) for i in layer_units] # beta is builtin function
-    p.delta_gam = [zeros(i) for i in layer_units]
-    p.delta_bet = [zeros(i) for i in layer_units]
-
-
-    # pre-allocate matrices used in training by layer to enable update-in-place for speed
-    train.a, train.z = preallocate_feedfwd(train.inputs, p.theta, output_layer, n)  
-    train.mb_a, train.mb_z = preallocate_feedfwd(train.mb_inputs, p.theta, output_layer, mb_size)  
-    if dotest
-        testn = size(test.inputs,2)
-        test.a, test.z = preallocate_feedfwd(test.inputs, p.theta, output_layer, testn) 
-        test.mb_a, test.mb_z = test.a, test.z
-        test.predictions = deepcopy(test.a[output_layer])
+    # pre-allocate mini-batch inputs and targets
+    mb = Model_data()  # mb holds all layer data for mini-batches
+    mb.inputs = zeros(k, mb_size)  
+    mb.targets = zeros(t, mb_size)  
+    mb.a, mb.z = preallocate_feedfwd(mb.inputs, p, mb_size)
+    mb.epsilon = deepcopy(mb.a)  # looks like activations of each unit above input layer
+    mb.grad = deepcopy(mb.z)
+    if batch_norm
+        mb.z_norm = deepcopy(mb.z)
+        mb.z_scale = deepcopy(mb.z)
     end
 
-    # pre-allocate matrices for back propagation to enable update-in-place for speed
-    # initialize before loop to set scope OUTSIDE of loop
-    train.mb_epsilon = deepcopy(train.mb_a)  # looks like activations of each unit above input layer
-    train.mb_predictions = deepcopy(train.mb_a[output_layer])  # predictions = output layer values
-    train.mb_grad = deepcopy(train.mb_z)
+    # pre-allocate full training data by layer 
+    train.a, train.z = preallocate_feedfwd(train.inputs, p, n)  
+    if batch_norm
+        train.z_norm = deepcopy(train.z)  
+        train.z_scale = deepcopy(train.z)  # same size as z, often called "y"
+    end
+  
+    if dotest
+        testn = size(test.inputs,2)
+        test.a, test.z = preallocate_feedfwd(test.inputs, p, testn) 
+        # test.mb_a, test.mb_z = test.a, test.z
+        if batch_norm  # feedfwd of test data using learned batchnorm parameters
+            test.z_norm = deepcopy(test.z)
+            test.z_scale = deepcopy(test.z)  # same size as mb_z, often called "y"
+        end
+    end
+
+    # initialize batch normalization parameters gamma and beta
+    # vector at each layer corresponding to no. of inputs from preceding layer, roughly "features"
+    # gamma = scaling factor for normalization standard deviation
+    # beta = bias, or new mean instead of zero
+    # should batch normalize for relu, can do for other unit functions
+    bn = Batch_norm_back_data()  
+    if batch_norm
+        bn.gam = [ones(i) for i in layer_units]  # gamma is a builtin function
+        bn.bet = [zeros(i) for i in layer_units] # beta is a builtin function
+        bn.delta_gam = [zeros(i) for i in layer_units]
+        bn.delta_bet = [zeros(i) for i in layer_units]
+        bn.delta_z = deepcopy(mb.z_norm)
+        bn.delta_z_norm = deepcopy(mb.z_norm)
+        bn.mu = [zeros(i) for i in layer_units]  # same size as bias = no. of layer units
+        bn.mu_run = [zeros(i) for i in layer_units]
+        bn.stddev = [zeros(i) for i in layer_units] #    ditto
+        bn.std_run = [zeros(i) for i in layer_units]
+    end
+
+
+    #################################################################
+    #   define and choose functions to be used in neural net training
+    #################################################################
 
     if units == "sigmoid"
         unit_function! = sigmoid!
@@ -340,51 +413,30 @@ function run_training(train::Model_data, test::Model_data, n_iters::Int64, plotd
         gradient_function! = relu_gradient!
     end
 
-    # choose or define functions to be used in neural net architecture
     # TODO test theta itself not theta_dims
     if p.theta_dims[output_layer][1] > 1  # more than one output (unit)
         if classify == "sigmoid"
-            class_function! = sigmoid!
+            classify_function! = sigmoid!
         elseif classify == "softmax"
-            class_function! = softmax!
+            classify_function! = softmax!
         else
             error("Function to classify output labels must be \"sigmoid\" or \"softmax\".")
         end
     else
-        class_function! = sigmoid!  # for one output label
+        classify_function! = sigmoid!  # for one output label
     end
 
-    # define functions to include exclude bias from the linear transform
-    linear_w_bias(theta, a, bias) = theta * a .+ bias
-    linear_no_bias(theta, a, bias) = theta * a
-
-    # choose the linear function to use in feedfwd
-    if batch_norm_bool
-        linear_function = linear_no_bias
-    else
-        linear_function = linear_w_bias
-    end
-
-    # choose the batch normalization function to use in feedfwd.  Functions defined below.
-    if batch_norm_bool
-        batch_norm_function! = batch_norm_fwd!
-    else
-        batch_norm_function! = batch_norm_null
-    end
 
     # now there's only one cost function.  someday there could be others.
     cost_function = cross_entropy_cost
 
-    fwd_functions = (linear_function, batch_norm_function!, unit_function!, class_function!)
-    back_functions = (batch_norm_function!, gradient_function!)
-
     # define three functions for alternative weight updates
-    weight_update_noreg(theta, delta, il) = theta .- (alphaovermb .* delta)
-    weight_update_scale_reg(theta, delta, il) = (theta .- ((alphaovermb .* delta) .+
-        (lambda / layer_units[il] .* theta)))
-    weight_update_reg(theta, delta, il) = theta .- ((alphaovermb .* delta) .+ (lambda .* theta))
+    weight_update_noreg(theta, delta, hl) = theta .- (alphaovermb .* delta)
+    weight_update_scale_reg(theta, delta, hl) = (theta .- ((alphaovermb .* delta) .+
+        (lambda / layer_units[hl] .* theta)))
+    weight_update_reg(theta, delta, hl) = theta .- ((alphaovermb .* delta) .+ (lambda .* theta))
 
-    # choose the weight update function (keeps this test out of the training loop)
+    # choose the weight update function (keep this test out of the training loop)
     if lambda <= 0.0  
         weight_update! = weight_update_noreg
     elseif scale_reg
@@ -393,39 +445,10 @@ function run_training(train::Model_data, test::Model_data, n_iters::Int64, plotd
         weight_update! = weight_update_reg
     end   
 
+    # function lists to be passed to feedfwd! and backprop!
+    fwd_functions = (batch_norm_fwd!, unit_function!, classify_function!)
+    back_functions = (batch_norm_back!, gradient_function!)
 
-
-    # println("sizes of weight matrices")
-    # for th in theta
-    #     print(size(th), " | ")
-    # end
-    # println()
-
-    # println("sizes of bias matrices")
-    # for th in bias
-    #     print(size(th), " | ")
-    # end
-    # println()
-
-    # println("sizes of a matrices")
-    # for th in a
-    #     print(size(th), " | ")
-    # end
-    # println()
-
-    # println("sizes of z matrices")
-    # for th in z
-    #     print(size(th), " | ")
-    # end
-    # println()
-
-    # println("sizes of gamma matrices")
-    # for th in gamma
-    #     print(size(th), " | ")
-    # end
-    # println()
-
-    # error("done for now--get rid of this")
 
     ##########################################################
     #   neural network training loop
@@ -437,31 +460,43 @@ function run_training(train::Model_data, test::Model_data, n_iters::Int64, plotd
             first_example = (j - 1) * mb_size + 1  # mini-batch subset for the inputs->layer 1
             last_example = first_example + mb_size - 1
             
-            train.mb_a[1][:] = train.inputs[:,first_example:last_example] # m-b input layer activation  
-            train.mb_targets[:] = train.targets[:, first_example:last_example]      
+            mb.a[1][:] = train.inputs[:,first_example:last_example] # m-b input layer activation  
+            mb.targets[:] = train.targets[:, first_example:last_example]      
 
-            train.mb_predictions[:] = feedfwd!(p, train.mb_a, train.mb_z, output_layer, 
-                fwd_functions)  
+            feedfwd!(p, bn, mb, fwd_functions, batch_norm)
 
-            backprop_gradients!(p, train, back_functions, output_layer)
+            backprop!(p, bn, mb, back_functions, batch_norm)
 
             # update weights and bias 
-            @fastmath for il = 2:output_layer              
-                p.theta[il][:] = weight_update!(p.theta[il], p.delta_w[il], il)
-                p.bias[il][:] -= alphaovermb .* p.delta_b[il]  # Need a bias update function I think
-                # TODO need gam and bet updates
+            @fastmath for hl = 2:output_layer              
+                if batch_norm
+                    bn.gam[hl][:] -= bn.delta_gam[hl] 
+                    bn.bet[hl][:] -= bn.delta_bet[hl]
+                else
+                    p.bias[hl][:] -= alphaovermb .* p.delta_b[hl]  
+                end
+                p.theta[hl][:] = weight_update!(p.theta[hl], p.delta_w[hl], hl)
             end
         end
 
-        gather_stats!(i, plotdef, train, test, p, cost_function, fwd_functions, n,
-            lambda, output_layer)  
+        
+        # println(mb.a[p.output_layer][:,50])
+        # println(mb.targets[:,50])
+
+        gather_stats!(i, plotdef, mb, test, p, bn, cost_function, fwd_functions, n, 
+            lambda, batch_norm)  # ??? TODO train or mb???
+        
     end
-    
-    # output training statistics
+
     toc()  # print cpu time since tic()
-    train.predictions = feedfwd!(p, train.a, train.z, output_layer, fwd_functions)  
-    println("Fraction correct labels predicted training: ", accuracy(train.targets, train.predictions))
-    println("Final cost training: ", cost_function(train.targets, train.predictions, n,
+    
+    #####################################################################
+    # output and plot training statistics
+    #####################################################################
+    
+    feedfwd!(p, bn, train, fwd_functions, batch_norm)  
+    println("Fraction correct labels predicted training: ", accuracy(train.targets, train.a[p.output_layer]))
+    println("Final cost training: ", cost_function(train.targets, train.a[p.output_layer], n,
                     n, p.theta, lambda, output_layer))
 
     # output improvement of last 10 iterations for test samples
@@ -478,9 +513,9 @@ function run_training(train::Model_data, test::Model_data, n_iters::Int64, plotd
 
     # output test statistics
     if dotest     
-        test.predictions = feedfwd!(p, test.a, test.z, output_layer, fwd_functions)
-        println("Fraction correct labels predicted test: ", accuracy(test.targets, test.predictions))
-        println("Final cost test: ", cost_function(test.targets, test.predictions, testn, testn, 
+        feedfwd!(p, bn, test, fwd_functions, batch_norm)
+        println("Fraction correct labels predicted test: ", accuracy(test.targets, test.a[p.output_layer]))
+        println("Final cost test: ", cost_function(test.targets, test.a[p.output_layer], testn, testn, 
             p.theta, lambda, output_layer))
     end
 
@@ -492,98 +527,78 @@ function run_training(train::Model_data, test::Model_data, n_iters::Int64, plotd
 end  # function run_training
 
 
-function preallocate_feedfwd(inputs, theta, output_layer, n)
+function preallocate_feedfwd(inputs, p, n)
     a = [inputs]
     z = [zeros(2,2)] # not used for input layer
-    for i = 2:output_layer-1  # hidden layers
-        push!(z, zeros(size(theta[i] * a[i-1])))  # z2 and up...  ...output layer set after loop
+    for i = 2:p.output_layer-1  # hidden layers
+        push!(z, zeros(size(p.theta[i] * a[i-1])))  # z2 and up...  ...output layer set after loop
         push!(a, zeros(size(z[i])))  #  and up...  ...output layer set after loop
     end
-    push!(z, zeros(size(theta[output_layer],1),n))  
-    push!(a, zeros(size(theta[output_layer],1),n))  
+    push!(z, zeros(size(p.theta[p.output_layer],1),n))  
+    push!(a, zeros(size(p.theta[p.output_layer],1),n))  
 
     return a, z  
 end
 
 
-function feedfwd!(p, a, z, output_layer, fwd_functions)
-# function feedfwd!(theta, bias, output_layer, unit_function!, class_function!, a, z) 
+function feedfwd!(p, bn, dat, fwd_functions, batch_norm)
+# function feedfwd!(theta, bias, output_layer, unit_function!, classify_function!, a, z) 
     # modifies a, a_wb, z in place to reduce memory allocations
     # send it all of the data or a mini-batch
 
     # feed forward from inputs to output layer predictions
     # if batch normalized relu, we need to ignore bias
 
-    (linear_function, batch_norm_function!, unit_function!, class_function!) = fwd_functions
+    (batch_norm_fwd!, unit_function!, classify_function!) = fwd_functions
 
-    @fastmath for hl = 2:output_layer-1  # hidden layers
-        z[hl][:] = linear_function(p.theta[hl], a[hl-1], p.bias[hl])  # w or w/o bias above
-        batch_norm_function!(a[hl], z[hl], p.gam[hl], p.bet[hl])  # function chosen above
-        unit_function!(z[hl],a[hl])
+    @fastmath for hl = 2:p.output_layer-1  # hidden layers
+
+        if batch_norm
+            dat.z[hl][:] = p.theta[hl] * dat.a[hl-1]  # no bias
+            batch_norm_fwd!(dat.z[hl], bn, dat, hl)
+            unit_function!(dat.z_scale[hl],dat.a[hl])
+        else  
+            dat.z[hl][:] = p.theta[hl] * dat.a[hl-1] .+ p.bias[hl]
+            unit_function!(dat.z[hl],dat.a[hl])
+        end
+
     end
-    @fastmath z[output_layer][:] = (p.theta[output_layer] * a[output_layer-1] 
-        .+ p.bias[output_layer])  # TODO use bias in the output layer with no batch norm?
-    class_function!(z[output_layer], a[output_layer])
-end
-
-function backprop_gradients!(p, dat, back_functions, output_layer)
-
-# function backprop_gradients!(theta, bias, targets, unit_function!, gradient_function!,
-#     output_layer, a, z, epsilon, delta_w, delta_b, grad) 
-    # argument delta_w holds the computed gradients for weights, delta_b for bias
-    # modifies epsilon, delta_w in place--caller uses delta_w, delta_b
-    # use for iterations in training
-    # send it all of the data or a mini-batch
-    # intermediate storage of a, a_wb, z, epsilon, delta_w, delta_b reduces memory allocations
-
-    (batch_norm_function!, gradient_function!) = back_functions
-
-    dat.mb_epsilon[output_layer][:] = dat.mb_a[output_layer] .- dat.mb_targets 
-    @fastmath p.delta_w[output_layer][:] = dat.mb_epsilon[output_layer] * dat.mb_a[output_layer-1]'
-    @fastmath p.delta_b[output_layer][:] = sum(dat.mb_epsilon[output_layer],2)
-    @fastmath for hl = (output_layer - 1):-1:2  # for hidden layers
-        gradient_function!(dat.mb_z[hl], dat.mb_grad[hl])
-        batch_norm_function!(dat.mb_a[hl], dat.mb_z[hl], p.gam[hl], p.bet[hl])
-        dat.mb_epsilon[hl][:] = p.theta[hl+1]' * dat.mb_epsilon[hl+1] .* dat.mb_grad[hl]  
-        p.delta_w[hl][:] = dat.mb_epsilon[hl] * dat.mb_a[hl-1]'
-        p.delta_b[hl][:] = sum(dat.mb_epsilon[hl],2)  # multiplying times a column of 1's = sum(row)
-    end
+    @fastmath dat.z[p.output_layer][:] = (p.theta[p.output_layer] * dat.a[p.output_layer-1] 
+        .+ p.bias[p.output_layer])  # TODO use bias in the output layer with no batch norm?
+    classify_function!(dat.z[p.output_layer], dat.a[p.output_layer])
 
 end
 
-# TODO
-# function backprop_gradients_scaled!(theta, bias, targets, unit_function!, gradient_function!,
-#     output_layer, a, z, gam, bet, epsilon, eps_scale, delta_w, delta_b,
-#     delta_gam, delta_bet, grad) 
-#     # argument delta_w holds the computed gradients for weights, delta_b for bias
-#     # modifies epsilon, delta_w in place--caller uses delta_w, delta_b
-#     # use for iterations in training
-#     # send it all of the data or a mini-batch
-#     # intermediate storage of a, a_wb, z, epsilon, delta_w, delta_b reduces memory allocations
 
-#     epsilon[output_layer][:] = a[output_layer] .- targets 
-#     @fastmath delta_w[output_layer][:] = epsilon[output_layer] * a[output_layer-1]'
-#     @fastmath for jj = (output_layer - 1):-1:2  # for hidden layers
-#         gradient_function!(z[jj], grad[jj])
-#         epsilon[jj][:] = theta[jj+1]' * epsilon[jj+1] .* grad[jj]  
-#         delta_w[jj][:] = epsilon[jj] * a[jj-1]'
+"""
+function backprop!(p, dat, back_functions, batch_norm) 
+    Argument p.delta_w holds the computed gradients for weights, delta_b for bias
+    Modifies p.epsilon, p.delta_w, p.delta_b in place--caller uses p.delta_w, p.delta_b
+    Use for training iterations 
+    Send it all of the data or a mini-batch
+    Intermediate storage of p.a, p.a_wb, p.z, p.epsilon, p.delta_w, p.delta_b reduces memory allocations
+"""
+function backprop!(p, bn, dat, back_functions, batch_norm)
 
-#         # DON'T NEED delta_b if batch normalized scaled relu
-#         # delta_b[jj][:] = sum(epsilon[jj],2)  # multiplying times a column of 1's is summing the row
-#     end
+    (batch_norm_back!, gradient_function!) = back_functions
 
-    # TODO
-    # if units = "relu"
-    #     @fastmath for jj = (output_layer - 1):-1:2  # for hidden layers
-    #         #   400 x 1         400 x m      400 x m    (for example!)
-    #         delta_gam[jj][:] = sum(epsilon[jj] .* z[ii], 2)  #  ???
-    #         delta_bet[jj][:] = sum(epsilon[jj], 2)
-    #     end
+    dat.epsilon[p.output_layer][:] = dat.a[p.output_layer] .- dat.targets 
+    @fastmath p.delta_w[p.output_layer][:] = dat.epsilon[p.output_layer] * dat.a[p.output_layer-1]'
+    @fastmath p.delta_b[p.output_layer][:] = sum(dat.epsilon[p.output_layer],2)
+    @fastmath for hl = (p.output_layer - 1):-1:2  # for hidden layers
+        # gradient and backprop for the non-linear function
+        gradient_function!(dat.z[hl], dat.grad[hl]) 
+        dat.epsilon[hl][:] = p.theta[hl+1]' * dat.epsilon[hl+1] .* dat.grad[hl]  
+        if batch_norm
+            batch_norm_back!(p, dat, bn, hl)
+            p.delta_w[hl][:] = bn.delta_z[hl] * dat.a[hl-1]'
+        else
+            p.delta_w[hl][:] = dat.epsilon[hl] * dat.a[hl-1]'
+            p.delta_b[hl][:] = sum(dat.epsilon[hl],2)  #  times a column of 1's = sum(row)
+        end
+    end
 
-    #     # and we need to ignore the bias of z
-#     # end
-
-# end
+end
 
 
 function cross_entropy_cost(targets, predictions, n, mb_size, theta, lambda, output_layer)
@@ -611,7 +626,7 @@ end
 
 function l_relu!(z::Array{Float64,2}, a::Array{Float64,2}) 
     # this is leaky relu
-    a[:] = (z .- mean(z,1)) ./ (std(z,1))  # TODO -- take this out once scaling works
+    # a[:] = (z .- mean(z,2)) ./ (std(z,2))  # TODO -- take this out once scaling works
     for j = 1:size(z,2)  # down each column for speed
         for i = 1:size(z,1)
             @. a[i,j] = a[i,j] >= 0.0 ? a[i,j] : .01 * a[i,j]
@@ -620,29 +635,45 @@ function l_relu!(z::Array{Float64,2}, a::Array{Float64,2})
 end
 
 # TODO--probably won't need this
-function n_l_relu_scaled!(z::Array{Float64,2}, gam::Array{Float64,1}, 
-    bet::Array{Float64,1}, a::Array{Float64,2}) 
-    # this is normalized, scaled leaky relu 
-    z[:] = (z .- mean(z,1)) ./ (std(z,1))  # often called xhat or zhat
-    a[:] = z .* gam .+ bet  # shifted and scaled
-    for j = 1:size(z,2)  # down each column for speed
-        for i = 1:size(z,1) # this is the output of ReLU
-            @. a[i,j] = a[i,j] >= 0.0 ? a[i,j] : .01 * a[i,j]
-        end
-    end
-end
+# function n_l_relu_scaled!(z::Array{Float64,2}, gam::Array{Float64,1}, 
+#     bet::Array{Float64,1}, a::Array{Float64,2}) 
+#     # this is normalized, scaled leaky relu 
+#     z[:] = (z .- mean(z,2)) ./ (std(z,2))  # often called xhat or zhat
+#     a[:] = z .* gam .+ bet  # shifted and scaled
+#     for j = 1:size(z,2)  # down each column for speed
+#         for i = 1:size(z,1) # this is the output of ReLU
+#             @. a[i,j] = a[i,j] >= 0.0 ? a[i,j] : .01 * a[i,j]
+#         end
+#     end
+# end
 
 # TODO
-function batch_norm_fwd!(a::Array{Float64,2}, z::Array{Float64,2}, gam::Array{Float64,1}, 
-    bet::Array{Float64,1})
-    # we might need to keep z_mu to use during backprop
-    z[:] = (z .- mean(z,1)) ./ (std(z,1))  # normalized: often called xhat or zhat
-    a[:] = z .* gam .+ bet  # shifted and scaled, often called y
+function batch_norm_fwd!(z, bn, dat, hl)
+    bn.mu[hl][:] = mean(z,2)          # use in backprop
+    bn.stddev[hl][:] = std(z,2)       # use in backprop
+    dat.z_norm[hl][:] = (z .- bn.mu[hl]) ./ bn.stddev[hl]  # normalized: often called xhat or zhat
+    dat.z_scale[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift scale, often called y
+    bn.mu_run[hl][:] = (  bn.mu_run[hl][1] == 0.0 ? bn.mu[hl] : 
+        0.9 .* bn.mu_run[hl] .+ 0.1 .* bn.mu[hl]  )
+    bn.std_run[hl][:] = (  bn.std_run[hl][1] == 0.0 ? bn.stddev[hl] : 
+        0.9 .* bn.std_run[hl] + 0.1 .* bn.stddev[hl]  )
 end
 
-function batch_norm_null(a::Array{Float64,2}, z::Array{Float64,2}, gam::Array{Float64,1}, 
-    bet::Array{Float64,1})
-    # does nothing:  leaves all arguments unchanged
+
+# TODO
+function batch_norm_back!(p, dat, bn, hl)
+
+    d,mb = size(dat.epsilon[hl])
+    bn.delta_bet[hl][:] = sum(dat.epsilon[hl], 2)
+    bn.delta_gam[hl][:] = sum(dat.epsilon[hl] .* dat.z[hl], 2)
+    bn.delta_z_norm[hl][:] = bn.gam[hl] .* dat.epsilon[hl]  
+    bn.delta_z[hl][:] = (  
+        (1.0 / mb) .* (1.0 ./ (bn.stddev[hl] .* 1e-8)) .* 
+        (
+            mb .* bn.delta_z_norm[hl] .- sum(bn.delta_z_norm[hl],2) .- 
+            dat.z_norm[hl] .* sum(bn.delta_z_norm[hl] .* dat.z_norm[hl], 2)
+            )  
+        )
 end
 
 
@@ -667,14 +698,6 @@ function relu_gradient!(la::Array{Float64,2}, grad::Array{Float64,2})
             grad[i,j] = la[i,j] > 0.0 ? 1.0 : .01
         end
     end
-end
-
-
-# works on a single layer at a time
-function batch_norm_gradient!(p, dat)
-    dout = p.delta_w[hl+1]
-    d,n = size(dout)
-
 end
 
 
@@ -774,33 +797,35 @@ function setup_plots(n_iters::Int64, dotest::Bool, plots::Array{String,1})
 end
 
 
-function gather_stats!(i, plotdef, train, test, p, cost_function, fwd_functions, n, 
-    lambda, output_layer)  
+function gather_stats!(i, plotdef, mb, test, p, bn, cost_function, fwd_functions, n, 
+    lambda, batch_norm)  
 
     if plotdef["plot_switch"]["Training"]
         if plotdef["plot_switch"]["Cost"]
-            plotdef["cost_history"][i, plotdef["col_train"]] = cost_function(train.mb_targets, 
-                train.mb_predictions, n, n, p.theta, lambda, output_layer)
+            plotdef["cost_history"][i, plotdef["col_train"]] = cost_function(mb.targets, 
+                mb.a[p.output_layer], n, n, p.theta, lambda, p.output_layer)
         end
         if plotdef["plot_switch"]["Learning"]
             plotdef["fracright_history"][i, plotdef["col_train"]] = accuracy(
-                train.mb_targets, train.mb_predictions)
+                mb.targets, mb.a[p.output_layer])
         end
     end
     
     if plotdef["plot_switch"]["Test"]
         if plotdef["plot_switch"]["Cost"]
-            test_predictions[:] = feedfwd!(p, test.a, test.z, fwd_functions)  
+            test_predictions[:] = feedfwd!(p, bn, test, fwd_functions, batch_norm)  
             plotdef["cost_history"][i, plotdef["col_test"]] = cost_function(test.targets, 
-                test.predictions, testn, testn, p.theta, lambda, output_layer)
+                test.a[p.output_layer], testn, testn, p.theta, lambda, p.output_layer)
         end
         if plotdef["plot_switch"]["Learning"]
-            test.predictions[:] = feedfwd!(p, test.a, test.z, output_layer, fwd_functions)  
+
+            # printdims(Dict("test.a"=>test.a, "test.z"=>test.z))
+            feedfwd!(p, bn, test, fwd_functions, batch_norm)  
             plotdef["fracright_history"][i, plotdef["col_test"]] = accuracy(test.targets, 
-                test.predictions)
+                test.a[p.output_layer])
         end
     end     
-end  # function gather_stats
+end  
 
 
 function accuracy(targets, predictions)
@@ -934,7 +959,7 @@ Not suitable in a loop because of all the additional allocations.
 Use with one-off needs like scoring a test data set or 
 producing predictions for operational data fed into an existing model.
 """
-function predict(inputs, theta)
+function predict(inputs, theta)   ### TODO this is seriously broken!
     # set some useful variables
     k,n = size(inputs) # number of features k by no. of examples n
     output_layer = size(theta,1) 
@@ -946,18 +971,18 @@ function predict(inputs, theta)
     # setup class function
     if t > 1  # more than one output (unit)
         if classify == "sigmoid"
-            class_function! = sigmoid!
+            classify_function! = sigmoid!
         elseif classify == "softmax"
-            class_function! = softmax!
+            classify_function! = softmax!
         else
             error("Function to classify output labels must be \"sigmoid\" or \"softmax\".")
         end
     else
-        class_function! = sigmoid!  # for one output (unit)
+        classify_function! = sigmoid!  # for one output (unit)
     end    
  
-    a_test,  z_test = preallocate_feedfwd(inputs, theta, output_layer, n) 
-    predictions = feedfwd!(p, a_test, z_test, output_layer, fwd_functions) 
+    a_test,  z_test = preallocate_feedfwd(inputs, p, n) 
+    predictions = feedfwd!(p, bn, dat, fwd_functions, batch_norm) 
 end
 
 
@@ -976,4 +1001,15 @@ function printby2(nby2)  # not used currently
     for i = 1:size(nby2,1)
         println(nby2[i,1], "    ", nby2[i,2])
     end
+end
+
+
+"""Print the sizes of matrices you pass in as Dict("name"=>var,...)"""
+function printdims(indict)
+    n = length(indict)
+    println("\nSizes of matrices\n")
+    for (n, item) in indict
+        println(n,": ",size(item))
+    end
+    println("")
 end
