@@ -278,3 +278,80 @@ Test data accuracy in final 10 iterations:
 Fraction correct labels predicted test: 0.9208
 Final cost test: 0.591900993267963
 
+train_nn("digits10000by784.mat",500,[300],mb_size=250,alpha=.2, lambda=0.005, plots=["Test", "Learning"], units="relu", classify="softmax");
+elapsed time: 289.275908309 seconds
+Fraction correct labels predicted training: 0.9586
+Final cost training: 0.3207660902507725
+Test data accuracy in final 10 iterations:
+0.949 : 0.946 : 0.948 : 0.946 : 0.946 : 0.948 : 0.947 : 0.947 : 0.946 : 0.943 : 
+Fraction correct labels predicted test: 0.9432
+Final cost test: 0.3932075500902379
+
+## Small mini-batches can work well, but it is sort of luck to get on a good path of weights
+train_nn("digits5000by784.mat",200,[80],mb_size=10, alpha=.30, lambda=0.006,scale_reg=true, plots=["Test", "Learning","Training"], units="relu", classify="softmax");
+elapsed time: 100.248795847 seconds
+Fraction correct labels predicted training: 0.9946
+Final cost training: 0.10454224277654743
+Test data accuracy in final 10 iterations:
+0.939 : 0.940 : 0.940 : 0.940 : 0.939 : 0.940 : 0.940 : 0.940 : 0.940 : 0.940 : 
+Fraction correct labels predicted test: 0.9395
+Final cost test: 0.347273100074769
+
+
+p, train = train_nn("digits5000by784.mat",300,[100],mb_size=50,alpha=.35,lambda=.006,plots=["Training","Test","Learning"],scale_reg=true,units="relu" );
+elapsed time: 61.400837406 seconds
+Fraction correct labels predicted training: 0.998
+Final cost training: 0.09581464158193391
+Test data accuracy in final 10 iterations:
+0.947 : 0.947 : 0.947 : 0.948 : 0.947 : 0.948 : 0.947 : 0.948 : 0.948 : 0.948 : 
+Fraction correct labels predicted test: 0.9475
+Final cost test: 0.3349778144543206
+
+p, train = train_nn("digits5000by784.mat",300,[120],mb_size=50,alpha=.38,lambda=.005,plots=["Training","Test","Learning"],scale_reg=true,units="relu" );
+elapsed time: 66.323749911 seconds
+Fraction correct labels predicted training: 0.9998
+Final cost training: 0.05532955941163306
+Test data accuracy in final 10 iterations:
+0.943 : 0.943 : 0.943 : 0.943 : 0.943 : 0.943 : 0.942 : 0.943 : 0.944 : 0.943 : 
+Fraction correct labels predicted test: 0.9425
+Final cost test: 0.33276295981933796
+
+p, train = train_nn("digits5000by784.mat",100,[120],mb_size=50,alpha=.4,lambda=.008,plots=["Training","Test","Learning"],scale_reg=true,units="relu" );
+elapsed time: 23.243499267 seconds
+Fraction correct labels predicted training: 0.9988
+Final cost training: 0.08319828789899676
+Test data accuracy in final 10 iterations:
+0.941 : 0.942 : 0.942 : 0.942 : 0.940 : 0.941 : 0.941 : 0.942 : 0.942 : 0.941 : 
+Fraction correct labels predicted test: 0.941
+Final cost test: 0.36864814978475957
+
+p, train = train_nn("digits10000by784.mat",100,[120],mb_size=50,alpha=.4,lambda=.008,plots=["Training","Test","Learning"],scale_reg=true,units="relu" );
+elapsed time: 47.160940217 seconds
+Fraction correct labels predicted training: 0.992
+Final cost training: 0.11432965743001527
+Test data accuracy in final 10 iterations:
+0.949 : 0.950 : 0.950 : 0.950 : 0.950 : 0.950 : 0.950 : 0.949 : 0.950 : 0.949 : 
+Fraction correct labels predicted test: 0.9494
+Final cost test: 0.3005344434638515
+
+## Fixed normalization code calculationm of mean and std along correct dimension
+p, train = train_nn("digits10000by784.mat",100,[120],mb_size=50,alpha=.4,lambda=.008,plots=["Training","Test","Learning"],scale_reg=true,units="relu" );
+elapsed time: 50.303070518 seconds
+Fraction correct labels predicted training: 0.9757
+Final cost training: 0.18901454052957808
+Test data accuracy in final 10 iterations:
+0.951 : 0.951 : 0.950 : 0.951 : 0.952 : 0.952 : 0.952 : 0.952 : 0.952 : 0.951 : 
+Fraction correct labels predicted test: 0.9514
+Final cost test: 0.30482899450170087
+
+p, train = train_nn("digits5000by784.mat",100,[120],mb_size=50,alpha=.4,lambda=.008,plots=["Training","Test","Learning"],scale_reg=true,units="relu" );
+elapsed time: 24.645471313 seconds
+Fraction correct labels predicted training: 0.993
+Final cost training: 0.12324400043214266
+Test data accuracy in final 10 iterations:
+0.947 : 0.947 : 0.947 : 0.947 : 0.947 : 0.947 : 0.946 : 0.946 : 0.946 : 0.947 : 
+Fraction correct labels predicted test: 0.9465
+Final cost test: 0.3143939748672202
+
+
+
