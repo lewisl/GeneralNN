@@ -479,6 +479,9 @@ function run_training(train::Model_data, test::Model_data, n_iters::Int64,
             end
         end
 
+
+        println("a:      ", mb.a[p.output_layer][:,1])
+        println("target: ", mb.targets[:,1])
         
         # println(mb.a[p.output_layer][:,50])
         # println(mb.targets[:,50])
@@ -565,7 +568,12 @@ function feedfwd!(p, bn, dat, fwd_functions, batch_norm)
     end
     @fastmath dat.z[p.output_layer][:] = (p.theta[p.output_layer] * dat.a[p.output_layer-1] 
         .+ p.bias[p.output_layer])  # TODO use bias in the output layer with no batch norm?
+
+    # println("before: ", dat.a[p.output_layer][1,5])
+
     classify_function!(dat.z[p.output_layer], dat.a[p.output_layer])
+
+    # println("after:  ", dat.a[p.output_layer][1,5])
 
 end
 
@@ -813,12 +821,11 @@ function gather_stats!(i, plotdef, mb, test, p, bn, cost_function, fwd_functions
     
     if plotdef["plot_switch"]["Test"]
         if plotdef["plot_switch"]["Cost"]
-            test_predictions[:] = feedfwd!(p, bn, test, fwd_functions, batch_norm)  
+            feedfwd!(p, bn, test, fwd_functions, batch_norm)  
             plotdef["cost_history"][i, plotdef["col_test"]] = cost_function(test.targets, 
-                test.a[p.output_layer], testn, testn, p.theta, lambda, p.output_layer)
+                test.a[p.output_layer], n, n, p.theta, lambda, p.output_layer)
         end
         if plotdef["plot_switch"]["Learning"]
-
             # printdims(Dict("test.a"=>test.a, "test.z"=>test.z))
             feedfwd!(p, bn, test, fwd_functions, batch_norm)  
             plotdef["fracright_history"][i, plotdef["col_test"]] = accuracy(test.targets, 
