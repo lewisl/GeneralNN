@@ -334,7 +334,7 @@ Test data accuracy in final 10 iterations:
 Fraction correct labels predicted test: 0.9494
 Final cost test: 0.3005344434638515
 
-## Fixed normalization code calculationm of mean and std along correct dimension
+## Fixed normalization code calculation of mean and std along correct dimension
 p, train = train_nn("digits10000by784.mat",100,[120],mb_size=50,alpha=.4,lambda=.008,plots=["Training","Test","Learning"],scale_reg=true,units="relu" );
 elapsed time: 50.303070518 seconds
 Fraction correct labels predicted training: 0.9757
@@ -352,6 +352,17 @@ Test data accuracy in final 10 iterations:
 0.947 : 0.947 : 0.947 : 0.947 : 0.947 : 0.947 : 0.946 : 0.946 : 0.946 : 0.947 : 
 Fraction correct labels predicted test: 0.9465
 Final cost test: 0.3143939748672202
+
+
+## Add scaling and backprop learning of scaling coefficients
+p,bn = train_nn("digits60000by784.mat", 80, [220], mb_size=300, units="relu", plots=["Training","Test","Learning"], classify="softmax", lambda=0.0, alpha=.6);
+elapsed time: 215.201586768 seconds
+Fraction correct labels predicted training: 0.9998
+Final cost training: NaN
+Test data accuracy in final 10 iterations:
+0.971 : 0.971 : 0.972 : 0.972 : 0.972 : 0.972 : 0.972 : 0.972 : 0.972 : 0.972 : 
+Fraction correct labels predicted test: 0.9715
+Final cost test: NaN
 
 
 
