@@ -8,12 +8,10 @@
 
 
 #DONE
-#   rename Learned_parameters to NN_parameters; add field output_layer
-#   rename backprop_gradients! to backprop!
-#   Fix normalization calculation of mean and std along correct dimension
+
 
 #TODO
-#   use correct beta and gamma for test predictions using batch_norm with relu units
+#   fix cost calculation: results in NaN with relu and batch_norm
 #   clean up pre-allocation code
 #   separate the backprop for normalizing layer and scaling layer
 #   what is the divisor for lambda in the regterm of cost????
@@ -483,7 +481,7 @@ function run_training(train::Model_data, test::Model_data, n_iters::Int64,
     # output and plot training statistics
     #####################################################################
     
-    feedfwd!(p, bn, train, fwd_functions, batch_norm)  
+    feedfwd!(p, bn, train, fwd_functions, batch_norm, istrain=false)  
     println("Fraction correct labels predicted training: ", accuracy(train.targets, train.a[p.output_layer]))
     println("Final cost training: ", cost_function(train.targets, train.a[p.output_layer], n,
                     n, p.theta, lambda, output_layer))
@@ -502,7 +500,7 @@ function run_training(train::Model_data, test::Model_data, n_iters::Int64,
 
     # output test statistics
     if dotest     
-        feedfwd!(p, bn, test, fwd_functions, batch_norm)
+        feedfwd!(p, bn, test, fwd_functions, batch_norm, istrain=false)
         println("Fraction correct labels predicted test: ", accuracy(test.targets, test.a[p.output_layer]))
         println("Final cost test: ", cost_function(test.targets, test.a[p.output_layer], testn, testn, 
             p.theta, lambda, output_layer))
@@ -530,7 +528,7 @@ function preallocate_feedfwd(inputs, p, n)
 end
 
 
-function feedfwd!(p, bn, dat, fwd_functions, batch_norm)
+function feedfwd!(p, bn, dat, fwd_functions, batch_norm; istrain=true)
 # function feedfwd!(theta, bias, output_layer, unit_function!, classify_function!, a, z) 
     # modifies a, a_wb, z in place to reduce memory allocations
     # send it all of the data or a mini-batch
@@ -544,7 +542,7 @@ function feedfwd!(p, bn, dat, fwd_functions, batch_norm)
 
         if batch_norm
             dat.z[hl][:] = p.theta[hl] * dat.a[hl-1]  # no bias
-            batch_norm_fwd!(bn, dat, hl)
+            batch_norm_fwd!(bn, dat, hl, istrain)
             unit_function!(dat.z_scale[hl],dat.a[hl])
         else  
             dat.z[hl][:] = p.theta[hl] * dat.a[hl-1] .+ p.bias[hl]
@@ -619,24 +617,6 @@ function backprop!(p, bn, dat, back_functions, batch_norm)
             p.delta_b[hl][:] = sum(dat.epsilon[hl],2)  #  times a column of 1's = sum(row)
         end
 
-    # println("*************** epsilon $hl ****************")
-    # display(dat.epsilon[hl])
-    # println("*************** delta_bet $hl ****************")
-    # display(bn.delta_bet[hl])
-    # println("*************** delta_gam $hl ****************")
-    # display(bn.delta_gam[hl])
-    # println("*************** delta_z $hl ****************")
-    # display(bn.delta_z[hl])
-    # println("*************** a $hl less 1 ****************")
-    # display(dat.a[hl-1])
-    # println("*************** delta_w $hl ****************")
-    # display(p.delta_w[hl])    
-    # error("that's all folks....")
-
-
-
-
-
     end
 
 end
@@ -675,54 +655,32 @@ function l_relu!(z::Array{Float64,2}, a::Array{Float64,2})
     end
 end
 
-# TODO--probably won't need this
-# function n_l_relu_scaled!(z::Array{Float64,2}, gam::Array{Float64,1}, 
-#     bet::Array{Float64,1}, a::Array{Float64,2}) 
-#     # this is normalized, scaled leaky relu 
-#     z[:] = (z .- mean(z,2)) ./ (std(z,2))  # often called xhat or zhat
-#     a[:] = z .* gam .+ bet  # shifted and scaled
-#     for j = 1:size(z,2)  # down each column for speed
-#         for i = 1:size(z,1) # this is the output of ReLU
-#             @. a[i,j] = a[i,j] >= 0.0 ? a[i,j] : .01 * a[i,j]
-#         end
-#     end
-# end
 
-# TODO
-function batch_norm_fwd!(bn, dat, hl)
+function batch_norm_fwd!(bn, dat, hl, istrain=true)
     k,mb = size(dat.z[hl])
-    variance = zeros(k)
-    bn.mu[hl][:] = mean(dat.z[hl], 2)          # use in backprop
-    variance[:] = 1.0/mb .* sum((dat.z[hl] .- bn.mu[hl]).^2.0, 2)
-    bn.stddev[hl][:] = sqrt.(variance .+ 1e-8)      # use in backprop
-    dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu[hl]) ./ bn.stddev[hl]  # normalized: often called xhat or zhat
-    dat.z_scale[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift scale, often called y
-    bn.mu_run[hl][:] = (  bn.mu_run[hl][1] == 0.0 ? bn.mu[hl] : 
-        0.9 .* bn.mu_run[hl] .+ 0.1 .* bn.mu[hl]  )
-    bn.std_run[hl][:] = (  bn.std_run[hl][1] == 0.0 ? bn.stddev[hl] : 
-        0.9 .* bn.std_run[hl] + 0.1 .* bn.stddev[hl]  )
+    if istrain
+        variance = zeros(k)
+        bn.mu[hl][:] = mean(dat.z[hl], 2)          # use in backprop
+        variance[:] = 1.0/mb .* sum((dat.z[hl] .- bn.mu[hl]).^2.0, 2)
+        bn.stddev[hl][:] = sqrt.(variance .+ 1e-8)      # use in backprop
+        dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu[hl]) ./ bn.stddev[hl]  # normalized: 'aka' xhat or zhat
+        dat.z_scale[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y
+        bn.mu_run[hl][:] = (  bn.mu_run[hl][1] == 0.0 ? bn.mu[hl] : 
+            0.9 .* bn.mu_run[hl] .+ 0.1 .* bn.mu[hl]  )
+        bn.std_run[hl][:] = (  bn.std_run[hl][1] == 0.0 ? bn.stddev[hl] : 
+            0.9 .* bn.std_run[hl] + 0.1 .* bn.stddev[hl]  )
+    else
+        dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu_run[hl]) ./ bn.std_run[hl]  # normalized: 'aka' xhat or zhat
+        dat.z_scale[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y   
+    end
 end
 
 
-# TODO
 function batch_norm_back!(p, dat, bn, hl)
 
     d,mb = size(dat.epsilon[hl])  
     bn.delta_bet[hl][:] = sum(dat.epsilon[hl], 2)  # this gets very big
     bn.delta_gam[hl][:] = sum(dat.epsilon[hl] .* dat.z_norm[hl], 2)  # this gets very big
-
-
-    # dz_norm1 = dat.z_norm[hl] .* (1.0 ./ bn.stddev[hl])
-    # dstddev = -1.0 ./ bn.stddev[hl].^2 .* sum(dat.z_norm[hl] .* (dat.z[hl] .- bn.mu[hl]), 2)
-    # dvar = 0.5 ./ bn.stddev[hl] .* dstddev
-    # dsq = 1.0 / mb .* dvar
-    # dz_norm2 = 2.0 .* (dat.z[hl] .- bn.mu[hl]) .* dsq
-    # dx1 = dz_norm1 .+ dz_norm2
-    # dmu = -1.0 .* sum(dx1,2) 
-    # dx2 = 1.0 / mb .* dmu
-    # bn.delta_z[hl][:] = dx1 .+ dx2
-
-
     bn.delta_z_norm[hl][:] = bn.gam[hl] .* dat.epsilon[hl]  
     bn.delta_z[hl][:] = (  
         (1.0 / mb) .* (1.0 ./ bn.stddev[hl]) .* 
@@ -870,13 +828,13 @@ function gather_stats!(i, plotdef, mb, test, p, bn, cost_function, fwd_functions
     
     if plotdef["plot_switch"]["Test"]
         if plotdef["plot_switch"]["Cost"]
-            feedfwd!(p, bn, test, fwd_functions, batch_norm)  
+            feedfwd!(p, bn, test, fwd_functions, batch_norm, istrain=false)  
             plotdef["cost_history"][i, plotdef["col_test"]] = cost_function(test.targets, 
                 test.a[p.output_layer], n, n, p.theta, lambda, p.output_layer)
         end
         if plotdef["plot_switch"]["Learning"]
             # printdims(Dict("test.a"=>test.a, "test.z"=>test.z))
-            feedfwd!(p, bn, test, fwd_functions, batch_norm)  
+            feedfwd!(p, bn, test, fwd_functions, batch_norm, istrain=false)  
             plotdef["fracright_history"][i, plotdef["col_test"]] = accuracy(test.targets, 
                 test.a[p.output_layer])
         end
@@ -1006,6 +964,7 @@ function predictions_vector(theta_fname, data_fname, lambda = 0.015, classify="s
     return ret
 end
 
+# TODO -- THIS IS BROKEN!
 """
 
     function predict(inputs, theta)
@@ -1038,7 +997,7 @@ function predict(inputs, theta)   ### TODO this is seriously broken!
     end    
  
     a_test,  z_test = preallocate_feedfwd(inputs, p, n) 
-    predictions = feedfwd!(p, bn, dat, fwd_functions, batch_norm) 
+    predictions = feedfwd!(p, bn, dat, fwd_functions, batch_norm, istrain=false) 
 end
 
 
