@@ -365,4 +365,17 @@ Fraction correct labels predicted test: 0.9715
 Final cost test: NaN
 
 
+## Best achieved so far
+train_nn("digits60000by784.mat",30,[600,200,100],units="relu",classify="softmax",alpha=.4,lambda=0.0,plots=["Learning", "Test", "Training"],mb_size=250);
+
+elapsed time: 315.019002069 seconds
+Fraction correct labels predicted training: 1.0
+Final cost training: 0.0016377186975131666
+Fraction correct labels predicted test: 0.9783
+Final cost test: 0.15106389484604346
+Test data accuracy in final 10 iterations:
+0.978 : 0.978 : 0.978 : 0.978 : 0.978 : 0.978 : 0.978 : 0.978 : 0.978 : 0.978 : 
+
+
+
 
