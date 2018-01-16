@@ -1,17 +1,26 @@
+"""
+Module GeneralNN:
 
+Includes the following functions to run directly:
+   train_nn() -- train sigmoid/softmax neural networks for up to 9 hidden layers
+   test_score() -- cost and accuracy given test data and saved theta
+   save_theta() -- save theta, which is returned by train_nn
+   predictions_vector() -- predictions given x and saved theta
+   accuracy() -- calculates accuracy of predictions compared to actual labels
 
-# Includes the following functions to run directly:
-#    train_nn() -- train sigmoid/softmax neural networks for up to 5 layers
-#    test_score() -- cost and accuracy given test data and saved theta
-#    save_theta() -- save theta, which is returned by train_nn
-#    predictions_vector() -- predictions given x and saved theta
+To access, run this statement push!(LOAD_PATH, "/Path/To/My/Module/") with the path
+to this module.
+
+"""
+module GeneralNN
+
 
 
 #DONE
 
 
+
 #TODO
-#   turn the script file into a module
 #   fix cost calculation: sometimes results in NaN with relu and batch_norm
 #   what is the divisor for lambda in the regterm of cost????
 #   better way to handle test not using mini-batches
@@ -19,11 +28,15 @@
 #   implement early stopping
 #   implement L1 regularization
 #   implement dropout
-#   split stats from the plotdef
 #   Create a more consistent testing regime:  independent validation set
 #   scale weights for cost regularization to accommodate ReLU normalization?
 #   separate plots data structure from stats data structure
 
+# data structures for neural network
+export NN_parameters, Model_data, Batch_norm_back_data
+
+# functions to use
+export train_nn, test_score, save_theta, accuracy, predictions_vector
 
 using MAT
 using PyCall
@@ -32,23 +45,25 @@ pyplot()  # initialize the backend used by Plots
 @pyimport seaborn  # prettier charts
 # using ImageView    BIG BUG HERE--SEGFAULT--REPORTED
 
+
+
 "holds model parameters learned by training and metadata"
 mutable struct NN_parameters  
     theta::Array{Array{Float64,2},1}
-    theta_dims::Array{Array{Int64,1},1}
     bias::Array{Array{Float64,1},1}
     delta_w::Array{Array{Float64,2},1}  
     delta_b::Array{Array{Float64,1},1}  
+    theta_dims::Array{Array{Int64,1},1}
     output_layer::Int64
     layer_units::Array{Int64,1}
 
     # empty constructor
     NN_parameters() = new(                  
         Array{Array{Float64,2},1}(0),    # theta::Array{Array{Float64,2}}
-        Array{Array{Int64,2},1}(0),      # theta_dims::Array{Array{Int64,2}}
         Array{Array{Float64,2},1}(0),    # bias::Array{Array{Float64,1}}
         Array{Array{Float64,2},1}(0),    # delta_w
         Array{Array{Float64,2},1}(0),    # delta_b  
+        Array{Array{Int64,2},1}(0),      # theta_dims::Array{Array{Int64,2}}
         0,                               # output_layer
         Array{Int64,1}(0)                # layer_units
     )
@@ -77,6 +92,7 @@ mutable struct Model_data
         Array{Array{Float64,2},1}(0)    # epsilon
     )
 end
+
 
 "batch normalization parameters, feedfwd calculations, and backprop calculations"
 mutable struct Batch_norm_back_data  # 
@@ -164,13 +180,13 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
     elseif alpha > 1.0
         warn("Alpha learning rate set too large. Setting to defaut 0.35")
         alpha = 0.35
-    end
+    end  
 
     if mb_size < 0
         error("Input mb_size must be an integer greater or equal to 0")
     end
 
-    if lambda < 0.0
+    if lambda < 0.0  # best to set lambda = 0.0 for relu with batch_norm
         warn("Lambda regularization rate must be positive floating point value. Setting to 0.")
         lambda = 0.0
     elseif lambda > 5.0
@@ -221,7 +237,7 @@ function run_training(matfname::String, n_iters::Int64, plots::Array{String,1},
     train = Model_data()  # train holds all the data and layer inputs/outputs
     test = Model_data()
 
-    # training data and test data (if any)
+    # load training data and test data (if any)
     train.inputs, train.targets, test.inputs, test.targets = extract_data(matfname)
 
     # set some useful variables
@@ -246,7 +262,6 @@ function run_training(matfname::String, n_iters::Int64, plots::Array{String,1},
     # statistics for plots and history data
     plotdef = setup_plots(n_iters, dotest, plots)
 
-    # pre-allocate feedfwd mini-batch inputs and targets
     #setup mini-batch
     if mb_size == 0
         mb_size = n  # use 1 (mini-)batch with all of the examples
@@ -263,15 +278,17 @@ function run_training(matfname::String, n_iters::Int64, plots::Array{String,1},
     if mb_size < n
         # randomize order of all training samples: 
             # labels in training data often in a block, which will make
-            # mini-batch train badly because a batch will not contain mix of labels
+            # mini-batch train badly because a batch will not contain mix of target labels
         sel_index = randperm(n)
         train.inputs[:] = train.inputs[:, sel_index]
         train.targets[:] = train.targets[:, sel_index]  
     end
 
+    # pre-allocate feedfwd mini-batch inputs and targets
     mb = Model_data()  # mb holds all layer data for mini-batches
     preallocate_minibatch!(mb, p, mb_size, k, n, t, batch_norm)
  
+    # batch normalization parameters
     bn = Batch_norm_back_data()  # do we always need the data structure to run?
     if batch_norm
         preallocate_batchnorm!(bn, mb, p.layer_units)
@@ -382,7 +399,7 @@ function run_training(matfname::String, n_iters::Int64, plots::Array{String,1},
             p.theta, lambda, p.output_layer))
     end
 
-    # output improvement of last 10 iterations for test samples
+    # output improvement of last 10 iterations for test data
     if plotdef["plot_switch"]["Test"]
         if plotdef["plot_switch"]["Learning"]
             println("Test data accuracy in final 10 iterations:")
@@ -394,10 +411,10 @@ function run_training(matfname::String, n_iters::Int64, plots::Array{String,1},
         end        
     end 
 
-    # plot the progress of training cost and/or learning
+    # plot the progress of cost and/or learning accuracy
     plot_output(plotdef)
 
-    return p, bn;
+    return p, bn;  # trained model parameters
 
 end  # function run_training
 
@@ -582,11 +599,7 @@ function cross_entropy_cost(targets, predictions, n, mb_size, theta, lambda, out
     # these may be equal
     cost = (-1.0 ./ mb_size) .* sum(targets .* log.(predictions) .+ 
         (1.0 .- targets) .* log.(1.0 .- predictions))
-    @fastmath if lambda > 0.0
-        # need to fix hidden layer regularization for normalized ReLU
-        # because the weights grow because the activations (z) are so small (mean = 0)
-        # regterm = lambda/(2.0 * n) * sum([sum(theta[i][:, 2:end] .* theta[i][:, 2:end]) 
-        #     for i in 2:output_layer]) 
+    @fastmath if lambda > 0.0  # don't regularize relu with batch normalization->set lambda=0.0
         regterm = lambda/(2.0 * n) .* sum(theta[output_layer][:, 2:end] .* theta[output_layer][:, 2:end]) 
         cost = cost + regterm
     end
@@ -599,9 +612,7 @@ function sigmoid!(z::Array{Float64,2}, a::Array{Float64,2})
 end
 
 
-function l_relu!(z::Array{Float64,2}, a::Array{Float64,2}) 
-    # this is leaky relu
-    # a[:] = (z .- mean(z,2)) ./ (std(z,2))  # TODO -- take this out once scaling works
+function l_relu!(z::Array{Float64,2}, a::Array{Float64,2}) # leaky relu
     for j = 1:size(z,2)  # down each column for speed
         for i = 1:size(z,1)
             @. a[i,j] = z[i,j] >= 0.0 ? z[i,j] : .01 * z[i,j]
@@ -623,7 +634,7 @@ function batch_norm_fwd!(bn, dat, hl, istrain=true)
             0.9 .* bn.mu_run[hl] .+ 0.1 .* bn.mu[hl]  )
         bn.std_run[hl][:] = (  bn.std_run[hl][1] == 0.0 ? bn.stddev[hl] : 
             0.9 .* bn.std_run[hl] + 0.1 .* bn.stddev[hl]  )
-    else
+    else  # predictions with existing parameters
         dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu_run[hl]) ./ bn.std_run[hl]  # normalized: 'aka' xhat or zhat
         dat.z_scale[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y   
     end
@@ -636,8 +647,7 @@ function batch_norm_back!(p, dat, bn, hl)
     bn.delta_gam[hl][:] = sum(dat.epsilon[hl] .* dat.z_norm[hl], 2)  
     bn.delta_z_norm[hl][:] = bn.gam[hl] .* dat.epsilon[hl]  
     bn.delta_z[hl][:] = (  
-        (1.0 / mb) .* (1.0 ./ bn.stddev[hl]) .* 
-        (
+        (1.0 / mb) .* (1.0 ./ bn.stddev[hl]) .* (
             mb .* bn.delta_z_norm[hl] .- sum(bn.delta_z_norm[hl],2) .- 
             dat.z_norm[hl] .* sum(bn.delta_z_norm[hl] .* dat.z_norm[hl], 2)
             )  
@@ -795,22 +805,7 @@ function gather_stats!(i, plotdef, mb, test, p, bn, cost_function, fwd_functions
 end  
 
 
-function accuracy2(targets, predictions)
-    if size(targets,1) > 1
-        # works for output units sigmoid or softmax
-        targetmax = [indmax(targets[:,i]) for i in 1:size(targets,2)]
-        predmax = [indmax(predictions[:,i]) for i in 1:size(predictions,2)]
-        fracright = mean(convert(Array{Int},targetmax .== predmax))
-    else
-        # works because single output unit is sigmoid
-        choices = [j >= 0.5 ? 1.0 : 0.0 for j in predictions]
-        fracright = mean(convert(Array{Int},choices .== targets))
-    end
-    return fracright
-end
-
-
-function accuracy(targets, preds)  # half the time of the above approach
+function accuracy(targets, preds)
     if size(targets,1) > 1
         targetmax = ind2sub(targets,findin(targets,maximum(targets,1)))[1]
         predmax = ind2sub(preds,findin(preds,maximum(preds,1)))[1]
@@ -966,17 +961,6 @@ function predict(inputs, theta)   ### TODO this is seriously broken!
  
     a_test,  z_test = preallocate_feedfwd(inputs, p, n) 
     predictions = feedfwd!(p, bn, dat, fwd_functions, batch_norm, istrain=false) 
-end
-
-
-"""
-Pass a dim1 x dim2 by 1 column vector holding the image data to display it.
-Also pass the dimensions as 2 element vector (default is [28,28]).
-"""
-function display_mnist_digit(digit_data, digit_dims=[28,28])
-    imshow(reshape(digit_data, digit_dims...)'); # transpose because inputs were transposed
-    println("Press enter to close image window..."); readline()
-    ImageView.closeall()
 end
 
 
