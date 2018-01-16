@@ -980,3 +980,5 @@ function printdims(indict)
     end
     println("")
 end
+
+end # module GeneralNN
