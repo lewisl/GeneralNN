@@ -29,6 +29,7 @@ module GeneralNN
 
 
 #TODO
+#   put metaparameters in NN_parameters
 #   fix cost calculation: sometimes results in NaN with relu and batch_norm
 #   what is the divisor for lambda in the regterm of cost????
 #   better way to handle test not using mini-batches
@@ -207,8 +208,8 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
         classify = "softmax"
     end
 
-    if !in(units, ["relu", "sigmoid"])
-        warn("units must be \"relu\" or \"sigmoid\". Setting to default \"sigmoid\".")
+    if !in(units, ["l_relu", "sigmoid", "relu"])
+        warn("units must be \"relu,\" \"l_relu,\" or \"sigmoid\". Setting to default \"sigmoid\".")
     end
 
     valid_plots = ["Training", "Test", "Learning", "Cost"]
@@ -252,7 +253,7 @@ function run_training(matfname::String, n_iters::Int64, plots::Array{String,1},
     k,n = size(train.inputs)  # number of features k by no. of examples n
     t = size(train.targets,1)  # number of output units
     dotest = size(test.inputs, 1) > 0  # there is testing data
-    batch_norm = units == "relu" ? true : false  # determines data series needed
+    batch_norm = contains(units, "relu") ? true : false  # determines data series needed
 
     # neural net model parameters
     p = NN_parameters()  # p holds all the parameters that will be trained and some metadata
@@ -310,13 +311,17 @@ function run_training(matfname::String, n_iters::Int64, plots::Array{String,1},
     if units == "sigmoid"
         unit_function! = sigmoid!
         batch_norm = false
-    elseif units == "relu"
+    elseif units == "l_relu"
         unit_function! = l_relu!
+    elseif units == "relu"
+        unit_function! = relu!
     end
 
     if unit_function! == sigmoid!
         gradient_function! = sigmoid_gradient!
     elseif unit_function! == l_relu!
+        gradient_function! = l_relu_gradient!
+    elseif unit_function! == relu!
         gradient_function! = relu_gradient!
     end
 
@@ -623,9 +628,19 @@ end
 function l_relu!(z::Array{Float64,2}, a::Array{Float64,2}) # leaky relu
     for j = 1:size(z,2)  # down each column for speed
         for i = 1:size(z,1)
-            @. a[i,j] = z[i,j] >= 0.0 ? z[i,j] : .01 * z[i,j]
+            @.  a[i,j] = z[i,j] >= 0.0 ? z[i,j] : .01 * z[i,j]
         end
     end
+end
+
+
+function relu!(z::Array{Float64,2}, a::Array{Float64,2}) # leaky relu
+    # for j = 1:size(z,2)  # down each column for speed
+    #     for i = 1:size(z,1)
+    #         @. a[i,j] = z[i,j] >= 0.0 ? z[i,j] : 0.0
+    #     end
+    # end
+    a[:] = max.(z, 0.0)
 end
 
 
@@ -678,10 +693,19 @@ function sigmoid_gradient!(z::Array{Float64,2}, grad::Array{Float64,2})
 end
 
 
-function relu_gradient!(la::Array{Float64,2}, grad::Array{Float64,2})
+function l_relu_gradient!(la::Array{Float64,2}, grad::Array{Float64,2})
     for j = 1:size(la, 2)  # calculate down a column for speed
         for i = 1:size(la, 1)
             grad[i,j] = la[i,j] > 0.0 ? 1.0 : .01
+        end
+    end
+end
+
+
+function relu_gradient!(la::Array{Float64,2}, grad::Array{Float64,2})
+    for j = 1:size(la, 2)  # calculate down a column for speed
+        for i = 1:size(la, 1)
+            grad[i,j] = la[i,j] > 0.0 ? 1.0 : 0.0
         end
     end
 end
