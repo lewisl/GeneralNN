@@ -16,8 +16,9 @@ These data structures are used to hold parameters and data:
 
 - NN_parameters holds theta, bias, delta_w, delta_b, theta_dims, output_layer, layer_units
 - Model_data holds inputs, targets, a, z, z_norm, z_scale, epsilon, gradient_function
-- Batch_norm_back_data holds gam (gamma), bet (beta) for batch normalization and Intermediate
-data used for training
+- Batch_norm_params holds gam (gamma), bet (beta) for batch normalization and Intermediate
+data used for training: delta_gam, delta_bet, delta_z_norm, delta_z_scale,
+delta_z, mu, stddev, mu_run, std_run
 
 """
 module GeneralNN
@@ -42,7 +43,7 @@ module GeneralNN
 #   separate plots data structure from stats data structure
 
 # data structures for neural network
-export NN_parameters, Model_data, Batch_norm_back_data
+export NN_parameters, Model_data, Batch_norm_params
 
 # functions to use
 export train_nn, test_score, save_theta, accuracy, predictions_vector
@@ -54,9 +55,11 @@ pyplot()  # initialize the backend used by Plots
 @pyimport seaborn  # prettier charts
 # using ImageView    BIG BUG HERE--SEGFAULT--REPORTED
 
+const bnfactor = .01  
 
-
-"holds model parameters learned by training and metadata"
+"""
+struct NN_parameters holds model parameters learned by training and model metadata
+"""
 mutable struct NN_parameters  
     theta::Array{Array{Float64,2},1}
     bias::Array{Array{Float64,1},1}
@@ -79,7 +82,10 @@ mutable struct NN_parameters
 end
 
 
-"hold examples and all layer outputs-->pre-allocate to reduce memory allocations and improve speed"
+"""
+Struct Model_data hold examples and all layer outputs-->
+pre-allocate to reduce memory allocations and improve speed
+"""
 mutable struct Model_data  
     inputs::Array{Float64,2}  # k features by n examples
     targets::Array{Float64,2} # labels for each example
@@ -103,8 +109,11 @@ mutable struct Model_data
 end
 
 
-"batch normalization parameters, feedfwd calculations, and backprop calculations"
-mutable struct Batch_norm_back_data  # 
+"""
+struct Batch_norm_params holds batch normalization parameters for 
+feedfwd calculations, and backprop training.
+"""
+mutable struct Batch_norm_params  # 
     gam::Array{Array{Float64,1},1}  
     bet::Array{Array{Float64,1},1}  
     delta_gam::Array{Array{Float64,1},1}
@@ -117,7 +126,7 @@ mutable struct Batch_norm_back_data  #
     mu_run::Array{Array{Float64,1},1}
     std_run::Array{Array{Float64,1},1}
 
-    Batch_norm_back_data() = new(
+    Batch_norm_params() = new(
         Array{Array{Float64,1},1}(0),    # gam::Array{Array{Float64,1}}
         Array{Array{Float64,1},1}(0),    # bet::Array{Array{Float64,1}}
         Array{Array{Float64,2},1}(0),    # delta_gam
@@ -162,7 +171,7 @@ number of output labels from data. Detects number of features from data for outp
 Enables any size mini-batch that divides evenly into number of examples.  Plots 
 by any choice of "Learning", "Cost", per "Training" iteration (epoch) and for "Test" data.
 classify may be "softmax" or "sigmoid", which applies only to the output layer. 
-Units in other layers may be "sigmoid" or "relu".
+Units in other layers may be "sigmoid," "l_relu" or "relu".
 """
 function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha=0.35,
     mb_size::Int64=0, lambda::Float64=0.015, scale_reg::Bool=false, 
@@ -195,7 +204,7 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
         error("Input mb_size must be an integer greater or equal to 0")
     end
 
-    if lambda < 0.0  # best to set lambda = 0.0 for relu with batch_norm
+    if lambda < 0.0  # set lambda = 0.0 for relu with batch_norm
         warn("Lambda regularization rate must be positive floating point value. Setting to 0.")
         lambda = 0.0
     elseif lambda > 5.0
@@ -221,7 +230,7 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
         plots = new_plots
     end
 
-    theta = run_training(matfname, n_iters, plots,
+    theta, batch_params = run_training(matfname, n_iters, plots,
         n_hid, alpha, mb_size, lambda, scale_reg, classify, units);
 end
 
@@ -298,7 +307,7 @@ function run_training(matfname::String, n_iters::Int64, plots::Array{String,1},
     preallocate_minibatch!(mb, p, mb_size, k, n, t, batch_norm)
  
     # batch normalization parameters
-    bn = Batch_norm_back_data()  # do we always need the data structure to run?
+    bn = Batch_norm_params()  # do we always need the data structure to run?
     if batch_norm
         preallocate_batchnorm!(bn, mb, p.layer_units)
     end
@@ -590,12 +599,12 @@ function backprop!(p, bn, dat, back_functions, batch_norm)
 
     @fastmath for hl = (p.output_layer - 1):-1:2  # for hidden layers 
         if batch_norm
-            gradient_function!(dat.z_scale[hl], dat.grad[hl])  # TODO z, z_norm, or z_scale?
+            gradient_function!(dat.z_scale[hl], dat.grad[hl])  
             dat.epsilon[hl][:] = p.theta[hl+1]' * dat.epsilon[hl+1] .* dat.grad[hl]  
             batch_norm_back!(p, dat, bn, hl)
             p.delta_w[hl][:] = bn.delta_z[hl] * dat.a[hl-1]'
         else
-            gradient_function!(dat.z[hl], dat.grad[hl])  # TODO this is the wrong input with batch_norm
+            gradient_function!(dat.z[hl], dat.grad[hl])  
             dat.epsilon[hl][:] = p.theta[hl+1]' * dat.epsilon[hl+1] .* dat.grad[hl]  
             p.delta_w[hl][:] = dat.epsilon[hl] * dat.a[hl-1]'
             p.delta_b[hl][:] = sum(dat.epsilon[hl],2)  #  times a column of 1's = sum(row)
@@ -626,20 +635,15 @@ end
 
 
 function l_relu!(z::Array{Float64,2}, a::Array{Float64,2}) # leaky relu
-    for j = 1:size(z,2)  # down each column for speed
-        for i = 1:size(z,1)
-            @.  a[i,j] = z[i,j] >= 0.0 ? z[i,j] : .01 * z[i,j]
+    for j = 1:size(z,2)  # pick a column
+        for i = 1:size(z,1)  # down each column for speed
+            @.  a[i,j] = z[i,j] >= 0.0 ? z[i,j] : bnfactor * z[i,j]
         end
     end
 end
 
 
 function relu!(z::Array{Float64,2}, a::Array{Float64,2}) # leaky relu
-    # for j = 1:size(z,2)  # down each column for speed
-    #     for i = 1:size(z,1)
-    #         @. a[i,j] = z[i,j] >= 0.0 ? z[i,j] : 0.0
-    #     end
-    # end
     a[:] = max.(z, 0.0)
 end
 
@@ -696,7 +700,7 @@ end
 function l_relu_gradient!(la::Array{Float64,2}, grad::Array{Float64,2})
     for j = 1:size(la, 2)  # calculate down a column for speed
         for i = 1:size(la, 1)
-            grad[i,j] = la[i,j] > 0.0 ? 1.0 : .01
+            grad[i,j] = la[i,j] > 0.0 ? 1.0 : bnfactor
         end
     end
 end
