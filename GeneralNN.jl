@@ -30,14 +30,19 @@ module GeneralNN
 
 
 #TODO
+#   implement dropout
+#   set specific initialization for sigmoid units
+#   verify that bias is not used for batch_norm
 #   put metaparameters in NN_parameters
+#   implement a gradient checking function with option to run it
 #   fix cost calculation: sometimes results in NaN with relu and batch_norm
-#   what is the divisor for lambda in the regterm of cost????
+#   convolutional layers
+#   pooling layers (what are they called again?)
 #   better way to handle test not using mini-batches
 #   implement momentum
 #   implement early stopping
 #   implement L1 regularization
-#   implement dropout
+
 #   Create a more consistent testing regime:  independent validation set
 #   scale weights for cost regularization to accommodate ReLU normalization?
 #   separate plots data structure from stats data structure
@@ -55,7 +60,7 @@ pyplot()  # initialize the backend used by Plots
 @pyimport seaborn  # prettier charts
 # using ImageView    BIG BUG HERE--SEGFAULT--REPORTED
 
-const bnfactor = .01  
+const l_relu_neg = .01  
 
 """
 struct NN_parameters holds model parameters learned by training and model metadata
@@ -65,7 +70,7 @@ mutable struct NN_parameters
     bias::Array{Array{Float64,1},1}
     delta_w::Array{Array{Float64,2},1}  
     delta_b::Array{Array{Float64,1},1}  
-    theta_dims::Array{Array{Int64,1},1}
+    theta_dims::Array{Tuple{Int64, Int64},1}
     output_layer::Int64
     layer_units::Array{Int64,1}
 
@@ -75,7 +80,7 @@ mutable struct NN_parameters
         Array{Array{Float64,2},1}(0),    # bias::Array{Array{Float64,1}}
         Array{Array{Float64,2},1}(0),    # delta_w
         Array{Array{Float64,2},1}(0),    # delta_b  
-        Array{Array{Int64,2},1}(0),      # theta_dims::Array{Array{Int64,2}}
+        Array{Tuple{Int, Int},1}(0),      # theta_dims::Array{Array{Int64,2}}
         0,                               # output_layer
         Array{Int64,1}(0)                # layer_units
     )
@@ -140,6 +145,37 @@ mutable struct Batch_norm_params  #
         Array{Array{Float64,1},1}(0)     # std_run
     )
 end
+
+
+"""
+Layer template to contain metadata for a single layer above input
+usage (example with 1 hidden layer and softmax output:
+    mylayers = [] # array holds layer dicts for all layers: input=1 to output=n
+
+    mylayer = deepcopy(layer_template) # do this every time to prevent accidental hold over values!
+    mylayer["kind"] = "input"
+    mylayer["units"] = 40
+    push!(mylayers, mylayer) # absolutely push in order from input to output
+
+    mylayer = deepcopy(layer_template) # do this every time to prevent accidental hold over values!
+    mylayer["kind"] = "relu"  # note: this is default so could leave as is
+    mylayer["units"] = 10
+    push!(mylayers, mylayer) # absolutely push in order from input to output
+
+    mylayer = deepcopy(layer_template) # do this every time to prevent accidental hold over values!
+    mylayer["kind"] = "softmax"  # note: this is default so could leave as is
+    mylayer["units"] = 4
+    push!(mylayers, mylayer) # absolutely push in order from input to output    
+
+"""
+const layer_template = Dict(
+    "kind" => "relu", # valid: "input", "linear", relu", "sigmoid", "softmax", "l_relu", "conv", "pooling"
+    "units" => 10,
+    "filter_size" => (3,3), # use for conv or pooling
+    "conv_filters" => 6,
+    "pooling_op" => "max", # valid: "max", "avg"
+    "l_relu_neg" => 0.01, # for negative Z values
+    )
 
 
 """
@@ -208,7 +244,7 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
         warn("Lambda regularization rate must be positive floating point value. Setting to 0.")
         lambda = 0.0
     elseif lambda > 5.0
-        warn("Lambda regularization rate set too large. Setting to defaut 5.0")
+        warn("Lambda regularization rate set too large. Setting to max of 5.0")
         lambda = 5.0
     end
 
@@ -398,7 +434,7 @@ function run_training(matfname::String, n_iters::Int64, plots::Array{String,1},
             end
         end
 
-        gather_stats!(i, plotdef, mb, test, p, bn, cost_function, fwd_functions, n, 
+        gather_stats!(i, plotdef, mb, test, p, bn, cost_function, fwd_functions, mb_size, testn, 
             lambda, batch_norm)  # ??? TODO train or mb???    
     end
 
@@ -411,13 +447,13 @@ function run_training(matfname::String, n_iters::Int64, plots::Array{String,1},
     feedfwd!(p, bn, train, fwd_functions, batch_norm, istrain=false)  # output for entire training set
     println("Fraction correct labels predicted training: ", accuracy(train.targets, train.a[p.output_layer]))
     println("Final cost training: ", cost_function(train.targets, train.a[p.output_layer], n,
-                    n, p.theta, lambda, p.output_layer))
+                    p.theta, lambda, p.output_layer))
 
     # output test statistics
     if dotest     
         feedfwd!(p, bn, test, fwd_functions, batch_norm, istrain=false)
         println("Fraction correct labels predicted test: ", accuracy(test.targets, test.a[p.output_layer]))
-        println("Final cost test: ", cost_function(test.targets, test.a[p.output_layer], testn, testn, 
+        println("Final cost test: ", cost_function(test.targets, test.a[p.output_layer], testn, 
             p.theta, lambda, p.output_layer))
     end
 
@@ -492,26 +528,39 @@ function preallocate_nn_params!(p, n_hid, k, n, t)
     # t = number of features in the targets--the output layer
 
     # theta dimensions for each layer of the neural network 
-    #    this follows the convention that the outputs of the current layer activation
-    #    are rows of theta and the inputs from the layer below are columns
+    #    Follows the convention that rows = outputs of the current layer activation
+    #    and columns are the inputs from the layer below
 
     # layers
     p.output_layer = 2 + size(n_hid, 1) # input layer is 1, output layer is highest value
     p.layer_units = [k, n_hid..., t]
 
-    push!(p.theta_dims, [k, 1]) # weight dimensions for the input layer
-    for i = 2:p.output_layer-1  # hidden layers
-        push!(p.theta_dims, [n_hid[i-1], p.theta_dims[i-1][1]]) 
+    # set dimensions of the linear weights for each layer
+    push!(p.theta_dims, (k, 1)) # weight dimensions for the input layer -- if using array, must splat as arg
+    for l = 2:p.output_layer-1  # l refers to nn layer so this includes only hidden layers
+        push!(p.theta_dims, (n_hid[l-1], p.theta_dims[l-1][1])) # rows = hidden, cols = lower layer outputs
     end
-    push!(p.theta_dims, [t, n_hid[end]])  # weight dimensions for the output layer
+    push!(p.theta_dims, (t, n_hid[end]))  # weight dims for output layer: rows = output classes
 
+    # initialize the linear weights
     p.theta = [zeros(2,2)] # layer 1 not used
-    interval = 0.5 # random weights will be generated in [-interval, interval]
-    for i = 2:p.output_layer
-        push!(p.theta, rand(p.theta_dims[i]...) .* (2.0 * interval) .- interval)
+    # uniform distribution in (-.5, .5):  no real theoretical justification and less than best results
+        # interval = 0.5
+        # for i = 2:p.output_layer
+        #     push!(p.theta, rand(p.theta_dims[i]) .* (2.0 * interval) .- interval)
+        # end
+    # Xavier initialization--current best practice for relu
+    for l = 2:p.output_layer
+        push!(p.theta, randn(p.theta_dims[l]) .* sqrt(2.0/p.theta_dims[l][2])) # sqrt of no. of input units
     end
-    p.bias = [zeros(size(th, 1)) for th in p.theta]
-    p.delta_w = deepcopy(p.theta)  # structure of gradient matches theta
+
+    # bias initialization: random non-zero initialization performs worse
+    p.bias = [zeros(size(th, 1)) for th in p.theta]  # initialize biases to zero
+    # p.bias = [rand(size(th,1)) .* (2. * interval) .- interval for th in p.theta] # initialize (-.5, .5)
+    # p.bias = [randn(size(th,1)) .* sqrt(2.0/size(th,2)) for th in p.theta]
+
+    # structure of gradient matches theta
+    p.delta_w = deepcopy(p.theta)  
     p.delta_b = deepcopy(p.bias)
 
 end
@@ -536,6 +585,7 @@ function preallocate_batchnorm!(bn, mb, layer_units)
     # gamma = scaling factor for normalization standard deviation
     # beta = bias, or new mean instead of zero
     # should batch normalize for relu, can do for other unit functions
+    # note: beta and gamma are reserved keywords, using bet and gam
     bn.gam = [ones(i) for i in layer_units]  # gamma is a builtin function
     bn.bet = [zeros(i) for i in layer_units] # beta is a builtin function
     bn.delta_gam = [zeros(i) for i in layer_units]
@@ -544,7 +594,7 @@ function preallocate_batchnorm!(bn, mb, layer_units)
     bn.delta_z_norm = deepcopy(mb.z_norm)
     bn.mu = [zeros(i) for i in layer_units]  # same size as bias = no. of layer units
     bn.mu_run = [zeros(i) for i in layer_units]
-    bn.stddev = [zeros(i) for i in layer_units] #    ditto
+    bn.stddev = [zeros(i) for i in layer_units] 
     bn.std_run = [zeros(i) for i in layer_units]
 end
 
@@ -615,11 +665,11 @@ function backprop!(p, bn, dat, back_functions, batch_norm)
 end
 
 
-function cross_entropy_cost(targets, predictions, n, mb_size, theta, lambda, output_layer)
+function cross_entropy_cost(targets, predictions, n, theta, lambda, output_layer)
     # n is count of all samples in data set--use with regularization term
     # mb_size is count of all samples used in training batch--use with cost
     # these may be equal
-    cost = (-1.0 ./ mb_size) .* sum(targets .* log.(predictions) .+ 
+    cost = (-1.0 ./ n) .* sum(targets .* log.(predictions) .+ 
         (1.0 .- targets) .* log.(1.0 .- predictions))
     @fastmath if lambda > 0.0  # don't regularize relu with batch normalization->set lambda=0.0
         regterm = lambda/(2.0 * n) .* sum(theta[output_layer][:, 2:end] .* theta[output_layer][:, 2:end]) 
@@ -637,7 +687,7 @@ end
 function l_relu!(z::Array{Float64,2}, a::Array{Float64,2}) # leaky relu
     for j = 1:size(z,2)  # pick a column
         for i = 1:size(z,1)  # down each column for speed
-            @.  a[i,j] = z[i,j] >= 0.0 ? z[i,j] : bnfactor * z[i,j]
+            @.  a[i,j] = z[i,j] >= 0.0 ? z[i,j] : l_relu_neg * z[i,j]
         end
     end
 end
@@ -700,7 +750,7 @@ end
 function l_relu_gradient!(la::Array{Float64,2}, grad::Array{Float64,2})
     for j = 1:size(la, 2)  # calculate down a column for speed
         for i = 1:size(la, 1)
-            grad[i,j] = la[i,j] > 0.0 ? 1.0 : bnfactor
+            grad[i,j] = la[i,j] > 0.0 ? 1.0 : l_relu_neg
         end
     end
 end
@@ -768,8 +818,8 @@ A plotdef is a dict containing:
 function setup_plots(n_iters::Int64, dotest::Bool, plots::Array{String,1})
     # set up cost_history to track 1 or 2 data series for plots
     # lots of indirection here:  someday might add "validation"
-    if size(plots,1) > 3
-        warn("Only 3 plot requests permitted. Proceeding with up to 3.")
+    if size(plots,1) > 4
+        warn("Only 4 plot requests permitted. Proceeding with up to 4.")
     end
 
     valid_plots = ["Training", "Test", "Learning", "Cost"]
@@ -811,13 +861,13 @@ function setup_plots(n_iters::Int64, dotest::Bool, plots::Array{String,1})
 end
 
 
-function gather_stats!(i, plotdef, mb, test, p, bn, cost_function, fwd_functions, n, 
+function gather_stats!(i, plotdef, mb, test, p, bn, cost_function, fwd_functions, train_n, testn, 
     lambda, batch_norm)  
 
     if plotdef["plot_switch"]["Training"]
         if plotdef["plot_switch"]["Cost"]
             plotdef["cost_history"][i, plotdef["col_train"]] = cost_function(mb.targets, 
-                mb.a[p.output_layer], n, n, p.theta, lambda, p.output_layer)
+                mb.a[p.output_layer], train_n, p.theta, lambda, p.output_layer)
         end
         if plotdef["plot_switch"]["Learning"]
             plotdef["fracright_history"][i, plotdef["col_train"]] = accuracy(
@@ -829,7 +879,7 @@ function gather_stats!(i, plotdef, mb, test, p, bn, cost_function, fwd_functions
         if plotdef["plot_switch"]["Cost"]
             feedfwd!(p, bn, test, fwd_functions, batch_norm, istrain=false)  
             plotdef["cost_history"][i, plotdef["col_test"]] = cost_function(test.targets, 
-                test.a[p.output_layer], n, n, p.theta, lambda, p.output_layer)
+                test.a[p.output_layer], testn, p.theta, lambda, p.output_layer)
         end
         if plotdef["plot_switch"]["Learning"]
             # printdims(Dict("test.a"=>test.a, "test.z"=>test.z))
@@ -914,7 +964,7 @@ function test_score(theta_fname, data_fname, lambda = 0.015, classify="softmax")
     predictions = predict(inputs, theta)
     score = accuracy(targets, predictions)
     println("Fraction correct labels predicted test: ", score)
-    println("Final cost test: ", cost_function(targets, predictions, n, n, theta, lambda, output_layer))
+    println("Final cost test: ", cost_function(targets, predictions, n, theta, lambda, output_layer))
 
     return score
 end
