@@ -30,6 +30,9 @@ module GeneralNN
 
 
 #TODO
+#   use one function with two methods for weight_update to distinguish with and without regularization
+#   make affine units a separate layer_template
+#   relax minibatch size being exact factor of training data size
 #   implement dropout
 #   set specific initialization for sigmoid units
 #   verify that bias is not used for batch_norm
@@ -183,12 +186,12 @@ Method to call train_nn with a single integer as the number of hidden units
 in a single hidden layer.
 """
 function train_nn(matfname::String, n_iters::Int64, n_hid::Int64; alpha=0.35,
-    mb_size=0, lambda=0.015, scale_reg::Bool=false, classify="softmax", 
+    mb_size=0, lambda=0.015, classify="softmax", normalization::Bool=false,
     units="sigmoid", plots=["Training", "Learning"])
 
     train_nn(matfname, n_iters, [n_hid]; alpha=alpha,
-    mb_size=mb_size, lambda=lambda, scale_reg=scale_reg, 
-    classify=classify, units=units, plots=plots)
+    mb_size=mb_size, lambda=lambda, classify=classify, normalization=normalization,
+    units=units, plots=plots)
 end
 
 
@@ -210,7 +213,7 @@ classify may be "softmax" or "sigmoid", which applies only to the output layer.
 Units in other layers may be "sigmoid," "l_relu" or "relu".
 """
 function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha=0.35,
-    mb_size::Int64=0, lambda::Float64=0.015, scale_reg::Bool=false, 
+    mb_size::Int64=0, lambda::Float64=0.015,  normalization::Bool=false,
     classify::String="softmax", units::String="sigmoid", 
     plots::Array{String,1}=["Training", "Learning"])
 
@@ -267,13 +270,13 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
     end
 
     theta, batch_params = run_training(matfname, n_iters, plots,
-        n_hid, alpha, mb_size, lambda, scale_reg, classify, units);
+        n_hid, alpha, mb_size, lambda, classify, normalization, units);
 end
 
 
 function run_training(matfname::String, n_iters::Int64, plots::Array{String,1}, 
-    n_hid::Array{Int64,1}, alpha=0.35, mb_size=0, lambda=0.015, scale_reg=false, 
-    classify="softmax", units="sigmoid")
+    n_hid::Array{Int64,1}, alpha=0.35, mb_size=0, lambda=0.015,  
+    classify="softmax", normalization=false, units="sigmoid")
 
     # start the cpu clock
     tic()
@@ -292,7 +295,7 @@ function run_training(matfname::String, n_iters::Int64, plots::Array{String,1},
     test = Model_data()
 
     # load training data and test data (if any)
-    train.inputs, train.targets, test.inputs, test.targets = extract_data(matfname)
+    train.inputs, train.targets, test.inputs, test.targets, normfactors = extract_data(matfname, normalization)
 
     # set some useful variables
     k,n = size(train.inputs)  # number of features k by no. of examples n
@@ -327,6 +330,7 @@ function run_training(matfname::String, n_iters::Int64, plots::Array{String,1},
         error("Mini-batch size $mb_size does not divide evenly into samples $n.")
     end
     n_mb = Int(n / mb_size)  # number of mini-batches 
+    batch_norm = n_mb == 1 ? false : batch_norm  # no batch normalization for 1 batch
     alphaovermb = alpha / mb_size  # calc once, use in loop
 
     if mb_size < n
@@ -385,17 +389,13 @@ function run_training(matfname::String, n_iters::Int64, plots::Array{String,1},
     # now there's only one cost function.  someday there could be others.
     cost_function = cross_entropy_cost
 
-    # define three functions for alternative weight updates
-    weight_update_noreg(theta, delta, hl) = theta .- (alphaovermb .* delta)
-    weight_update_scale_reg(theta, delta, hl) = (theta .- ((alphaovermb .* delta) .+
-        (lambda / p.layer_units[hl] .* theta)))
-    weight_update_reg(theta, delta, hl) = theta .- ((alphaovermb .* delta) .+ (lambda .* theta))
+    # define two functions for alternative weight updates
+    weight_update_noreg(theta, delta) = theta .- (alphaovermb .* delta)
+    weight_update_reg(theta, delta) = theta .- (alphaovermb .* delta) .- (alphaovermb .* (lambda .* theta))
 
     # choose the weight update function (keep this test out of the training loop)
     if lambda <= 0.0  
-        weight_update! = weight_update_noreg
-    elseif scale_reg
-        weight_update! = weight_update_scale_reg  
+        weight_update! = weight_update_noreg 
     else 
         weight_update! = weight_update_reg
     end   
@@ -430,7 +430,7 @@ function run_training(matfname::String, n_iters::Int64, plots::Array{String,1},
                 else
                     p.bias[hl][:] -= alphaovermb .* p.delta_b[hl]  
                 end
-                p.theta[hl][:] = weight_update!(p.theta[hl], p.delta_w[hl], hl)
+                p.theta[hl][:] = weight_update!(p.theta[hl], p.delta_w[hl])
             end
         end
 
@@ -445,14 +445,14 @@ function run_training(matfname::String, n_iters::Int64, plots::Array{String,1},
     #####################################################################
     
     feedfwd!(p, bn, train, fwd_functions, batch_norm, istrain=false)  # output for entire training set
-    println("Fraction correct labels predicted training: ", accuracy(train.targets, train.a[p.output_layer]))
+    println("Fraction correct labels predicted training: ", accuracy(train.targets, train.a[p.output_layer],n_iters))
     println("Final cost training: ", cost_function(train.targets, train.a[p.output_layer], n,
                     p.theta, lambda, p.output_layer))
 
     # output test statistics
     if dotest     
         feedfwd!(p, bn, test, fwd_functions, batch_norm, istrain=false)
-        println("Fraction correct labels predicted test: ", accuracy(test.targets, test.a[p.output_layer]))
+        println("Fraction correct labels predicted test: ", accuracy(test.targets, test.a[p.output_layer],n_iters))
         println("Final cost test: ", cost_function(test.targets, test.a[p.output_layer], testn, 
             p.theta, lambda, p.output_layer))
     end
@@ -477,7 +477,7 @@ function run_training(matfname::String, n_iters::Int64, plots::Array{String,1},
 end  # function run_training
 
 
-function extract_data(matfname::String)
+function extract_data(matfname::String, normalization)
     # read the data
     df = matread(matfname)
 
@@ -498,7 +498,21 @@ function extract_data(matfname::String)
         test_inputs = zeros(0,0)
         test_targets = zeros(0,0)
     end
-    return inputs, targets, test_inputs, test_targets
+
+    normfactors = (0.0, 1.0) # x_mu, x_std
+    if normalization
+        # normalize training data
+        x_mu = mean(inputs)
+        x_std = std(inputs)
+        inputs = (inputs .- x_mu) ./ x_std
+        #normalize test data
+        if in("test", keys(df))
+            test_inputs = (test_inputs .- x_mu) ./ x_std
+        end
+        normfactors = (x_mu, x_std)
+    end
+    # normalize test data
+    return inputs, targets, test_inputs, test_targets, normfactors
 end
 
 
@@ -672,10 +686,22 @@ function cross_entropy_cost(targets, predictions, n, theta, lambda, output_layer
     cost = (-1.0 ./ n) .* sum(targets .* log.(predictions) .+ 
         (1.0 .- targets) .* log.(1.0 .- predictions))
     @fastmath if lambda > 0.0  # don't regularize relu with batch normalization->set lambda=0.0
-        regterm = lambda/(2.0 * n) .* sum(theta[output_layer][:, 2:end] .* theta[output_layer][:, 2:end]) 
+        # regterm = lambda/(2.0 * n) .* sum(theta[output_layer][:, 2:end] .* theta[output_layer][:, 2:end]) 
+        regterm = lambda/(2.0 * n) .* sum([sum(th .* th) for th in theta[2:output_layer]])
         cost = cost + regterm
     end
     return cost
+end
+
+
+# two methods for linear layer units, with bias and without
+function affine(weights, data, bias)  # with bias
+    return weights * data .+ bias
+end
+
+
+function affine(weights, data)  # no bias
+    return weights * data
 end
 
 
@@ -738,6 +764,17 @@ function softmax!(z::Array{Float64,2}, a::Array{Float64,2})
     f[:] = z .- maximum(z,1)  
     expf[:] = exp.(f)  # this gets called within a loop and exp() is expensive
     a[:] = @fastmath expf ./ sum(expf, 1)  
+end
+
+
+# two methods for gradient of linear layer units:  without bias and with
+function affine_grad!(currlayerdiff, prevlayeract)  # no bias
+    return currlayerdiff * prevlayeract'
+end
+
+
+function affine_grad!(currlayerdiff, prevlayeract, dobias::Bool)
+    return currlayerdiff * prevlayeract', sum(currlayerdiff, 2)
 end
 
 
@@ -871,7 +908,7 @@ function gather_stats!(i, plotdef, mb, test, p, bn, cost_function, fwd_functions
         end
         if plotdef["plot_switch"]["Learning"]
             plotdef["fracright_history"][i, plotdef["col_train"]] = accuracy(
-                mb.targets, mb.a[p.output_layer])
+                mb.targets, mb.a[p.output_layer],i)
         end
     end
     
@@ -885,17 +922,25 @@ function gather_stats!(i, plotdef, mb, test, p, bn, cost_function, fwd_functions
             # printdims(Dict("test.a"=>test.a, "test.z"=>test.z))
             feedfwd!(p, bn, test, fwd_functions, batch_norm, istrain=false)  
             plotdef["fracright_history"][i, plotdef["col_test"]] = accuracy(test.targets, 
-                test.a[p.output_layer])
+                test.a[p.output_layer],i)          
         end
     end     
 end  
 
 
-function accuracy(targets, preds)
+function accuracy(targets, preds,i)
     if size(targets,1) > 1
-        targetmax = ind2sub(targets,findin(targets,maximum(targets,1)))[1]
-        predmax = ind2sub(preds,findin(preds,maximum(preds,1)))[1]
-        fracright = mean([i ? 1.0 : 0.0 for i in (targetmax .== predmax)])
+        targetmax = ind2sub(size(targets),vec(findmax(targets,1)[2]))[1]
+        predmax = ind2sub(size(preds),vec(findmax(preds,1)[2]))[1]
+        try
+            fracright = mean([ii ? 1.0 : 0.0 for ii in (targetmax .== predmax)])
+        catch
+            println("iteration:      ", i)
+            println("targetmax size  ", size(targetmax))
+            println("predmax size    ", size(predmax))
+            println("targets in size ", size(targets))
+            println("preds in size   ", size(preds))
+        end
     else
         # works because single output unit is sigmoid
         choices = [j >= 0.5 ? 1.0 : 0.0 for j in predictions]
