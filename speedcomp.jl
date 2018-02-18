@@ -39,3 +39,27 @@ function splitmax(x)
     choices[neg] *= 0.01
     return choices
 end
+
+function doif(a,b,choice)
+    byif(a,b,choice)
+end
+
+function byif(a,b,choice)
+    if choice
+        return a + b
+    else
+        return a - b
+    end
+end
+
+function bydisp(a,b, choice)
+    simple(a,b,choice)
+end
+
+function simple(a,b, choice::Void)
+    return a+b
+end
+
+function simple(a,b,split::Int)
+    return a - b
+end
