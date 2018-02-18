@@ -30,8 +30,6 @@ module GeneralNN
 
 
 #TODO
-#   cleanup weight update: batch_norm (batch parameters, no bias), regularization (lambda), momentum
-#   implement momentum: update across epochs?
 #   make affine units a separate layer_template
 #   relax minibatch size being exact factor of training data size
 #   implement dropout
@@ -185,28 +183,17 @@ const layer_template = Dict(
 
 
 """
-Method to call train_nn with a single integer as the number of hidden units
-in a single hidden layer.
-"""
-function train_nn(matfname::String, n_iters::Int64, n_hid::Int64; alpha=0.35,
+function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha=0.35,
     mb_size::Int64=0, lambda::Float64=0.015, classify::String="softmax", normalization::Bool=false,
-    mom=0.0, units="sigmoid", plots=["Training", "Learning"])
-
-    train_nn(matfname, n_iters, [n_hid]; alpha=alpha,
-    mb_size=mb_size, lambda=lambda, classify=classify, normalization=normalization,
-    units=units, plots=plots)
-end
-
-
-"""
-    function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}, alpha=0.35,
-        mb_size=0, lambda=0.015, classify="softmax", units="sigmoid", plots=["Training", "Learning"])
+    mom=0.9, units::String="sigmoid", plots::Array{String,1}=["Training", "Learning"])
 
     returns theta -- the model weights
     key inputs:
         alpha   ::= learning rate
         lambda  ::= regularization rate
         mb_size ::= mini-batch size
+        n_hid   ::= array of Int containing number of units in each hidden layer
+                    (make sure to use an array even with 1 hidden layer as in [40])
 
 Train sigmoid/softmax neural networks up to 11 layers.  Detects
 number of output labels from data. Detects number of features from data for output units. 
@@ -217,7 +204,7 @@ Units in other layers may be "sigmoid," "l_relu" or "relu".
 """
 function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha=0.35,
     mb_size::Int64=0, lambda::Float64=0.015, classify::String="softmax", normalization::Bool=false,
-    mom=0.0, units::String="sigmoid", plots::Array{String,1}=["Training", "Learning"])
+    mom=0.9, units::String="sigmoid", plots::Array{String,1}=["Training", "Learning"])
 
     ################################################################################
     #   This is a front-end function that verifies all inputs and calls run_training
@@ -254,13 +241,13 @@ function train_nn(matfname::String, n_iters::Int64, n_hid::Array{Int64,1}; alpha
     end
 
     if mom <= 0.0   
-        mom = 0.0  # this will call weight update without momentum
+        mom = 0.0  # forces weight update without momentum
     elseif mom > 0.999
         warn("mom--e.g., momentum--must be between 0.8 and 0.999. Setting to 0.0")
-        mom = 0.0  # this will call weight update without momentum
+        mom = 0.0  # forces weight update without momentum
     elseif mom < 0.8
         warn("mom--e.g., momentum--must be between 0.8 and 0.999. Setting to 0.0")
-        mom = 0.0  # this will call weight update without momentum
+        mom = 0.0  # forces weight update without momentum
     end
 
     if !in(classify, ["softmax", "sigmoid"])
@@ -287,7 +274,7 @@ end
 
 
 function run_training(matfname::String, n_iters::Int64, plots::Array{String,1}, 
-    n_hid::Array{Int64,1}, alpha=0.35, mb_size=0, lambda=0.015, mom=0.0
+    n_hid::Array{Int64,1}, alpha=0.35, mb_size=0, lambda=0.015, mom=0.0,
     classify="softmax", normalization=false, units="sigmoid")
 
     # start the cpu clock
@@ -352,11 +339,6 @@ function run_training(matfname::String, n_iters::Int64, plots::Array{String,1},
         sel_index = randperm(n)
         train.inputs[:] = train.inputs[:, sel_index]
         train.targets[:] = train.targets[:, sel_index]  
-    end
-
-    # setup momentum for weight update
-    if mom == 0.0
-        mom = nothing  # will call weight update without momentum
     end
 
     # pre-allocate feedfwd mini-batch inputs and targets
@@ -430,28 +412,39 @@ function run_training(matfname::String, n_iters::Int64, plots::Array{String,1},
 
             # update weights, bias, and batch_norm parameters (if used)
             @fastmath for hl = 2:p.output_layer              
-                # if batch_norm
-                #     bn.gam[hl][:] -= alphaovermb .* bn.delta_gam[hl] 
-                #     bn.bet[hl][:] -= alphaovermb .* bn.delta_bet[hl]
-                # else
-                #     p.bias[hl][:] -= alphaovermb .* p.delta_b[hl]  # TODO also depends on momentum
-                # end
-                # if lambda <= 0.0  # if test faster than big multiply by 0.0
-                #     p.theta[hl] .= p.theta[hl] .- (alphaovermb .* p.delta_w[hl])
-                # else
-                #     p.theta[hl] .= ( p.theta[hl] .- (alphaovermb .* p.delta_w[hl]) 
-                #         .- (alphaovermb .* (lambda .* p.theta[hl])) )
-                # end
+
+                # update weights
+                if mom > 0.0
+                    p.delta_w_mom[hl] .= mom .* p.delta_w_mom[hl] .+ (1 - mom) .* p.delta_w[hl]
+                    p.theta[hl] .= p.theta[hl] .- (alphaovermb .* p.delta_w_mom[hl])
+                else
+                    p.theta[hl] .= p.theta[hl] .- (alphaovermb .* p.delta_w[hl])
+                end
+                if lambda > 0.0  # subtract regularization term
+                    p.theta[hl] .= p.theta[hl] .- (alphaovermb .* (lambda .* p.theta[hl]))
+                end
+
+                #update bias 
+                if !batch_norm  # if not using batch normalization
+                    if mom > 0.0
+                        p.delta_b_mom[hl] .= mom .* p.delta_b_mom[hl] .+ (1 - mom) .* p.delta_b[hl]
+                        p.bias[hl] .= p.bias[hl] .- (alphaovermb .* p.delta_b_mom[hl])
+                    else
+                        p.bias[hl] .= p.bias[hl] .- (alphaovermb .* p.delta_b[hl])
+                    end  
+                end                  
+
+                # update batch normalization parameters
                 if batch_norm
                     bn.gam[hl][:] -= alphaovermb .* bn.delta_gam[hl] 
                     bn.bet[hl][:] -= alphaovermb .* bn.delta_bet[hl]
                 end
-                weight_update!(p, layer, alphaovermb, lambda, j, batchnorm, mom)
+
             end
         end
 
         gather_stats!(i, plotdef, mb, test, p, bn, cost_function, fwd_functions, mb_size, testn, 
-            lambda, batch_norm)  # ??? TODO train or mb???    
+            lambda, batch_norm)     
     end
 
     println("Training time: ",toq()," seconds")  # cpu time since tic() =>  toq() returns secs without printing
@@ -690,43 +683,6 @@ function backprop!(p, bn, dat, back_functions, batch_norm)
 
     end
 
-end
-
-# two methods for weight_update dispatched on type of variable mom
-function weight_update!(p, layer, alphaovermb, lambda, j, batch_norm, mom::Void) # no momentum=>mom set to nothing
-    if lambda <= 0.0  # don't regularize
-        p.theta[layer] .= p.theta[layer] .- (alphaovermb .* p.delta_w[layer])
-    else # regularize
-        p.theta[layer] .= ( p.theta[layer] .- (alphaovermb .* p.delta_w[layer]) 
-            .- (alphaovermb .* (lambda .* p.theta[layer])) )  # regterm
-    end
-    if batch_norm  
-        # skip bias calculation
-    else
-        p.bias[layer] .= p.bias[layer] .- (alphaovermb .* p.delta_b[layer])  # don't regularize bias
-    end
-end
-
-
-function weight_update!(p, layer, alphaovermb, lambda, j, batch_norm, mom::Float64) # momentum=>mom in [0.8,0.999]
-    p.delta_w_mom[layer] .= mom .* p.delta_w_mom[layer] .+ (1 - mom) .* p.delta_w[layer]
-    p.delta_b_mom[layer] .= mom .* p.delta_b_mom[layer] .+ (1 - mom) .* p.delta_b[layer]
-    # if j < 25  # bias correction useful with small number of mini-batches
-    #     p.delta_w_mom[layer] .*= 1.0 / (1.0 - mom^j)
-    #     p.delta_w_b[layer] .*= 1.0 / (1.0 - mom^j)
-    # end  # this would be useful only during the first epoch--we need argument i for epochs
-
-    if lambda <= 0.0  # if test faster than big multiply by 0.0
-        p.theta[layer] .= p.theta[layer] .- (alphaovermb .* p.delta_w_mom[layer])
-    else
-        p.theta[layer] .= ( p.theta[layer] .- (alphaovermb .* p.delta_w_mom[layer]) 
-            .- (alphaovermb .* (lambda .* p.theta[layer])) )
-    end  
-    if batch_norm  
-        # skip bias calculation
-    else
-        p.bias[layer] .= p.bias[layer] .- (alphaovermb .* p.delta_b_mom[layer])  # don't regularize bias  
-    end
 end
 
 
