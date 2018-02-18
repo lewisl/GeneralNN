@@ -410,6 +410,16 @@ Final cost test: NaN
 Test data accuracy in final 10 iterations:
 0.977 : 0.981 : 0.985 : 0.987 : 0.987 : 0.987 : 0.987 : 0.987 : 0.987 : 0.987 : 
 
+## a good outcome with 10,000 training examples
+train_nn("digits10000by784.mat",30,[200],units="relu", mb_size=100,lambda=0.008, alpha=.35, plots=["Learning","Cost","Training","Test"]);
+elapsed time: 19.191677207 seconds
+Fraction correct labels predicted training: 1.0
+Final cost training: 0.005674230682375456
+Fraction correct labels predicted test: 0.9566
+Final cost test: 0.2941939939076532
+Test data accuracy in final 10 iterations:
+0.956 : 0.956 : 0.956 : 0.956 : 0.956 : 0.957 : 0.957 : 0.957 : 0.957 : 0.957 :
+
 
 
 

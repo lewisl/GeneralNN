@@ -30,7 +30,6 @@ module GeneralNN
 
 
 #TODO
-#   use one function with two methods for weight_update to distinguish with and without regularization
 #   make affine units a separate layer_template
 #   relax minibatch size being exact factor of training data size
 #   implement dropout
@@ -77,8 +76,7 @@ mutable struct NN_parameters
     output_layer::Int64
     layer_units::Array{Int64,1}
 
-    # empty constructor
-    NN_parameters() = new(                  
+    NN_parameters() = new(               # empty constructor    
         Array{Array{Float64,2},1}(0),    # theta::Array{Array{Float64,2}}
         Array{Array{Float64,2},1}(0),    # bias::Array{Array{Float64,1}}
         Array{Array{Float64,2},1}(0),    # delta_w
@@ -104,7 +102,7 @@ mutable struct Model_data
     grad::Array{Array{Float64,2},1}
     epsilon::Array{Array{Float64,2},1}
 
-    Model_data() = new(
+    Model_data() = new(                 # empty constructor
         Array{Float64,2}(2,2),          # inputs
         Array{Float64,2}(2,2),          # targets
         Array{Array{Float64,2},1}(0),   # a
@@ -121,7 +119,7 @@ end
 struct Batch_norm_params holds batch normalization parameters for 
 feedfwd calculations, and backprop training.
 """
-mutable struct Batch_norm_params  # 
+mutable struct Batch_norm_params  
     gam::Array{Array{Float64,1},1}  
     bet::Array{Array{Float64,1},1}  
     delta_gam::Array{Array{Float64,1},1}
@@ -134,7 +132,7 @@ mutable struct Batch_norm_params  #
     mu_run::Array{Array{Float64,1},1}
     std_run::Array{Array{Float64,1},1}
 
-    Batch_norm_params() = new(
+    Batch_norm_params() = new(           # empty constructor
         Array{Array{Float64,1},1}(0),    # gam::Array{Array{Float64,1}}
         Array{Array{Float64,1},1}(0),    # bet::Array{Array{Float64,1}}
         Array{Array{Float64,2},1}(0),    # delta_gam
@@ -389,17 +387,6 @@ function run_training(matfname::String, n_iters::Int64, plots::Array{String,1},
     # now there's only one cost function.  someday there could be others.
     cost_function = cross_entropy_cost
 
-    # define two functions for alternative weight updates
-    weight_update_noreg(theta, delta) = theta .- (alphaovermb .* delta)
-    weight_update_reg(theta, delta) = theta .- (alphaovermb .* delta) .- (alphaovermb .* (lambda .* theta))
-
-    # choose the weight update function (keep this test out of the training loop)
-    if lambda <= 0.0  
-        weight_update! = weight_update_noreg 
-    else 
-        weight_update! = weight_update_reg
-    end   
-
     # function lists to be passed to feedfwd! and backprop!
     fwd_functions = (batch_norm_fwd!, unit_function!, classify_function!)
     back_functions = (batch_norm_back!, gradient_function!)
@@ -430,7 +417,14 @@ function run_training(matfname::String, n_iters::Int64, plots::Array{String,1},
                 else
                     p.bias[hl][:] -= alphaovermb .* p.delta_b[hl]  
                 end
-                p.theta[hl][:] = weight_update!(p.theta[hl], p.delta_w[hl])
+                if lambda <= 0.0  # if test faster than big multiply by 0.0
+                    # weight_update!(p.theta[hl], p.delta_w[hl], alphaovermb)
+                    p.theta[hl] .= p.theta[hl] .- (alphaovermb .* p.delta_w[hl])
+                else
+                    # weight_update!(p.theta[hl], p.delta_w[hl], alphaovermb, lambda)
+                    p.theta[hl] .= ( p.theta[hl] .- (alphaovermb .* p.delta_w[hl]) 
+                        .- (alphaovermb .* (lambda .* p.theta[hl])) )
+                end
             end
         end
 
@@ -438,7 +432,7 @@ function run_training(matfname::String, n_iters::Int64, plots::Array{String,1},
             lambda, batch_norm)  # ??? TODO train or mb???    
     end
 
-    toc()  # print cpu time since tic()
+    println("Training time: ",toq()," seconds")  # cpu time since tic() =>  toq() returns secs without printing
     
     #####################################################################
     # output and plot training statistics
@@ -499,7 +493,7 @@ function extract_data(matfname::String, normalization)
         test_targets = zeros(0,0)
     end
 
-    normfactors = (0.0, 1.0) # x_mu, x_std
+    normfactors = (0.0, 1.0) # default x_mu, x_std
     if normalization
         # normalize training data
         x_mu = mean(inputs)
@@ -511,7 +505,7 @@ function extract_data(matfname::String, normalization)
         end
         normfactors = (x_mu, x_std)
     end
-    # normalize test data
+    
     return inputs, targets, test_inputs, test_targets, normfactors
 end
 
@@ -558,11 +552,7 @@ function preallocate_nn_params!(p, n_hid, k, n, t)
 
     # initialize the linear weights
     p.theta = [zeros(2,2)] # layer 1 not used
-    # uniform distribution in (-.5, .5):  no real theoretical justification and less than best results
-        # interval = 0.5
-        # for i = 2:p.output_layer
-        #     push!(p.theta, rand(p.theta_dims[i]) .* (2.0 * interval) .- interval)
-        # end
+
     # Xavier initialization--current best practice for relu
     for l = 2:p.output_layer
         push!(p.theta, randn(p.theta_dims[l]) .* sqrt(2.0/p.theta_dims[l][2])) # sqrt of no. of input units
@@ -570,8 +560,6 @@ function preallocate_nn_params!(p, n_hid, k, n, t)
 
     # bias initialization: random non-zero initialization performs worse
     p.bias = [zeros(size(th, 1)) for th in p.theta]  # initialize biases to zero
-    # p.bias = [rand(size(th,1)) .* (2. * interval) .- interval for th in p.theta] # initialize (-.5, .5)
-    # p.bias = [randn(size(th,1)) .* sqrt(2.0/size(th,2)) for th in p.theta]
 
     # structure of gradient matches theta
     p.delta_w = deepcopy(p.theta)  
@@ -679,6 +667,17 @@ function backprop!(p, bn, dat, back_functions, batch_norm)
 end
 
 
+# pass only one layer of theta to be updated
+function weight_update!(theta, delta, alphaovermb) # method w/ no regularization
+    theta .= theta .- (alphaovermb .* delta)
+end
+
+
+function weight_update!(theta, delta, alphaovermb, lambda) # method with regularization
+    theta .= theta .- (alphaovermb .* delta) .- (alphaovermb .* (lambda .* theta))
+end
+
+
 function cross_entropy_cost(targets, predictions, n, theta, lambda, output_layer)
     # n is count of all samples in data set--use with regularization term
     # mb_size is count of all samples used in training batch--use with cost
@@ -768,12 +767,12 @@ end
 
 
 # two methods for gradient of linear layer units:  without bias and with
-function affine_grad!(currlayerdiff, prevlayeract)  # no bias
+function affine_gradient(currlayerdiff, prevlayeract)  # no bias
     return currlayerdiff * prevlayeract'
 end
 
 
-function affine_grad!(currlayerdiff, prevlayeract, dobias::Bool)
+function affine_gradient(currlayerdiff, prevlayeract, dobias::Bool)
     return currlayerdiff * prevlayeract', sum(currlayerdiff, 2)
 end
 
