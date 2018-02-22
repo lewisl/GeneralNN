@@ -420,6 +420,29 @@ Final cost test: 0.2941939939076532
 Test data accuracy in final 10 iterations:
 0.956 : 0.956 : 0.956 : 0.956 : 0.956 : 0.957 : 0.957 : 0.957 : 0.957 : 0.957 :
 
+## best using momentum and 60,000 examples
+train_nn("digits60000by784.mat",30,[600,400,200],mb_size=50,units="relu",plots=["Training","Cost","Learning","Test"],lambda=0.0,mom=0.9,alpha=.35);
+Training time: 576.544590714 seconds
+Fraction correct labels predicted training: 0.9996833333333334
+Final cost training: NaN
+Fraction correct labels predicted test: 0.986
+Final cost test: NaN
+Test data accuracy in final 10 iterations:
+0.986 : 0.986 : 0.986 : 0.986 : 0.986 : 0.986 : 0.986 : 0.986 : 0.986 : 0.986 :
+
+## After implementing momentum and Adam
+
+## great results on 10,000 examples and Adam
+train_nn("digits10000by784.mat",30,[100],normalization=true,opt="Adam",units="relu",mb_size=200,plots=["Cost","Learning","Training","Test"]);
+Training time: 10.167444937 seconds
+Fraction correct labels predicted training: 1.0
+Final cost training: 0.0034110258544949135
+Fraction correct labels predicted test: 0.957
+Final cost test: 0.3016729818832827
+Test data accuracy in final 10 iterations:
+0.955 : 0.955 : 0.955 : 0.955 : 0.956 : 0.956 : 0.956 : 0.956 : 0.957 : 0.957 : 
+
+
 
 
 
