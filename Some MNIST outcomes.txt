@@ -442,6 +442,16 @@ Final cost test: 0.3016729818832827
 Test data accuracy in final 10 iterations:
 0.955 : 0.955 : 0.955 : 0.955 : 0.956 : 0.956 : 0.956 : 0.956 : 0.957 : 0.957 : 
 
+## better results on 10,000 examples with Adam, batch_norm--but not for all of the extra parameters
+train_nn("digits10000by784.mat",35,[100,100],reg="L2",lambda=.004,batch_norm=true,plots=["Learning","Training","Test"],mb_size=25,units="relu",opt="Adam");
+Training time: 30.257522781 seconds
+Fraction correct labels predicted training: 0.9992
+Final cost training: 0.020238345869541454
+Fraction correct labels predicted test: 0.9638
+Final cost test: 0.335070820094357
+Test data accuracy in final 10 iterations:
+0.960 : 0.960 : 0.961 : 0.962 : 0.963 : 0.963 : 0.964 : 0.964 : 0.963 : 0.964 : 
+
 
 
 
