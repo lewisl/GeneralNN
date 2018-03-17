@@ -360,7 +360,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     tic()
 
     # seed random number generator.  For runs of identical models the same weight initialization
-    # will be used, given the number of parameters to be estimated.
+    # will be used, given the number of parameters to be estimated.  Enables better comparisons.
     srand(70653)  # seed int value is meaningless    
 
 
@@ -489,6 +489,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
         end
     end
 
+    # debug
     # verify correct dimensions of dropout filter
     # for item in mb.drop_filt_w
     #     println(size(item))
