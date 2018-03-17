@@ -26,11 +26,16 @@ module GeneralNN
 
 
 #DONE
-
+#   added mse_cost for linear regression
+#   got basic linear regression working, some fixes still needed
 
 
 #TODO
-#   use bias in the output layer with no batch norm?
+#   fix plots and "accuracy" for regression
+#   test separate functions for linear layers
+#   try "flatscale" x = x / max(x)
+#   performance improvements for batch_norm calculations
+#   use bias in the output layer with batch norm?
 #   make affine units a separate layer with functions for feedfwd and gradient
 #   relax minibatch size being exact factor of training data size
 #   set specific initialization for sigmoid units
@@ -125,7 +130,7 @@ end
 Struct Model_data hold examples and all layer outputs-->
 pre-allocate to reduce memory allocations and improve speed
 """
-mutable struct Model_data               # we will use dat for inputs and mb for training data
+mutable struct Model_data               # we will use train for inputs, test for test data and mb for mini-batches
     inputs::Array{Float64,2}            # in_k features by n examples
     targets::Array{Float64,2}           # labels for each example
     a::Array{Array{Float64,2},1}
@@ -234,24 +239,28 @@ Enables any size mini-batch that divides evenly into number of examples.  Plots
     key inputs:
         alpha   ::= learning rate
         lambda  ::= regularization rate
-        mb_size ::= mini-batch size
+        mb_size ::= mini-batch size=>integer, use 0 to run 1 batch of all examples,
+                    otherwise must be an even divisor of the number of examples
         n_hid   ::= array of Int containing number of units in each hidden layer
                     (make sure to use an array even with 1 hidden layer as in [40])
         normalization  ::= true or false => normalize inputs
         batch_norm     ::= true or false => normalize each linear layer outputs
-        opt            ::= one of "Momentum" or "Adam".  default is blank string.
+        opt            ::= one of "Momentum", "Adam" or "".  default is blank string "".
         opt_params     ::= parameters used by Momentum or Adam
                            Momentum: one floating point value as [.9] (showing default)
                            Adam: 2 floating point values as [.9, .999] (showing defaults)
                            Note that epsilon is ALWAYS set to 1e-8
                            To accept defaults, don't input this parameter or use []
-        classify       ::= "softmax" or "sigmoid" for only the output layer_template
-        units          ::= "sigmoid", "l_relu", "relu" for all hidden layers
+        classify       ::= "softmax", "sigmoid", or "regression" for only the output layer
+        units          ::= "sigmoid", "l_relu", "relu" for non-linear activation of all hidden layers
         plots   ::= determines training results collected and plotted
                     any choice of ["Learning", "Cost", "Training", "Test"]
         reg     ::= type of regularization, must be one of "L2","dropout", ""
         droplim ::= array of values between 0.5 and 1.0 determines how much dropout for
-                    hidden layers and output layers (ex: [0.8] or [0.8,0.9, 1.0])
+                    hidden layers and output layer (ex: [0.8] or [0.8,0.9, 1.0]).  A single
+                    value will be applied to all layers.  If fewer values than layers, then the
+                    last value extends to remaining layers.
+
 
 """
 function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha::Float64=0.35,
@@ -285,9 +294,8 @@ function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha:
         error("Input mb_size must be an integer greater or equal to 0")
     end
 
-    if !in(classify, ["softmax", "sigmoid"])
-        warn("classify must be \"softmax\" or \"sigmoid\". Setting to default \"softmax\".")
-        classify = "softmax"
+    if !in(classify, ["softmax", "sigmoid", "regression"])
+        error("classify must be \"softmax\", \"sigmoid\" or \"regression\".")
     end
 
     if !in(units, ["l_relu", "sigmoid", "relu"])
@@ -400,9 +408,10 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     hp.batch_norm = n_mb == 1 ? false : batch_norm  # no batch normalization for 1 batch
     hp.alphaovermb = alpha / mb_size  # calc once, use in loop
 
+    # set parameters for Momentum or Adam optimization
     if opt == "Momentum" || opt == "Adam"
         hp.opt = opt
-        if !(opt_params == [])  # user provided input for opt_params
+        if !(opt_params == [])  # use inputs for opt_params
             # set b1 for Momentum and Adam
             if opt_params[1] > 1.0 || opt_params[1] < 0.5
                 warn("first opt_params for Momentum or Adam should be between 0.5 and 0.999. Using defaults")
@@ -440,12 +449,14 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     preallocate_nn_params!(tp, hp, n_hid, in_k, n, out_k)
 
     # feedfwd training data
-    preallocate_feedfwd!(train, tp, n, batch_norm) 
+    preallocate_feedfwd!(train, tp, n, hp.batch_norm) 
 
     # feedfwd test data--if inputs are not all zeros
     if dotest
         testn = size(test.inputs,2)
         preallocate_feedfwd!(test, tp, testn, hp.batch_norm) 
+    else
+        testn = 0
     end
 
     # pre-allocate feedfwd mini-batch inputs and targets
@@ -514,11 +525,17 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
             error("Function to classify output labels must be \"sigmoid\" or \"softmax\".")
         end
     else
-        classify_function! = sigmoid!  # for one output label
+        if classify == "sigmoid"
+            classify_function! = sigmoid!  # for one output label
+        elseif classify == "regression"
+            classify_function! = regression!
+        else
+            error("Function to classify output must be \"sigmoid\" or \"regression\".")
+        end
     end
 
-    # now there's only one cost function.  someday there could be others.
-    cost_function = cross_entropy_cost
+    # set cost function
+    cost_function = classify=="regression" ? mse_cost : cross_entropy_cost
 
     # function lists to be passed to feedfwd! and backprop!
     fwd_functions = (batch_norm_fwd!, unit_function!, classify_function!)
@@ -530,6 +547,10 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     ##########################################################
 
     t = 0
+
+    # debug
+    # println(train.inputs)
+    # println(train.targets)
 
     for ep_i = 1:epochs  # loop for "epochs" with counter epoch i as ep_i
         for mb_j = 1:n_mb  # loop for mini-batches with counter minibatch j as mb_j
@@ -544,6 +565,9 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
 
             feedfwd!(tp, bn, mb, fwd_functions, hp)  # for all layers
 
+            # debug
+            # println(mb.a[2])
+
             backprop!(tp, bn, mb, back_functions, hp, t)  # for all layers
 
             if hp.opt == "Momentum"
@@ -553,7 +577,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
             end
 
             # update weights, bias, and batch_norm parameters
-            @fastmath for hl = 2:tp.output_layer        # hl refers to each hidden layer and output layer      
+            @fastmath for hl = 2:tp.output_layer        # hl iterates over each hidden layer and the output layer      
 
                 # update weights
                 tp.theta[hl] .= tp.theta[hl] .- (hp.alphaovermb .* tp.delta_w[hl])
@@ -572,13 +596,16 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
                     bn.bet[hl][:] -= hp.alphaovermb .* bn.delta_bet[hl]
                 end
 
+            # debug
+            # println(tp.theta)
+
             end
-        end
+        end # mini-batch loop
 
         # stats for all mini-batches of one epoch
         gather_stats!(ep_i, plotdef, mb, test, tp, bn, cost_function, fwd_functions, mb_size, testn, hp)
              
-    end
+    end # epoch loop
 
     println("Training time: ",toq()," seconds")  # cpu time since tic() =>  toq() returns secs without printing
     
@@ -614,7 +641,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     # plot the progress of cost and/or learning accuracy
     plot_output(plotdef)
 
-    return tp, bn;  # trained model parameters
+    return tp, bn;  # trained model parameters, batch_norm parameters
 
 end  # function run_training
 
@@ -700,7 +727,7 @@ function preallocate_nn_params!(tp, hp, n_hid, in_k, n, out_k)
     for l = 2:tp.output_layer-1  # l refers to nn layer so this includes only hidden layers
         push!(tp.theta_dims, (n_hid[l-1], tp.theta_dims[l-1][1])) # rows = hidden, cols = lower layer outputs
     end
-    push!(tp.theta_dims, (out_k, n_hid[end]))  # weight dims for output layer: rows = output classes
+    push!(tp.theta_dims, (out_k, tp.layer_units[tp.output_layer - 1][1]))  # weight dims for output layer: rows = output classes
 
     # initialize the linear weights
     tp.theta = [zeros(2,2)] # layer 1 not used
@@ -795,7 +822,7 @@ function feedfwd!(tp, bn, dat, fwd_functions, hp; istrain=true)
     @fastmath dat.z[tp.output_layer][:] = (tp.theta[tp.output_layer] * dat.a[tp.output_layer-1] 
         .+ tp.bias[tp.output_layer])  # TODO use bias in the output layer with no batch norm?
 
-    classify_function!(dat.z[tp.output_layer], dat.a[tp.output_layer])  # a = predictions
+    classify_function!(dat.z[tp.output_layer], dat.a[tp.output_layer])  # a = activations = predictions
 
 end
 
@@ -846,6 +873,31 @@ function cross_entropy_cost(targets, predictions, n, theta, hp, output_layer)
     end
     return cost
 end
+
+
+function mse_cost(targets, predictions, n, theta, hp, output_layer)
+    cost = (1.0 / (2.0 * n)) .* sum((targets .- predictions) .^ 2.0)
+    @fastmath if hp.reg == "L2"  # set reg="" if not using regularization
+        regterm = hp.lambda/(2.0 * n) .* sum([sum(th .* th) for th in theta[2:output_layer]])
+        cost = cost + regterm
+    end
+    return cost
+end
+
+
+function cross_entropy_grad()
+
+end
+
+# not using yet
+function mse_grad!(tp, m, hp, mb)
+    # This actually calculates dW (assuming bias column of 1's)
+    # also needs to be transposed to match Julia/C matrix convention
+    tp.grad = (alpha / m) * (X' * ((X * tp.theta) .- mb.y))  # from lr loop
+    return grad
+
+end
+
 
 function momentum!(tp, hp)
     @fastmath for hl = (tp.output_layer - 1):-1:2  # loop over hidden layers 
@@ -929,6 +981,11 @@ function softmax!(z::Array{Float64,2}, a::Array{Float64,2})
 end
 
 
+function regression!(z::Array{Float64,2}, a::Array{Float64,2})
+    a[:] = z[:]
+end
+
+
 # two methods for gradient of linear layer units:  without bias and with
 function affine_gradient(currlayerdiff, prevlayeract)  # no bias
     return currlayerdiff * prevlayeract'
@@ -946,19 +1003,19 @@ function sigmoid_gradient!(z::Array{Float64,2}, grad::Array{Float64,2})
 end
 
 
-function l_relu_gradient!(la::Array{Float64,2}, grad::Array{Float64,2})
-    for j = 1:size(la, 2)  # calculate down a column for speed
-        for i = 1:size(la, 1)
-            grad[i,j] = la[i,j] > 0.0 ? 1.0 : l_relu_neg
+function l_relu_gradient!(z::Array{Float64,2}, grad::Array{Float64,2})
+    for j = 1:size(z, 2)  # calculate down a column for speed
+        for i = 1:size(z, 1)
+            grad[i,j] = z[i,j] > 0.0 ? 1.0 : l_relu_neg
         end
     end
 end
 
 
-function relu_gradient!(la::Array{Float64,2}, grad::Array{Float64,2})
-    for j = 1:size(la, 2)  # calculate down a column for speed
-        for i = 1:size(la, 1)
-            grad[i,j] = la[i,j] > 0.0 ? 1.0 : 0.0
+function relu_gradient!(z::Array{Float64,2}, grad::Array{Float64,2})
+    for j = 1:size(z, 2)  # calculate down a column for speed
+        for i = 1:size(z, 1)
+            grad[i,j] = z[i,j] > 0.0 ? 1.0 : 0.0
         end
     end
 end
@@ -1137,7 +1194,7 @@ function accuracy(targets, preds,i)
         end
     else
         # works because single output unit is sigmoid
-        choices = [j >= 0.5 ? 1.0 : 0.0 for j in predictions]
+        choices = [j >= 0.5 ? 1.0 : 0.0 for j in preds]
         fracright = mean(convert(Array{Int},choices .== targets))
     end
     return fracright
