@@ -26,8 +26,7 @@ module GeneralNN
 
 
 #DONE
-#   added mse_cost for linear regression
-#   got basic linear regression working, some fixes still needed
+
 
 
 #TODO
@@ -110,6 +109,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
     batch_norm::Bool
     droplim::Array{Float64,1}
     reg::String
+    classify::String
 
     Hyper_parameters() = new(
         0.35,           # alpha
@@ -121,7 +121,8 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         0.35,           # alphaovermb -- you must set this if using mini-batches
         false,          # batch_norm
         [1.0],          # droplim
-        "L2"            # reg
+        "L2",           # reg
+        "sigmoid"       # classify
     )
 end
 
@@ -404,6 +405,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
         hp.alpha =  alpha
         hp.lambda = lambda
         hp.reg = reg
+        hp.classify = classify
 
     hp.batch_norm = n_mb == 1 ? false : batch_norm  # no batch normalization for 1 batch
     hp.alphaovermb = alpha / mb_size  # calc once, use in loop
@@ -615,14 +617,18 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     #####################################################################
     
     feedfwd!(tp, bn, train, fwd_functions, hp, istrain=false)  # output for entire training set
-    println("Fraction correct labels predicted training: ", accuracy(train.targets, train.a[tp.output_layer],epochs))
+    println("Fraction correct labels predicted training: ", 
+            hp.classify == "regression" ? r_squared(train.targets, train.a[tp.output_layer])
+                : accuracy(train.targets, train.a[tp.output_layer],epochs))
     println("Final cost training: ", cost_function(train.targets, train.a[tp.output_layer], n,
                     tp.theta, hp, tp.output_layer))
 
     # output test statistics
     if dotest     
         feedfwd!(tp, bn, test, fwd_functions, hp, istrain=false)
-        println("Fraction correct labels predicted test: ", accuracy(test.targets, test.a[tp.output_layer],epochs))
+        println("Fraction correct labels predicted test: ", 
+                hp.classify == "regression" ? r_squared(test.targets, test.a[tp.output_layer])
+                    : accuracy(test.targets, test.a[tp.output_layer],epochs))
         println("Final cost test: ", cost_function(test.targets, test.a[tp.output_layer], testn, 
             tp.theta, hp, tp.output_layer))
     end
@@ -1159,8 +1165,9 @@ function gather_stats!(i, plotdef, mb, test, tp, bn, cost_function, fwd_function
                 mb.a[tp.output_layer], train_n, tp.theta, hp, tp.output_layer)
         end
         if plotdef["plot_switch"]["Learning"]
-            plotdef["fracright_history"][i, plotdef["col_train"]] = accuracy(
-                mb.targets, mb.a[tp.output_layer],i)
+            plotdef["fracright_history"][i, plotdef["col_train"]] = (  hp.classify == "regression"
+                    ? r_squared(mb.targets, mb.a[tp.output_layer])
+                    : accuracy(mb.targets, mb.a[tp.output_layer], i)  )
         end
     end
     
@@ -1173,14 +1180,15 @@ function gather_stats!(i, plotdef, mb, test, tp, bn, cost_function, fwd_function
         if plotdef["plot_switch"]["Learning"]
             # printdims(Dict("test.a"=>test.a, "test.z"=>test.z))
             feedfwd!(tp, bn, test, fwd_functions, hp, istrain=false)  
-            plotdef["fracright_history"][i, plotdef["col_test"]] = accuracy(test.targets, 
-                test.a[tp.output_layer],i)          
+            plotdef["fracright_history"][i, plotdef["col_test"]] = (  hp.classify == "regression"
+                    ? r_squared(test.targets, test.a[tp.output_layer])
+                    : accuracy(test.targets, test.a[tp.output_layer], i)  )         
         end
     end     
 end  
 
 
-function accuracy(targets, preds,i)
+function accuracy(targets, preds, i)
     if size(targets,1) > 1
         targetmax = ind2sub(size(targets),vec(findmax(targets,1)[2]))[1]
         predmax = ind2sub(size(preds),vec(findmax(preds,1)[2]))[1]
@@ -1199,6 +1207,11 @@ function accuracy(targets, preds,i)
         fracright = mean(convert(Array{Int},choices .== targets))
     end
     return fracright
+end
+
+function r_squared(targets::Array{Float64,2}, preds::Array{Float64,2})
+    ybar = mean(targets)
+    return 1.0 - sum((targets .- preds).^2.) / sum((targets .- ybar).^2.)
 end
 
 
