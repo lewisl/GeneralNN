@@ -1,11 +1,15 @@
 #DONE
-
+#   use function std() built-in: fewer memory allocations, slight speedup, less memory high-water
+#   add data normalization factors to NN_parameters struct
+#   export and document extract_data function
 
 
 #TODO
+#   still lots of memory allocations despite the pre-allocation
 #   stats on individual regression parameters
+#   figure out memory use between train set and minibatch set
 #   fix save theta and predictions
-#   make affine units a separate layer with functions for feedfwd and gradient and test
+#   make affine units a separate layer with functions for feedfwd, gradient and test--do we need to?
 #   try "flatscale" x = x / max(x)
 #   performance improvements for batch_norm calculations
 #   relax minibatch size being exact factor of training data size
@@ -51,7 +55,7 @@ module GeneralNN
 export NN_parameters, Model_data, Batch_norm_params, Hyper_parameters
 
 # functions to use
-export train_nn, test_score, save_theta, accuracy, predictions_vector
+export train_nn, test_score, save_theta, accuracy, predictions_vector, extract_data
 
 using MAT
 using PyCall
@@ -77,6 +81,7 @@ mutable struct NN_parameters              # we will use tp as the struct variabl
     theta_dims::Array{Tuple{Int64, Int64},1}
     output_layer::Int64
     layer_units::Array{Int64,1}
+    normfactors::Array{Float64,1}
 
     NN_parameters() = new(               # empty constructor
         Array{Array{Float64,2},1}(0),    # theta::Array{Array{Float64,2}}
@@ -89,7 +94,8 @@ mutable struct NN_parameters              # we will use tp as the struct variabl
         Array{Array{Float64,1},1}(0),    # delta_s_b
         Array{Tuple{Int, Int},1}(0),     # theta_dims::Array{Array{Int64,2}}
         0,                               # output_layer
-        Array{Int64,1}(0)                # layer_units
+        Array{Int64,1}(0),               # layer_units
+        [0.0, 1.0]                       # normfactors
     )
 end
 
@@ -110,12 +116,12 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
     classify::String
 
     Hyper_parameters() = new(
-        0.35,           # alpha
+        0.35,           # alpha -- OK for nn. way too high for linear regression
         0.01,           # lambda
         0.9,            # b1
         0.999,          # b2
         1e-8,           # ltl_eps
-        0.35,           # alphaovermb -- you must set this if using mini-batches
+        0.35,           # alphaovermb -- calculated->not a valid default
         false,          # batch_norm
         [1.0],          # droplim
         "L2",           # reg
@@ -134,12 +140,13 @@ mutable struct Model_data               # we will use train for inputs, test for
     targets::Array{Float64,2}           # labels for each example
     a::Array{Array{Float64,2},1}
     z::Array{Array{Float64,2},1}
-    z_norm::Array{Array{Float64,2},1}   # same size as z
-    z_scale::Array{Array{Float64,2},1}  # same size as z, often called "y"
+    z_norm::Array{Array{Float64,2},1}   # same size as z--for batch_norm
+    z_scale::Array{Array{Float64,2},1}  # same size as z, often called "y"--for batch_norm
     grad::Array{Array{Float64,2},1}
     epsilon::Array{Array{Float64,2},1}
     drop_ran_w::Array{Array{Float64,2},1} # randomization for dropout--dims of a
     drop_filt_w::Array{Array{Bool,2},1}   # boolean filter for dropout--dims of a
+    
 
     Model_data() = new(                 # empty constructor
         Array{Float64,2}(2,2),          # inputs
@@ -151,7 +158,8 @@ mutable struct Model_data               # we will use train for inputs, test for
         Array{Array{Float64,2},1}(0),   # grad
         Array{Array{Float64,2},1}(0),   # epsilon
         Array{Array{Float64,2},1}(0),   # drop_ran_w
-        Array{Array{Bool,2},1}(0)       # drop_filt_w
+        Array{Array{Bool,2},1}(0),      # drop_filt_w
+        [0.0, 1.0]                      # default x_mu, x_std
     )
 end
 
@@ -266,7 +274,7 @@ Enables any size mini-batch that divides evenly into number of examples.  Plots
 """
 function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha::Float64=0.35,
     mb_size::Int64=0, lambda::Float64=0.01, classify::String="softmax", normalization::Bool=false,
-    opt::String="", opt_params::Array{Float64,1}=[0.9,0.999,1e-8], units::String="sigmoid", batch_norm::Bool=false,
+    opt::String="", opt_params::Array{Float64,1}=[0.9,0.999], units::String="sigmoid", batch_norm::Bool=false,
     reg::String="L2", droplim::Array{Float64,1}=[1.0], plots::Array{String,1}=["Training", "Learning"])
 
     ################################################################################
@@ -322,7 +330,7 @@ function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha:
 
     opt = titlecase(lowercase(opt))  # match title case for string argument
     if !in(opt, ["Momentum", "Adam", ""])
-            warn("opt must be \"Momentum\" or \"Adam\" or \"\" (nothing).  Setting to \"\" (nothing).")
+        warn("opt must be \"Momentum\" or \"Adam\" or \"\" (nothing).  Setting to \"\" (nothing).")
     end
 
     reg = titlecase(lowercase(reg))
@@ -429,7 +437,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
         if !(opt_params == [])  # use inputs for opt_params
             # set b1 for Momentum and Adam
             if opt_params[1] > 1.0 || opt_params[1] < 0.5
-                warn("first opt_params for Momentum or Adam should be between 0.5 and 0.999. Using defaults")
+                warn("first opt_params for Momentum or Adam should be between 0.5 and 0.999. Using default")
                 # nothing to do:  hp.b1 = 0.9 and hp.b2 = 0.999 and hp.ltl_eps = 1e-8
             else
                 hp.b1 = opt_params[1] # use the passed parameter
@@ -437,7 +445,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
             # set b2 for Adam
             if length(opt_params) > 1
                 if opt_params[2] > 1.0 || opt_params[1] < 0.9
-                    warn("second opt_params for Adam should be between 0.9 and 0.999. Using defaults")
+                    warn("second opt_params for Adam should be between 0.9 and 0.999. Using default")
                 else
                     hp.b2 = opt_params[2]
                 end
@@ -462,6 +470,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     # neural net model parameters
     tp = NN_parameters()  # trainedparameters: tp holds all the parameters that will be trained and some metadata
     preallocate_nn_params!(tp, hp, n_hid, in_k, n, out_k)
+    tp.normfactors = normfactors
 
     # feedfwd training data
     preallocate_feedfwd!(train, tp, n, hp.batch_norm)
@@ -666,7 +675,28 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
 end  # function run_training
 
 
-function extract_data(matfname::String, normalization)
+"""
+function extract_data(matfname::String, normalization::Bool=false)
+
+Extract data from a matlab formatted binary file.
+
+The matlab file may contain these keys: 
+- "train", which is required, 
+- "test", which is optional.
+
+Within each top-level key the following keys must be present:
+- "x", which holds the examples in variables as columns (no column headers should be used)
+- "y", which holds the labels as columns for each example (it is possible to have multiple output columns for categories)
+
+Multiple Returns:
+    inputs          2d array of float64 
+    targets         2d array of float64
+    test_inputs     2d array of float64
+    test_targets    2d array of float64
+    normfactors     1d vector of float64 containing [x_mu, x_std]
+
+"""
+function extract_data(matfname::String, normalization::Bool=false)
     # read the data
     df = matread(matfname)
 
@@ -688,7 +718,6 @@ function extract_data(matfname::String, normalization)
         test_targets = zeros(0,0)
     end
 
-    normfactors = (0.0, 1.0) # default x_mu, x_std
     if normalization
         # normalize training data
         x_mu = mean(inputs)
@@ -698,7 +727,7 @@ function extract_data(matfname::String, normalization)
         if in("test", keys(df))
             test_inputs = (test_inputs .- x_mu) ./ x_std
         end
-        normfactors = (x_mu, x_std)
+        normfactors = [x_mu, x_std]
     end
 
     return inputs, targets, test_inputs, test_targets, normfactors
@@ -710,6 +739,7 @@ end
 ####################################################################
 
 function preallocate_feedfwd!(dat, tp, n, batch_norm)
+    # we don't pre-allocate epsilon, grad used during backprop
     dat.a = [dat.inputs]
     dat.z = [zeros(2,2)] # not used for input layer
     for i = 2:tp.output_layer-1  # hidden layers
@@ -719,7 +749,7 @@ function preallocate_feedfwd!(dat, tp, n, batch_norm)
     push!(dat.z, zeros(size(tp.theta[tp.output_layer],1),n))
     push!(dat.a, zeros(size(tp.theta[tp.output_layer],1),n))
 
-    if batch_norm
+    if batch_norm  # required for full pass performance stats
         dat.z_norm = deepcopy(dat.z)
         dat.z_scale = deepcopy(dat.z)  # same size as z, often called "y"
     end
@@ -860,7 +890,7 @@ function backprop!(tp, bn, dat, back_functions, hp, t)
     (batch_norm_back!, gradient_function!) = back_functions
 
     dat.epsilon[tp.output_layer][:] = dat.a[tp.output_layer] .- dat.targets
-    @fastmath tp.delta_w[tp.output_layer][:] = dat.epsilon[tp.output_layer] * dat.a[tp.output_layer-1]'
+    @fastmath tp.delta_w[tp.output_layer][:] = dat.epsilon[tp.output_layer] * dat.a[tp.output_layer-1]' # 2nd term is effectively the grad for mse
     @fastmath tp.delta_b[tp.output_layer][:] = sum(dat.epsilon[tp.output_layer],2)
 
     @fastmath for hl = (tp.output_layer - 1):-1:2  # loop over hidden layers
@@ -906,11 +936,10 @@ end
 
 
 # not using yet
-function mse_grad!(tp, m, hp, mb)
-    # This actually calculates dW (assuming bias column of 1's)
-    # also needs to be transposed to match Julia/C matrix convention
-    tp.grad = (alpha / m) * (X' * ((X * tp.theta) .- mb.y))  # from lr loop
-    return grad
+function mse_grad!(mb, layer) # only for output layer using mse_cost
+    # do we really need this?
+
+    mb.grad[layer] = mb.a[layer-1]
 
 end
 
@@ -1003,13 +1032,9 @@ end
 
 
 # two methods for gradient of linear layer units:  without bias and with
-function affine_gradient(currlayerdiff, prevlayeract)  # no bias
-    return currlayerdiff * prevlayeract'
-end
-
-
-function affine_gradient(currlayerdiff, prevlayeract, dobias::Bool)
-    return currlayerdiff * prevlayeract', sum(currlayerdiff, 2)
+# not using this yet
+function affine_gradient(data, layer)  # no bias
+    return data.a[layer-1]'
 end
 
 
@@ -1041,10 +1066,8 @@ end
 function batch_norm_fwd!(bn, dat, hl, istrain=true)
     in_k,mb = size(dat.z[hl])
     if istrain
-        variance = zeros(in_k)
         bn.mu[hl][:] = mean(dat.z[hl], 2)          # use in backprop
-        variance[:] = 1.0/mb .* sum((dat.z[hl] .- bn.mu[hl]).^2.0, 2)
-        bn.stddev[hl][:] = sqrt.(variance .+ 1e-8)      # use in backprop
+        bn.stddev[hl][:] = std(dat.z[hl], 2)
         dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu[hl]) ./ bn.stddev[hl]  # normalized: 'aka' xhat or zhat
         dat.z_scale[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y
         bn.mu_run[hl][:] = (  bn.mu_run[hl][1] == 0.0 ? bn.mu[hl] :
