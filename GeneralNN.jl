@@ -1,7 +1,5 @@
 #DONE
-#   use function std() built-in: fewer memory allocations, slight speedup, less memory high-water
-#   add data normalization factors to NN_parameters struct
-#   export and document extract_data function
+
 
 
 #TODO
