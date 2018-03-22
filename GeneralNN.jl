@@ -4,9 +4,11 @@
 
 #TODO
 #   still lots of memory allocations despite the pre-allocation
+#   look hard at row v. col accesses to large matrices
 #   stats on individual regression parameters
 #   figure out memory use between train set and minibatch set
-#   fix save theta and predictions
+#   fix predictions
+#   method that uses saved parameters as inputs
 #   make affine units a separate layer with functions for feedfwd, gradient and test--do we need to?
 #   try "flatscale" x = x / max(x)
 #   performance improvements for batch_norm calculations
@@ -53,9 +55,10 @@ module GeneralNN
 export NN_parameters, Model_data, Batch_norm_params, Hyper_parameters
 
 # functions to use
-export train_nn, test_score, save_theta, accuracy, predictions_vector, extract_data
+export train_nn, test_score, save_params, accuracy, predictions_vector, extract_data
 
 using MAT
+using JLD
 using PyCall
 using Plots
 pyplot()  # initialize the backend used by Plots
@@ -79,7 +82,7 @@ mutable struct NN_parameters              # we will use tp as the struct variabl
     theta_dims::Array{Tuple{Int64, Int64},1}
     output_layer::Int64
     layer_units::Array{Int64,1}
-    normfactors::Array{Float64,1}
+    norm_factors::Tuple{Any, Any}
 
     NN_parameters() = new(               # empty constructor
         Array{Array{Float64,2},1}(0),    # theta::Array{Array{Float64,2}}
@@ -91,9 +94,9 @@ mutable struct NN_parameters              # we will use tp as the struct variabl
         Array{Array{Float64,2},1}(0),    # delta_s_w
         Array{Array{Float64,1},1}(0),    # delta_s_b
         Array{Tuple{Int, Int},1}(0),     # theta_dims::Array{Array{Int64,2}}
-        0,                               # output_layer
+        2,                               # output_layer
         Array{Int64,1}(0),               # layer_units
-        [0.0, 1.0]                       # normfactors
+        ([0.0 0.0], [1.0 0.0])           # norm_factors (mean, std)
     )
 end
 
@@ -157,7 +160,6 @@ mutable struct Model_data               # we will use train for inputs, test for
         Array{Array{Float64,2},1}(0),   # epsilon
         Array{Array{Float64,2},1}(0),   # drop_ran_w
         Array{Array{Bool,2},1}(0),      # drop_filt_w
-        [0.0, 1.0]                      # default x_mu, x_std
     )
 end
 
@@ -364,7 +366,7 @@ function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha:
         plots = new_plots
     end
 
-    theta, batch_params = run_training(matfname, epochs, n_hid,
+    tp, bn, hp = run_training(matfname, epochs, n_hid,
         plots=plots, reg=reg, droplim=droplim, alpha=alpha, mb_size=mb_size, lambda=lambda,
         opt=opt, opt_params=opt_params, classify=classify,
         normalization=normalization, batch_norm=batch_norm, units=units);
@@ -393,7 +395,10 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     test = Model_data()
 
     # load training data and test data (if any)
-    train.inputs, train.targets, test.inputs, test.targets, normfactors = extract_data(matfname, normalization)
+    train.inputs, train.targets, test.inputs, test.targets, norm_factors = extract_data(matfname, normalization)
+    # debug
+    println("norm_factors ", typeof(norm_factors))
+    println(norm_factors)
 
     # set some useful variables
     in_k,n = size(train.inputs)  # number of features in_k (rows) by no. of examples n (columns)
@@ -468,7 +473,9 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     # neural net model parameters
     tp = NN_parameters()  # trainedparameters: tp holds all the parameters that will be trained and some metadata
     preallocate_nn_params!(tp, hp, n_hid, in_k, n, out_k)
-    tp.normfactors = normfactors
+    #debug
+    println("tp.norm_factors ", typeof(tp.norm_factors))
+    tp.norm_factors = norm_factors
 
     # feedfwd training data
     preallocate_feedfwd!(train, tp, n, hp.batch_norm)
@@ -668,7 +675,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     # plot the progress of cost and/or learning accuracy
     plot_output(plotdef)
 
-    return tp, bn;  # trained model parameters, batch_norm parameters
+    return tp, bn, hp;  # trained model parameters, batch_norm parameters, hyper parameters
 
 end  # function run_training
 
@@ -687,11 +694,12 @@ Within each top-level key the following keys must be present:
 - "y", which holds the labels as columns for each example (it is possible to have multiple output columns for categories)
 
 Multiple Returns:
-    inputs          2d array of float64 
-    targets         2d array of float64
-    test_inputs     2d array of float64
-    test_targets    2d array of float64
-    normfactors     1d vector of float64 containing [x_mu, x_std]
+-    inputs..........2d array of float64 with rows as features and columns as examples
+-    targets.........2d array of float64 with columns as examples
+-    test_inputs.....2d array of float64 with rows as features and columns as examples
+-    test_targets....2d array of float64 with columns as examples
+-    norm_factors.....1d vector of float64 containing [x_mu, x_std]
+.....................note that x_mu and and x_std may be vectors for multiple rows of x
 
 """
 function extract_data(matfname::String, normalization::Bool=false)
@@ -718,17 +726,21 @@ function extract_data(matfname::String, normalization::Bool=false)
 
     if normalization
         # normalize training data
-        x_mu = mean(inputs)
-        x_std = std(inputs)
+        x_mu = mean(inputs, 2)
+        x_std = std(inputs, 2)
         inputs = (inputs .- x_mu) ./ x_std
         #normalize test data
         if in("test", keys(df))
             test_inputs = (test_inputs .- x_mu) ./ x_std
         end
-        normfactors = [x_mu, x_std]
+        norm_factors = (x_mu, x_std)
+    else
+        norm_factors = ([0.0], [1.0]) # tuple of Array{Float64,2}
     end
 
-    return inputs, targets, test_inputs, test_targets, normfactors
+    # to translate to unnormalized regression coefficients: m = mhat / stdx, b = bhat - (m*xmu)
+
+    return inputs, targets, test_inputs, test_targets, norm_factors
 end
 
 
@@ -1252,28 +1264,57 @@ end
 
 """
 
-    function save_theta(theta, mat_fname)
+    function save_params(jld_fname, tp, bn, hp)
 
-Save the weights, or theta, trained by the neural network as a matlab file.
+Save the trained parameters: tp, batch_norm parameters: bn, and hyper parameters: hp,
+as a JLD file.
+
 Can be used to run the model on prediction data or to evaluate other
 test data results (cost and accuracy).
 """
-function save_theta(theta, mat_fname)
+function save_params(jld_fname, tp, bn, hp )
     # check if output file exists and ask permission to overwrite
-    if isfile(mat_fname)
-        print("Output file $mat_fname exists. OK to overwrite? ")
+    if isfile(jld_fname)
+        print("Output file $jld_fname exists. OK to overwrite? ")
         resp = readline()
         if contains(lowercase(resp), "y")
-            rm(mat_fname)
+            rm(jld_fname)
         else
             error("File exists. Replied no to overwrite. Quitting.")
         end
     end
 
-    # write the matlab formatted file (based on hdf5)
-    outfile = matopen(mat_fname, "w")
-    write(outfile, "theta", theta)
-    close(outfile)
+    # to translate to unnormalized regression coefficients: m = mhat / stdx, b = bhat - (m*xmu)
+
+    # write the JLD formatted file (based on hdf5)
+    jldopen(jld_fname, "w") do f
+        write(f, "tp", tp)
+        write(f, "hp", hp)
+        write(f, "bn", bn)
+    end
+
+end
+
+"""
+
+    function load_params(jld_fname)
+
+Load the trained parameters: tp, batch_norm parameters: bn, and hyper parameters: hp,
+from a JLD file.
+
+Can be used to run the model on prediction data or to evaluate other
+test data results (cost and accuracy).
+
+returns: tp, bn, hp
+These are mutable structs.  Use fieldnames(tp) to list the fields.
+"""
+function load_params(jld_fname)
+    jldopen(jld_fname, "r") do f
+        tp = read(f, "tp")
+        bn = read(f, "bn")
+        hp = read(f, "hp")
+    end
+    return tp,bn,hp
 end
 
 

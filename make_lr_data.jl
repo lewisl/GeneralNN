@@ -37,5 +37,5 @@ matfname::String="lrdat.mat",y_type="mean")
     out = Dict("train" => Dict("x" => x, "y" => y))
     matwrite(matfname, out)
 
-    return out
+    return out, slope, b
 end
