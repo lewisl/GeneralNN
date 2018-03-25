@@ -55,7 +55,7 @@ module GeneralNN
 export NN_parameters, Model_data, Batch_norm_params, Hyper_parameters
 
 # functions to use
-export train_nn, test_score, save_params, accuracy, predictions_vector, extract_data
+export train_nn, test_score, save_params, load_params, accuracy, predictions_vector, extract_data
 
 using MAT
 using JLD
@@ -116,7 +116,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
     opt::String
     classify::String
 
-    Hyper_parameters() = new(
+    Hyper_parameters() = new(       # constructor with defaults--we use hp as the struct variable
         0.35,           # alpha -- OK for nn. way too high for linear regression
         0.01,           # lambda
         0.9,            # b1
@@ -1294,6 +1294,7 @@ function save_params(jld_fname, tp, bn, hp )
     end
 
 end
+
 
 """
 
