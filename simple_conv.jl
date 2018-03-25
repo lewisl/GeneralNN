@@ -54,7 +54,7 @@
 convolve a single plane filter with an image of any depth.
 return a single plane output for that filter.
 """
-function convolve(img, fil, same=false, stri=1, pad=0)
+function convolve_1(img, fil, same=false, stri=1, pad=0)
     imgx, imgy = size(img,1,2)
     filx, fily = size(fil,1,2)
 
@@ -136,6 +136,11 @@ function avgpooling(img; pooldims=[2,2], same=false, stri=2, pad=0, mode="avg")
 end
 
 
+function maxpooling(img; pooldims=[2,2], same=false, stri=2, pad=0, mode="max")
+    pooling(img; pooldims=pooldims, same=same, stri=stri, pad=pad, mode="max")
+end
+
+
 """
 function fc(img)
 
@@ -153,7 +158,7 @@ function fc(imgstack)
         error("imgstack must have 4 dimensions even if img is 2d (use 1 for number of channels)")
     end
     m,n,c,z = size(imgstack)  # m x n image with c channels => z images like this
-    return reshape(imgstack,prod([m,n,c]),z)
+    return reshape(imgstack, prod((m,n,c)), z)
 end
 
 
