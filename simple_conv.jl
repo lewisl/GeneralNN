@@ -158,15 +158,17 @@ end
 
 
 """
-function fc_to_stack(fc, imgdims)
+function stack(fc, imgdims)
 
     Convert a flattened image stack back to an image stack.
     imgdims must provide 3 integer values:  m (rows or height) x n (columns or width) x c (number of channels).
     c, number of channels, must be provided for 2D images:  just use 1.
 
     returns: an imagestack that is m x n x c x z where z is the number of images (or examples)
+
+    Note: this returns an array that is a view of the input array.
 """
-function fc_to_stack(fc, imgdims::Array{Int,1})
+function stack(fc, imgdims)
     if length(imgdims) != 3
         error("imgdims must contain 3 integer values")
     end
@@ -182,18 +184,8 @@ function fc_to_stack(fc, imgdims::Array{Int,1})
         error("number of rows--number of elements for each image--does not match the image dimensions")
     end
 
-    ret = Array{Float64,4}(m,n,c,z)
-    for l = 1:z
-        for k = 1:c
-            for j = 1:n
-                for i = 1:m
-                    ret[i,j,k,l] = fc[i + ((j-1)*m) + (k-1)*(m*n) ,l]
-                end
-            end
-        end
-    end
+    return reshape(fc, m,n,c,z)
 
-    return ret
 end
 
 
