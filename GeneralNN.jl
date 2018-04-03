@@ -397,8 +397,8 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     # load training data and test data (if any)
     train.inputs, train.targets, test.inputs, test.targets, norm_factors = extract_data(matfname, normalization)
     # debug
-    println("norm_factors ", typeof(norm_factors))
-    println(norm_factors)
+    # println("norm_factors ", typeof(norm_factors))
+    # println(norm_factors)
 
     # set some useful variables
     in_k,n = size(train.inputs)  # number of features in_k (rows) by no. of examples n (columns)
@@ -473,8 +473,6 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     # neural net model parameters
     tp = NN_parameters()  # trainedparameters: tp holds all the parameters that will be trained and some metadata
     preallocate_nn_params!(tp, hp, n_hid, in_k, n, out_k)
-    #debug
-    println("tp.norm_factors ", typeof(tp.norm_factors))
     tp.norm_factors = norm_factors
 
     # feedfwd training data
@@ -728,10 +726,10 @@ function extract_data(matfname::String, normalization::Bool=false)
         # normalize training data
         x_mu = mean(inputs, 2)
         x_std = std(inputs, 2)
-        inputs = (inputs .- x_mu) ./ x_std
+        inputs = (inputs .- x_mu) ./ (x_std + 1e-08)
         #normalize test data
         if in("test", keys(df))
-            test_inputs = (test_inputs .- x_mu) ./ x_std
+            test_inputs = (test_inputs .- x_mu) ./ (x_std + 1e-08)
         end
         norm_factors = (x_mu, x_std)
     else

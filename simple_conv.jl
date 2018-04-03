@@ -1,60 +1,66 @@
-# function convnet()
-#     # some useful dimensions
+# TODO s
+#   speed up convolve_single
+#   create convolve_multi--can one function do both?
 
-#     # topology of multiple images
-#     m,n,c,k  # m rows, n columns, c channels, k images
 
-#     # net architecture by layer
-#     arch = Dict(
-#                 1 => Dict(
-#                     "type" => "conv", # one of conv, max, avg, fc, classify, relu, l_relu, sigmoid, softmax, none
-#                     "dims" => [24,24,3]
-#                 ),
-#                 2 => Dict(
-#                     "type" => "conv", # one of conv, max, avg, fc, classify
-#                     "unit" => "relu", # one of relu, l_relu, sigmoid, softmax
-#                     "dims" => [24,24,3]
-#                 ),
-#                 3 => Dict(
-#                     "type" => "conv", # one of conv, max, avg, fc, classify
-#                     "unit" => "relu", # one of relu, l_relu, sigmoid, softmax
-#                     "dims" => [24,24,3]
-#                 ),
-#                 4 => Dict(
-#                     "type" => "conv", # one of conv, max, avg, fc, classify
-#                     "unit" => "relu", # one of relu, l_relu, sigmoid, softmax
-#                     "dims" => [24,24,3]
-#                 ),
-#     )
 
-#     # number  layers
-#     num_layers = maximum(keys(arch))
+include("GeneralNN.jl")
+using GeneralNN
 
-#     # layer functions -- canonical set
-#     func_def = Dict(
-#         "conv" = convolve,
-#         "relu" = relu,
-#         "l_relu" = l_relu,
-#         "sigmoid" = sigmoid,
-#         "softmax" = softmax,
-#         "max" = maxpooling,
-#         "avg" = avgpooling,
-#         "fc" = fc,
-#         "classify" = classify,
-#         "none" = donothing,
-#     )
 
-#     # set layer functions to use per layer of network architecture
-#     layer_funcs = [func_def[arch[i]["type"]] for i in 1:num_layers]
+function basic(matfname, normalization=true)
+    # create data containers
+    train = Model_data()  # train holds all the data and layer inputs/outputs
+    test = Model_data()
 
-# end
+    # load training data and test data (if any)
+    train.inputs, train.targets, test.inputs, test.targets, norm_factors = extract_data(matfname, normalization)
+
+    # set some useful variables
+    in_k,n = size(train.inputs)  # number of features in_k (rows) by no. of examples n (columns)
+    out_k = size(train.targets,1)  # number of output units
+    dotest = size(test.inputs, 1) > 0  # there is testing data
+
+    # structure of convnet
+        # inputs are 784 x 5000 examples
+        # the image is 28 x 28
+        # first conv 26 x 26 by 8 channels = 5408 values
+        #     first filters are 3 x 3 by 8 = 72 weights
+        # first relu is same:  5408 x 5000
+        # second cov 24 x 24 by 12 channels = 6912 values
+        #     second filters are 3 x 3 x 12 = 108 weights
+        # second relu is same 6912 by 5000
+        # maxpooling output is 12 x 12 x 12 = 1728 values
+        # fc is 1728 x 5000
+        # softmax is 10 x 5000
+
+    w1 = rand(3,3,8)
+    imgstack = reshape(train.inputs,(28,28,1,:))
+
+    ########################################################################
+    #  feed forward
+    ########################################################################
+
+
+    # first conv loop
+    lin1 = zeros(26,26,8,5000)
+    for ci = 1:size(imgstack,4)  # ci = current image
+        for cc = 1:size(w1,3)  # cc = current channel
+            lin1[:,:,cc, ci] = convolve_single(imgstack[:,:,:,ci], w1)
+        end
+    end
+    return lin1
+
+end
 
 
 """
-convolve a single plane filter with an image of any depth.
-return a single plane output for that filter.
+function convolve_single(img, fil; same=false, stri=1, pad=0)
+
+    convolve a single plane filter with an image of any depth.
+    return a single plane output for that filter.
 """
-function convolve_1(img, fil, same=false, stri=1, pad=0)
+function convolve_single(img, fil; same=false, stri=1, pad=0)
     imgx, imgy = size(img,1,2)
     filx, fily = size(fil,1,2)
 
@@ -111,7 +117,7 @@ function pooling(img; pooldims=[2,2], same=false, stri=2, pad=0, mode="max")
     end
 
     if pad > 0
-        img = dopad(img, pad)
+        img[:] = dopad(img, pad)
     end
 
     # dimensions of the single plane convolution result
