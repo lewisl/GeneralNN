@@ -43,12 +43,18 @@ function basic(matfname, normalization=true)
 
 
     # first conv loop
-    lin1 = zeros(26,26,8,5000)
-    for ci = 1:size(imgstack,4)  # ci = current image
-        for cc = 1:size(w1,3)  # cc = current channel
-            lin1[:,:,cc, ci] = convolve_single(imgstack[:,:,:,ci], w1)
-        end
+    # lin1 = zeros(26,26,8,5000)
+    # for ci = 1:size(imgstack,4)  # ci = current image
+    #     for cc = 1:size(w1,3)  # cc = current channel
+    #         lin1[:,:,cc, ci] = convolve_single(imgstack[:,:,:,ci], w1)
+    #     end
+    # end
+
+    lin1 = zeros(26,26,8,10)
+    for ci = 1:10     #size(imgstack,4)  # ci = current image
+            lin1[:,:,:, ci] = convolve_multi(imgstack[:,:,:,ci], w1)
     end
+
     return lin1
 
 end
@@ -86,6 +92,67 @@ function convolve_single(img, fil; same=false, stri=1, pad=0)
     return ret
 end
 
+
+function convolve_multi(img, fil; same=false, stri=1, pad=0)
+    
+    if ndims(img) == 3
+        imgx, imgy, imgc = size(img)
+    elseif ndims(img)== 2
+        imgx, imgy = size(img)
+        imgc = 1
+    else
+        error("Image slice must have 2 or 3 dimensions.")
+    end
+
+    if ndims(fil) == 3
+        filx, fily, fc = size(fil)  # fc = filter channels
+    elseif ndims(fil) == 2
+        filx, fily = size(fil)
+        fc = 1
+    else
+        error("Filter must have 2 or 3 dimensions.  Has $(ndims(fil))")
+    end
+
+    if same 
+        pad = ceil(Int, (filx - 1) / 2)
+    end
+
+    if pad > 0
+        img = dopad(img, pad)
+    end
+
+    # dimensions of the single plane convolution result
+    x_out = floor(Int, (imgx + 2 * pad - filx ) / stri) + 1
+    y_out = floor(Int, (imgy + 2 * pad - fily ) / stri) + 1
+
+    ret = Array{Float64}(x_out, y_out, fc)
+    for z = 1:fc
+        for j = zip(1:y_out, 1:stri:imgy)  # column major access
+            for i = zip(1:x_out, 1:stri:imgx)
+                element = 0.0
+                piece = img[i[2]:i[2]+filx-1, j[2]:j[2]+fily-1, :]
+                for ic = 1:imgc, fj = 1:fily, fi = 1:filx  # loop across x,y of the filter for all 3 dims of the piece
+                    element += piece[fi,fj,ic] * fil[fi, fj]
+                end
+                ret[i[1],j[1],z] = element
+                # ret[i[1],j[1],z] = sum(img[i[2]:i[2]+filx-1, j[2]:j[2]+fily-1, :] .* fil[:,:,z])  
+            end
+        end
+    end
+
+    # ret = Array{Float64}(x_out, y_out)
+    # imgi = 1
+    # for i = 1:x_out  
+    #     imgj = 1                               # zip(1:x_out, 1:stri:imgx)
+    #     for j = 1:y_out                             # zip(1:y_out, 1:stri:imgy)
+    #         ret[i,j] = sum(img[imgi:imgi+filx-1, imgj:imgj+fily-1, :] .* fil)  
+    #         imgj += stri
+    #     end
+    #     imgi += stri
+    # end
+
+    return ret
+end
 
 """
 a complicated one-liner:  yuck--but, it's 15 times faster that catenating!
