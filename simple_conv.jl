@@ -95,7 +95,11 @@ function convolve_single(img, fil; same=false, stri=1, pad=0)
 end
 
 
-function ctest(img, fil; same = false, stri=1, pad=0)
+"""
+Convolve a one or multi-channel image with a filter with one or more output channels.
+This is a 20x speedup over array broadcasting.
+"""
+function convolve_multi(img, fil; same=false, stri=1, pad=0)
     if ndims(img) == 3
         imgx, imgy, imgc = size(img)
     elseif ndims(img)== 2
@@ -109,53 +113,7 @@ function ctest(img, fil; same = false, stri=1, pad=0)
         filx, fily, filc = size(fil)
         filp = 1
     elseif ndims(fil) == 4  # multiple filters
-        filx, fily, filc, filp = size(fil)
-    else
-        error("wrong dimension for filter")
-    end
-
-    !(filc == imgc) && error("Number of channels in image and filter do not match.")
-
-    if same 
-        pad = ceil(Int, (filx - 1) / 2)
-    end
-
-    if pad > 0
-        img = dopad(img, pad)
-    end
-
-    # dimensions of the single plane convolution result
-    x_out = floor(Int, (imgx + 2 * pad - filx ) / stri) + 1
-    y_out = floor(Int, (imgy + 2 * pad - fily ) / stri) + 1
-
-    ret = zeros(x_out, y_out, filp)
-    for z = 1:filp
-        for j = zip(1:y_out, 1:stri:imgy)  # column major access
-            for i = zip(1:x_out, 1:stri:imgx)
-                ret[i[1],j[1],z] = sum(img[i[2]:i[2]+filx-1, j[2]:j[2]+fily-1, :] .* fil[:,:,:,z])  
-            end
-        end
-    end
-
-    return ret
-
-end
-
-function cteste(img, fil; same=false, stri=1, pad=0)
-    if ndims(img) == 3
-        imgx, imgy, imgc = size(img)
-    elseif ndims(img)== 2
-        imgx, imgy = size(img)
-        imgc = 1
-    else
-        error("Image slice must have 2 or 3 dimensions.")
-    end
-
-    if ndims(fil) == 3  # one filter
-        filx, fily, filc = size(fil)
-        filp = 1
-    elseif ndims(fil) == 4  # multiple filters
-        filx, fily, filc, filp = size(fil)
+        filx, fily, filc, filp = size(fil)  # filc = filter channels must equal image channels; filp = filter planes--number of output channels
     else
         error("wrong dimension for filter")
     end
@@ -179,7 +137,7 @@ function cteste(img, fil; same=false, stri=1, pad=0)
         for j = zip(1:y_out, 1:stri:imgy)  # column major access
             for i = zip(1:x_out, 1:stri:imgx)
                 element = 0.0
-                piece = img[i[2]:i[2]+filx-1, j[2]:j[2]+fily-1, :]
+                piece = img[i[2]:i[2]+filx-1, j[2]:j[2]+fily-1, :]  # take a slice of the image inc. channels
                 for ic = 1:imgc, fj = 1:fily, fi = 1:filx  # loop across x,y of the filter for all 3 dims of the piece
                     element += piece[fi,fj,ic] * fil[fi, fj, ic, z]
                 end
@@ -191,68 +149,6 @@ function cteste(img, fil; same=false, stri=1, pad=0)
     return ret
 end
 
-
-function convolve_multi(img, fil; same=false, stri=1, pad=0)
-    
-    if ndims(img) == 3
-        imgx, imgy, imgc = size(img)
-    elseif ndims(img)== 2
-        imgx, imgy = size(img)
-        imgc = 1
-    else
-        error("Image slice must have 2 or 3 dimensions.")
-    end
-
-    if ndims(fil) == 4
-        filx, fily, fp, fc = size(fil)  # fp = filter planes to match dims of image; fc = filter channels--more filters
-    elseif ndims(fil) == 3  # only one filter for a 3d image
-        filx, fily, fc = size(fil)
-        fp = 1
-    else
-        error("Filter must have 2 or 3 dimensions.  Has $(ndims(fil))")
-    end
-
-    if same 
-        pad = ceil(Int, (filx - 1) / 2)
-    end
-
-    if pad > 0
-        img = dopad(img, pad)
-    end
-
-    # dimensions of the single plane convolution result
-    x_out = floor(Int, (imgx + 2 * pad - filx ) / stri) + 1
-    y_out = floor(Int, (imgy + 2 * pad - fily ) / stri) + 1
-
-    # ret = Array{Float64}(x_out, y_out, fc)
-    ret = zeros(x_out, y_out, fc)
-    for z = 1:fc
-        for j = zip(1:y_out, 1:stri:imgy)  # column major access
-            for i = zip(1:x_out, 1:stri:imgx)
-                element = 0.0
-                piece = img[i[2]:i[2]+filx-1, j[2]:j[2]+fily-1, :]
-                for ic = 1:imgc, fj = 1:fily, fi = 1:filx  # loop across x,y of the filter for all 3 dims of the piece
-                    element += piece[fi,fj,ic] * fil[fi, fj, z]
-                end
-                ret[i[1],j[1],z] = element
-                # ret[i[1],j[1],z] = sum(img[i[2]:i[2]+filx-1, j[2]:j[2]+fily-1, :] .* fil[:,:,z])  
-            end
-        end
-    end
-
-    # ret = Array{Float64}(x_out, y_out)
-    # imgi = 1
-    # for i = 1:x_out  
-    #     imgj = 1                               # zip(1:x_out, 1:stri:imgx)
-    #     for j = 1:y_out                             # zip(1:y_out, 1:stri:imgy)
-    #         ret[i,j] = sum(img[imgi:imgi+filx-1, imgj:imgj+fily-1, :] .* fil)  
-    #         imgj += stri
-    #     end
-    #     imgi += stri
-    # end
-
-    return ret
-end
 
 """
 a complicated one-liner:  yuck--but, it's 15 times faster that catenating!
