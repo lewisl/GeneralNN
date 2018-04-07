@@ -1,7 +1,16 @@
+
+
+#   DONE
+
+
 # TODO 
+#   cut the piece in loops rather than using slicing notation
+#   function to stack unrolled image from unrolled convolution
 #   add bias term for convolutional layers
 #   do examples loop across layers not per layer
 #   implement "no check" versions for convolve and other image functions
+#   should we unroll the whole imgstack or just go one at a time?  depends on whether we can reuse
+#   implement stride, padding, same for unrolled convolutions
 
 
 
@@ -52,7 +61,7 @@ function basic(matfname, normalization=true, unroll=false)
     filx = fily = 3
     imgx = imgy = 28
     imgstack = reshape(train.inputs,(imgx,imgy,1,:))
-    stri = 3
+    stri = 1
     inch = 1
     outch = 8
     w1 = rand(filx,fily,inch,outch)
@@ -60,13 +69,22 @@ function basic(matfname, normalization=true, unroll=false)
 
     cv1 = Array{Float64}(x_out,y_out,8,n)
     if !unroll
-        for ci = 1:5000     #size(imgstack,4)  # ci = current image
-                cv1[:,:,:, ci] = convolve_multi(imgstack[:,:,:,ci], w1; stri=stri)   # TODO did the dot do anything
+        @time for ci = 1:n     #size(imgstack,4)  # ci = current image
+            cv1[:,:,:, ci] = convolve_multi(imgstack[:,:,:,ci], w1; stri=stri)   # TODO did the dot do anything
         end
-    elseif unroll
-        unimg = unroll_img(imgstack[:,:,:,1], w1)
+    elseif unroll  # 2.30 times faster than FFT style (stack)
+
+        # unroll all examples in one go
+        unimg = Array{Float64}(x_out, x_out*filx*fily, inch,n)
+        @time for ci = 1:n
+            unimg[:,:,:,ci] = unroll_img(imgstack[:,:,:,ci], w1)
+        end
+
         unfil = unroll_fil(imgstack[:,:,:,1], w1)
-        return unimg, unfil
+        @time for ci = 1:n
+            cv1[:,:,:, ci] = convolve_unroll(unimg[:,:,:,ci], unfil)    
+        end
+
     else
         error("value of unroll not set to true or false.")
     end
@@ -76,7 +94,8 @@ function basic(matfname, normalization=true, unroll=false)
     rl1 = copy(fc(cv1))
     GeneralNN.relu!(rl1, rl1)
     cv1 = stack(rl1,(x_out, y_out, outch))  # TODO do we need the pre-relu output of convolve?
-
+    println("that's all folks!...")
+    return cv1
 
     # # second conv
     # image size values
@@ -146,7 +165,7 @@ function convolve_multi(img, fil; same=false, stri=1, pad=0)
         for j = zip(1:y_out, 1:stri:imgy)  # column major access
             for i = zip(1:x_out, 1:stri:imgx)
                 element = 0.0
-                piece = img[i[2]:i[2]+filx-1, j[2]:j[2]+fily-1, :]  # take a slice of the image inc. channels
+                piece = img[i[2]:i[2]+filx-1, j[2]:j[2]+fily-1, :]  # SLOW! take a slice of the image inc. channels
                 for ic = 1:imgc, fj = 1:fily, fi = 1:filx  # loop across x,y of the filter for all 3 dims of the slice
                     element += piece[fi,fj,ic] * fil[fi, fj, ic, z]
                 end
@@ -358,14 +377,16 @@ function unroll_img(img,fil; stri=1, pad=0, same=false)
     # println("unimg ",size(unimg))
     # println("img   ", size(img))
 
-    for i = 1:x_out 
-        for j = 1:y_out 
-            t = 0
-            for m=i:i+filx-1 
-                for n=j:j+fily-1 
-                    t += 1
-                    unimg[i,(j-1)*l_fil+t, :] = img[m,n, :]  # spear through for one element in "front" plane
-                    # println(m," ", n, " ",x[m,n])
+    for z = 1:imgc
+        for i = 1:x_out 
+            for j = 1:y_out 
+                t = 0
+                for m=i:i+filx-1 
+                    for n=j:j+fily-1 
+                        t += 1  # column displacement (across part of row) for result matrix
+                        unimg[i,(j-1)*l_fil+t, z] = img[m,n, z]  
+                        # println(m," ", n, " ",x[m,n])
+                    end
                 end
             end
         end
