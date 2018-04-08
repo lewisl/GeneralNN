@@ -1,6 +1,6 @@
 
 
-#   DONE
+# DONE
 
 
 # TODO 
@@ -15,18 +15,22 @@
 
 
 include("GeneralNN.jl")
-using GeneralNN
+import GeneralNN  # module:  must qualify all function names
 
 
 
-function basic(matfname, normalization=true, unroll=false)
+function basic(matfname, norm_mode="minmax", unroll=false)
     # create data containers
-    train = Model_data()  # train holds all the data and layer inputs/outputs
-    test = Model_data()
+    train = GeneralNN.Model_data()  # train holds all the data and layer inputs/outputs
+    test = GeneralNN.Model_data()
     srand(1)
 
     # load training data and test data (if any)
-    train.inputs, train.targets, test.inputs, test.targets, norm_factors = extract_data(matfname, normalization)
+    train.inputs, train.targets, test.inputs, test.targets, norm_factors = GeneralNN.extract_data(matfname, norm_mode)
+    # return train.inputs, norm_factors, maximum(train.inputs), minimum(train.inputs)
+
+    # debug
+    # return any(isnan.(train.inputs))
 
     # set some useful variables
     in_k,n = size(train.inputs)  # number of features in_k (rows) by no. of examples n (columns)
@@ -79,6 +83,7 @@ function basic(matfname, normalization=true, unroll=false)
         @time for ci = 1:n
             unimg[:,:,:,ci] = unroll_img(imgstack[:,:,:,ci], w1)
         end
+        
 
         unfil = unroll_fil(imgstack[:,:,:,1], w1)
         @time for ci = 1:n
@@ -100,8 +105,8 @@ function basic(matfname, normalization=true, unroll=false)
     # # second conv
     # image size values
     filx = fily = 3
-    imgx, imgy = x_out, y_out
-    stri = 3
+    imgx, imgy = x_out, y_out  # from previous conv layer
+    stri = 1
     inch = outch
     outch = 12
     w2 = rand(filx,fily,inch,outch)
@@ -165,9 +170,10 @@ function convolve_multi(img, fil; same=false, stri=1, pad=0)
         for j = zip(1:y_out, 1:stri:imgy)  # column major access
             for i = zip(1:x_out, 1:stri:imgx)
                 element = 0.0
-                piece = img[i[2]:i[2]+filx-1, j[2]:j[2]+fily-1, :]  # SLOW! take a slice of the image inc. channels
+                # piece = img[i[2]:i[2]+filx-1, j[2]:j[2]+fily-1, :]  # SLOW! take a slice of the image inc. channels
                 for ic = 1:imgc, fj = 1:fily, fi = 1:filx  # loop across x,y of the filter for all 3 dims of the slice
-                    element += piece[fi,fj,ic] * fil[fi, fj, ic, z]
+                    element += img[i[2]+fi-1,j[2]+fj-1,ic] * fil[fi, fj, ic, z]
+                    # element += piece[fi,fj,ic] * fil[fi, fj, ic, z]
                 end
                 ret[i[1],j[1],z] = element
             end
