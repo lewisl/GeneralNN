@@ -1,8 +1,9 @@
 #DONE
-#   added norm_mode to hyper_parameters. Allows: "standard", "minmax", "none"
+#   
 
 
 #TODO
+#   plot of training cost plots wrong values
 #   still lots of memory allocations despite the pre-allocation
 #   look hard at row v. col accesses to large matrices
 #   stats on individual regression parameters
@@ -729,7 +730,7 @@ function extract_data(matfname::String, norm_mode::String="none")
         x_mu = mean(inputs, 2)
         x_std = std(inputs, 2)
         inputs = (inputs .- x_mu) ./ (x_std + 1e-08)
-        #normalize test data
+        # normalize test data
         if in("test", keys(df))
             test_inputs = (test_inputs .- x_mu) ./ (x_std + 1e-08)
         end
@@ -739,6 +740,10 @@ function extract_data(matfname::String, norm_mode::String="none")
         x_max = maximum(inputs, 2)
         x_min = minimum(inputs, 2)
         inputs = (inputs .- x_min) ./ (x_max .- x_min .+ 1e-08)
+        # normalize test data
+        if in("test", keys(df))
+            test_inputs = (test_inputs .- x_min) ./ (x_max .- x_min .+ 1e-08)
+        end
         norm_factors = (x_min, x_max) # tuple of Array{Float64,2}
     else  # handles case of "", "none" or really any crazy string
         norm_factors = ([0.0], [1.0])
