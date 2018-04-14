@@ -1,5 +1,5 @@
 #DONE
-
+#   added norm_mode to hyper_parameters. Allows: "standard", "minmax", "none"
 
 
 #TODO
@@ -111,6 +111,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
     ltl_eps::Float64
     alphaovermb::Float64
     batch_norm::Bool
+    norm_mode::String
     droplim::Array{Float64,1}
     reg::String
     opt::String
@@ -124,6 +125,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         1e-8,           # ltl_eps
         0.35,           # alphaovermb -- calculated->not a valid default
         false,          # batch_norm
+        "none",         # norm_mode
         [1.0],          # droplim
         "L2",           # reg
         "",             # opt
@@ -232,7 +234,7 @@ end
 
 """
 function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha=0.35,
-    mb_size::Int64=0, lambda::Float64=0.01, classify::String="softmax", normalization::Bool=false,
+    mb_size::Int64=0, lambda::Float64=0.01, classify::String="softmax", norm_mode::String="none",
     mom=0.9, units::String="sigmoid", plots::Array{String,1}=["Training", "Learning"])
 
 Train sigmoid/softmax neural networks up to 11 layers.  Detects
@@ -251,7 +253,7 @@ Enables any size mini-batch that divides evenly into number of examples.  Plots
         n_hid   ::= array of Int containing number of units in each hidden layer;
                     make sure to use an array even with 1 hidden layer as in [40];
                     use [0] to indicate no hidden layer (typically for linear regression)
-        normalization  ::= true or false => normalize inputs
+        norm_mode  ::= "standard", "minmax" or false => normalize inputs
         batch_norm     ::= true or false => normalize each linear layer outputs
         opt            ::= one of "Momentum", "Adam" or "".  default is blank string "".
         opt_params     ::= parameters used by Momentum or Adam
@@ -273,7 +275,7 @@ Enables any size mini-batch that divides evenly into number of examples.  Plots
 
 """
 function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha::Float64=0.35,
-    mb_size::Int64=0, lambda::Float64=0.01, classify::String="softmax", normalization::Bool=false,
+    mb_size::Int64=0, lambda::Float64=0.01, classify::String="softmax", norm_mode::String="none",
     opt::String="", opt_params::Array{Float64,1}=[0.9,0.999], units::String="sigmoid", batch_norm::Bool=false,
     reg::String="L2", droplim::Array{Float64,1}=[1.0], plots::Array{String,1}=["Training", "Learning"])
 
@@ -323,7 +325,7 @@ function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha:
     end
 
     if in(units, ["l_relu", "relu"])
-        if !normalization && !batch_norm
+        if (norm_mode=="" || norm_mode=="none") && !batch_norm
             warn("Better results obtained with relu using input and/or batch normalization. Proceeding...")
         end
     end
@@ -369,14 +371,14 @@ function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha:
     tp, bn, hp = run_training(matfname, epochs, n_hid,
         plots=plots, reg=reg, droplim=droplim, alpha=alpha, mb_size=mb_size, lambda=lambda,
         opt=opt, opt_params=opt_params, classify=classify,
-        normalization=normalization, batch_norm=batch_norm, units=units);
+        norm_mode=norm_mode, batch_norm=batch_norm, units=units);
 end
 
 
 function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     plots::Array{String,1}=["Training", "Learning"], reg="L2", droplim=[1.0], alpha=0.35,
     mb_size=0, lambda=0.01, opt="", opt_params=[],
-    classify="softmax", normalization=false, batch_norm=false, units="sigmoid")
+    classify="softmax", norm_mode="none", batch_norm=false, units="sigmoid")
 
     # start the cpu clock
     tic()
@@ -395,7 +397,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     test = Model_data()
 
     # load training data and test data (if any)
-    train.inputs, train.targets, test.inputs, test.targets, norm_factors = extract_data(matfname, normalization)
+    train.inputs, train.targets, test.inputs, test.targets, norm_factors = extract_data(matfname, norm_mode)
     # debug
     # println("norm_factors ", typeof(norm_factors))
     # println(norm_factors)
@@ -679,7 +681,7 @@ end  # function run_training
 
 
 """
-function extract_data(matfname::String, normalization::Bool=false)
+function extract_data(matfname::String, norm_mode::String="none")
 
 Extract data from a matlab formatted binary file.
 
@@ -696,11 +698,11 @@ Multiple Returns:
 -    targets.........2d array of float64 with columns as examples
 -    test_inputs.....2d array of float64 with rows as features and columns as examples
 -    test_targets....2d array of float64 with columns as examples
--    norm_factors.....1d vector of float64 containing [x_mu, x_std]
-.....................note that x_mu and and x_std may be vectors for multiple rows of x
+-    norm_factors.....1d vector of float64 containing [x_mu, x_std] or [m_min, x_max]
+.....................note that the factors may be vectors for multiple rows of x
 
 """
-function extract_data(matfname::String, normalization::Bool=false)
+function extract_data(matfname::String, norm_mode::String="none")
     # read the data
     df = matread(matfname)
 
@@ -722,7 +724,7 @@ function extract_data(matfname::String, normalization::Bool=false)
         test_targets = zeros(0,0)
     end
 
-    if normalization
+    if lowercase(norm_mode) == "standard"
         # normalize training data
         x_mu = mean(inputs, 2)
         x_std = std(inputs, 2)
@@ -732,8 +734,14 @@ function extract_data(matfname::String, normalization::Bool=false)
             test_inputs = (test_inputs .- x_mu) ./ (x_std + 1e-08)
         end
         norm_factors = (x_mu, x_std)
-    else
-        norm_factors = ([0.0], [1.0]) # tuple of Array{Float64,2}
+    elseif lowercase(norm_mode) == "minmax"
+        # do stuff
+        x_max = maximum(inputs, 2)
+        x_min = minimum(inputs, 2)
+        inputs = (inputs .- x_min) ./ (x_max .- x_min .+ 1e-08)
+        norm_factors = (x_min, x_max) # tuple of Array{Float64,2}
+    else  # handles case of "", "none" or really any crazy string
+        norm_factors = ([0.0], [1.0])
     end
 
     # to translate to unnormalized regression coefficients: m = mhat / stdx, b = bhat - (m*xmu)
