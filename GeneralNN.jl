@@ -3,8 +3,12 @@
 
 
 #TODO
-#   plot of training cost plots wrong values
 #   still lots of memory allocations despite the pre-allocation
+        # You can devectorize r -= d[j]*A[:,j] with r .= -.(r,d[j]*A[:.j]) 
+        # to get rid of some more temporaries. 
+        # As @LutfullahTomak said sum(A[:,j].*r) should devectorize as dot(view(A,:,j),r) 
+        # to get rid of all of the temporaries in there. 
+        # To use an infix operator, you can use \cdot, as in view(A,:,j)⋅r.
 #   look hard at row v. col accesses to large matrices
 #   stats on individual regression parameters
 #   figure out memory use between train set and minibatch set
@@ -629,12 +633,11 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
 
             # debug
             # println(tp.theta)
-
-            end
+            end  # layer loop
         end # mini-batch loop
 
         # stats for all mini-batches of one epoch
-        gather_stats!(ep_i, plotdef, mb, test, tp, bn, cost_function, fwd_functions, mb_size, testn, hp)
+        gather_stats!(ep_i, plotdef, train, test, tp, bn, cost_function, fwd_functions, n, testn, hp)  # n or mb_size
 
     end # epoch loop
 
@@ -676,7 +679,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     # plot the progress of cost and/or learning accuracy
     plot_output(plotdef)
 
-    return tp, bn, hp;  # trained model parameters, batch_norm parameters, hyper parameters
+    return train.a[tp.output_layer], test.a[tp.output_layer], tp, bn, hp;  # trained model parameters, batch_norm parameters, hyper parameters
 
 end  # function run_training
 
@@ -729,14 +732,14 @@ function extract_data(matfname::String, norm_mode::String="none")
         # normalize training data
         x_mu = mean(inputs, 2)
         x_std = std(inputs, 2)
-        inputs = (inputs .- x_mu) ./ (x_std + 1e-08)
+        inputs = (inputs .- x_mu) ./ (x_std .+ 1e-08)
         # normalize test data
         if in("test", keys(df))
-            test_inputs = (test_inputs .- x_mu) ./ (x_std + 1e-08)
+            test_inputs = (test_inputs .- x_mu) ./ (x_std .+ 1e-08)
         end
         norm_factors = (x_mu, x_std)
     elseif lowercase(norm_mode) == "minmax"
-        # do stuff
+        # normalize training data
         x_max = maximum(inputs, 2)
         x_min = minimum(inputs, 2)
         inputs = (inputs .- x_min) ./ (x_max .- x_min .+ 1e-08)
@@ -750,6 +753,10 @@ function extract_data(matfname::String, norm_mode::String="none")
     end
 
     # to translate to unnormalized regression coefficients: m = mhat / stdx, b = bhat - (m*xmu)
+    # precalculate a and b constants, and 
+    # then just apply newvalue = a * value + b. a = (max'-min')/(max-min) and b = max - a * max 
+    # (x - x.min()) / (x.max() - x.min())       # values from 0 to 1
+    # 2*(x - x.min()) / (x.max() - x.min()) - 1 # values from -1 to 1
 
     return inputs, targets, test_inputs, test_targets, norm_factors
 end
@@ -936,10 +943,17 @@ function cross_entropy_cost(targets, predictions, n, theta, hp, output_layer)
     # n is count of all samples in data set--use with regularization term
     # mb_size is count of all samples used in training batch--use with cost
     # these may be equal
-    cost = (-1.0 ./ n) .* sum(targets .* log.(predictions) .+
-        (1.0 .- targets) .* log.(1.0 .- predictions))
+    cost = (-1.0 / n) * (dot(targets,log.(predictions .+ 1e-50)) +
+        dot((1.0 .- targets), log.(1.0 .- predictions .+ 1e-50)))
+
+    # if isnan(cost)
+    #    println("predictions <= 0? ",any(predictions .== 0.0))
+    #    println("log 1 - predictions? ", any(isinf.(log.(1.0 .- predictions))))
+    #    error("problem with cost function")
+    # end
     @fastmath if hp.reg == "L2"  # set reg="" if not using regularization
-        regterm = hp.lambda/(2.0 * n) .* sum([sum(th .* th) for th in theta[2:output_layer]])
+        # regterm = hp.lambda/(2.0 * n) .* sum([sum(th .* th) for th in theta[2:output_layer]])
+        regterm = hp.lambda/(2.0 * n) .* sum([dot(th, th) for th in theta[2:output_layer]])
         cost = cost + regterm
     end
     return cost
@@ -949,7 +963,8 @@ end
 function mse_cost(targets, predictions, n, theta, hp, output_layer)
     cost = (1.0 / (2.0 * n)) .* sum((targets .- predictions) .^ 2.0)
     @fastmath if hp.reg == "L2"  # set reg="" if not using regularization
-        regterm = hp.lambda/(2.0 * n) .* sum([sum(th .* th) for th in theta[2:output_layer]])
+        # regterm = hp.lambda/(2.0 * n) .* sum([sum(th .* th) for th in theta[2:output_layer]])
+        regterm = hp.lambda/(2.0 * n) .* sum([dot(th, th) for th in theta[2:output_layer]])
         cost = cost + regterm
     end
     return cost
@@ -1039,11 +1054,18 @@ end
 
 
 function softmax!(z::Array{Float64,2}, a::Array{Float64,2})
+    # expf = similar(a)
+    # f = similar(a)
+    # alta = similar(a)
+    # f[:] = z .- maximum(z,1)
+    # expf[:] = exp.(f)  # this gets called within a loop and exp() is expensive
+    # alta[:] = @fastmath expf ./ sum(expf, 1)
+
     expf = similar(a)
-    f = similar(a)
-    f[:] = z .- maximum(z,1)
-    expf[:] = exp.(f)  # this gets called within a loop and exp() is expensive
-    a[:] = @fastmath expf ./ sum(expf, 1)
+    expf[:] = exp.(z .- maximum(z,1))
+    a[:] = expf ./ sum(expf, 1)
+
+    # all(alta .== a) ? println("softmax answers agree") : println("softmax answers disagree")
 end
 
 
@@ -1214,34 +1236,47 @@ function setup_plots(epochs::Int64, dotest::Bool, plots::Array{String,1})
 end
 
 
-function gather_stats!(i, plotdef, mb, test, tp, bn, cost_function, fwd_functions, train_n, testn, hp)
+function gather_stats!(i, plotdef, train, test, tp, bn, cost_function, fwd_functions, train_n, testn, hp)
 
     if plotdef["plot_switch"]["Training"]
+        feedfwd!(tp, bn, train, fwd_functions, hp, istrain=false)
         if plotdef["plot_switch"]["Cost"]
-            plotdef["cost_history"][i, plotdef["col_train"]] = cost_function(mb.targets,
-                mb.a[tp.output_layer], train_n, tp.theta, hp, tp.output_layer)
+            plotdef["cost_history"][i, plotdef["col_train"]] = cost_function(train.targets,
+                train.a[tp.output_layer], train_n, tp.theta, hp, tp.output_layer)
         end
         if plotdef["plot_switch"]["Learning"]
             plotdef["fracright_history"][i, plotdef["col_train"]] = (  hp.classify == "regression"
-                    ? r_squared(mb.targets, mb.a[tp.output_layer])
-                    : accuracy(mb.targets, mb.a[tp.output_layer], i)  )
+                    ? r_squared(train.targets, train.a[tp.output_layer])
+                    : accuracy(train.targets, train.a[tp.output_layer], i)  )
         end
     end
 
     if plotdef["plot_switch"]["Test"]
+        feedfwd!(tp, bn, test, fwd_functions, hp, istrain=false)
         if plotdef["plot_switch"]["Cost"]
-            feedfwd!(tp, bn, test, fwd_functions, hp, istrain=false)
-            plotdef["cost_history"][i, plotdef["col_test"]] = cost_function(test.targets,
+            # feedfwd!(tp, bn, test, fwd_functions, hp, istrain=false)
+            cost = cost_function(test.targets,
                 test.a[tp.output_layer], testn, tp.theta, hp, tp.output_layer)
+                # println("iter: ", i, " ", "cost: ", cost)
+            plotdef["cost_history"][i, plotdef["col_test"]] =cost
         end
         if plotdef["plot_switch"]["Learning"]
             # printdims(Dict("test.a"=>test.a, "test.z"=>test.z))
-            feedfwd!(tp, bn, test, fwd_functions, hp, istrain=false)
+            # feedfwd!(tp, bn, test, fwd_functions, hp, istrain=false)
             plotdef["fracright_history"][i, plotdef["col_test"]] = (  hp.classify == "regression"
                     ? r_squared(test.targets, test.a[tp.output_layer])
                     : accuracy(test.targets, test.a[tp.output_layer], i)  )
         end
     end
+
+    # println("train 1 - predictions:")
+    # println(1.0 .- train.a[tp.output_layer][:, 1:2])
+
+    # println("test 1 - predictions:")
+    # println(1.0 .- test.a[tp.output_layer][:, 1:2])
+    
+
+
 end
 
 
