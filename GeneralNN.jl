@@ -1040,11 +1040,7 @@ end
 
 
 function l_relu!(z::Array{Float64,2}, a::Array{Float64,2}) # leaky relu
-    for j = 1:size(z,2)  # pick a column
-        for i = 1:size(z,1)  # down each column for speed
-            @.  a[i,j] = z[i,j] >= 0.0 ? z[i,j] : l_relu_neg * z[i,j]
-        end
-    end
+    a[:] = map(j -> j >= 0.0 ? j : l_relu_neg * j, z)
 end
 
 
@@ -1054,18 +1050,11 @@ end
 
 
 function softmax!(z::Array{Float64,2}, a::Array{Float64,2})
-    # expf = similar(a)
-    # f = similar(a)
-    # alta = similar(a)
-    # f[:] = z .- maximum(z,1)
-    # expf[:] = exp.(f)  # this gets called within a loop and exp() is expensive
-    # alta[:] = @fastmath expf ./ sum(expf, 1)
 
     expf = similar(a)
     expf[:] = exp.(z .- maximum(z,1))
     a[:] = expf ./ sum(expf, 1)
 
-    # all(alta .== a) ? println("softmax answers agree") : println("softmax answers disagree")
 end
 
 
@@ -1088,21 +1077,14 @@ end
 
 
 function l_relu_gradient!(z::Array{Float64,2}, grad::Array{Float64,2})
-    for j = 1:size(z, 2)  # calculate down a column for speed
-        for i = 1:size(z, 1)
-            grad[i,j] = z[i,j] > 0.0 ? 1.0 : l_relu_neg
-        end
-    end
+    grad[:] = map(j -> j > 0.0 ? 1.0 : l_relu_neg, z);
 end
 
 
 function relu_gradient!(z::Array{Float64,2}, grad::Array{Float64,2})
-    for j = 1:size(z, 2)  # calculate down a column for speed
-        for i = 1:size(z, 1)
-            grad[i,j] = z[i,j] > 0.0 ? 1.0 : 0.0
-        end
-    end
+    grad[:] = map(j -> j > 0.0 ? 1.0 : 0.0, z);
 end
+
 
 ###########################################################################
 
