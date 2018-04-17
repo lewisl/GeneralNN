@@ -1,15 +1,22 @@
 #DONE
-#   
+
 
 
 #TODO
+#   cleaning up batch norm is complicated:
+#       affects feedfwd, backprop, pre-allocation (several), momentum, adam search for if [!hp.]*do_batch_norm
+#       type dispatch on bn:  either a struct or a bool to eliminate if tests all over to see if we batch normalize
+#   don't allocate minibatch if only one--eg, using all of the data--use a pointer to the real data
+#       this might work for multiple little minibatches too
+#       but for lots of little minibatches, we only need the whole thing for full data predictions
+#   check for type stability: @code_warntype pisum(500,10000)
+#   is it worth having feedfwdpredict?  along with batchnormfwdpredict?  then no if test since we always know when we are predicting
 #   still lots of memory allocations despite the pre-allocation
         # You can devectorize r -= d[j]*A[:,j] with r .= -.(r,d[j]*A[:.j]) 
-        # to get rid of some more temporaries. 
+        #        to get rid of some more temporaries. 
         # As @LutfullahTomak said sum(A[:,j].*r) should devectorize as dot(view(A,:,j),r) 
-        # to get rid of all of the temporaries in there. 
+        #        to get rid of all of the temporaries in there. 
         # To use an infix operator, you can use \cdot, as in view(A,:,j)⋅r.
-#   look hard at row v. col accesses to large matrices
 #   stats on individual regression parameters
 #   figure out memory use between train set and minibatch set
 #   fix predictions
@@ -23,7 +30,6 @@
 #   pooling layers
 #   better way to handle test not using mini-batches
 #   implement early stopping
-#   implement L1 regularization??
 
 #   scale weights for cost regularization to accommodate ReLU normalization?
 #   separate plots data structure from stats data structure?
@@ -70,7 +76,7 @@ pyplot()  # initialize the backend used by Plots
 @pyimport seaborn  # prettier charts
 # using ImageView    BIG BUG HERE--SEGFAULT--REPORTED
 
-const l_relu_neg = .01
+const l_relu_neg = .01  # makes the type constant; value can be changed
 
 """
 struct NN_parameters holds model parameters learned by training and model metadata
@@ -115,7 +121,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
     b2::Float64
     ltl_eps::Float64
     alphaovermb::Float64
-    batch_norm::Bool
+    do_batch_norm::Bool
     norm_mode::String
     droplim::Array{Float64,1}
     reg::String
@@ -129,7 +135,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         0.999,          # b2
         1e-8,           # ltl_eps
         0.35,           # alphaovermb -- calculated->not a valid default
-        false,          # batch_norm
+        false,          # do_batch_norm
         "none",         # norm_mode
         [1.0],          # droplim
         "L2",           # reg
@@ -259,7 +265,7 @@ Enables any size mini-batch that divides evenly into number of examples.  Plots
                     make sure to use an array even with 1 hidden layer as in [40];
                     use [0] to indicate no hidden layer (typically for linear regression)
         norm_mode  ::= "standard", "minmax" or false => normalize inputs
-        batch_norm     ::= true or false => normalize each linear layer outputs
+        do_batch_norm     ::= true or false => normalize each linear layer outputs
         opt            ::= one of "Momentum", "Adam" or "".  default is blank string "".
         opt_params     ::= parameters used by Momentum or Adam
                            Momentum: one floating point value as [.9] (showing default)
@@ -281,7 +287,7 @@ Enables any size mini-batch that divides evenly into number of examples.  Plots
 """
 function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha::Float64=0.35,
     mb_size::Int64=0, lambda::Float64=0.01, classify::String="softmax", norm_mode::String="none",
-    opt::String="", opt_params::Array{Float64,1}=[0.9,0.999], units::String="sigmoid", batch_norm::Bool=false,
+    opt::String="", opt_params::Array{Float64,1}=[0.9,0.999], units::String="sigmoid", do_batch_norm::Bool=false,
     reg::String="L2", droplim::Array{Float64,1}=[1.0], plots::Array{String,1}=["Training", "Learning"])
 
     ################################################################################
@@ -330,7 +336,7 @@ function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha:
     end
 
     if in(units, ["l_relu", "relu"])
-        if (norm_mode=="" || norm_mode=="none") && !batch_norm
+        if (norm_mode=="" || norm_mode=="none") && !do_batch_norm
             warn("Better results obtained with relu using input and/or batch normalization. Proceeding...")
         end
     end
@@ -376,14 +382,14 @@ function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha:
     tp, bn, hp = run_training(matfname, epochs, n_hid,
         plots=plots, reg=reg, droplim=droplim, alpha=alpha, mb_size=mb_size, lambda=lambda,
         opt=opt, opt_params=opt_params, classify=classify,
-        norm_mode=norm_mode, batch_norm=batch_norm, units=units);
+        norm_mode=norm_mode, do_batch_norm=do_batch_norm, units=units);
 end
 
 
 function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     plots::Array{String,1}=["Training", "Learning"], reg="L2", droplim=[1.0], alpha=0.35,
     mb_size=0, lambda=0.01, opt="", opt_params=[],
-    classify="softmax", norm_mode="none", batch_norm=false, units="sigmoid")
+    classify="softmax", norm_mode="none", do_batch_norm=false, units="sigmoid")
 
     # start the cpu clock
     tic()
@@ -438,7 +444,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
         hp.reg = reg
         hp.classify = classify
 
-    hp.batch_norm = n_mb == 1 ? false : batch_norm  # no batch normalization for 1 batch
+    hp.do_batch_norm = n_mb == 1 ? false : do_batch_norm  # no batch normalization for 1 batch
     hp.alphaovermb = alpha / mb_size  # calc once, use in loop
 
     # set parameters for Momentum or Adam optimization
@@ -483,23 +489,23 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     tp.norm_factors = norm_factors
 
     # feedfwd training data
-    preallocate_feedfwd!(train, tp, n, hp.batch_norm)
+    preallocate_feedfwd!(train, tp, n, hp.do_batch_norm)
 
     # feedfwd test data--if inputs are not all zeros
     if dotest
         testn = size(test.inputs,2)
-        preallocate_feedfwd!(test, tp, testn, hp.batch_norm)
+        preallocate_feedfwd!(test, tp, testn, hp.do_batch_norm)
     else
         testn = 0
     end
 
     # pre-allocate feedfwd mini-batch inputs and targets
     mb = Model_data()  # mb holds all layer data for mini-batches
-    preallocate_minibatch!(mb, tp, mb_size, in_k, n, out_k, hp.batch_norm)
+    preallocate_minibatch!(mb, tp, mb_size, in_k, n, out_k, hp.do_batch_norm)
 
     # batch normalization parameters
     bn = Batch_norm_params()  # do we always need the data structure to run?  yes--TODO fix this
-    if hp.batch_norm
+    if hp.do_batch_norm
         preallocate_batchnorm!(bn, mb, tp.layer_units)
     end
 
@@ -536,7 +542,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
 
     if units == "sigmoid"
         unit_function! = sigmoid!
-        batch_norm = false
+        do_batch_norm = false
     elseif units == "l_relu"
         unit_function! = l_relu!
     elseif units == "relu"
@@ -621,12 +627,12 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
                 end
 
                 #update bias
-                if !hp.batch_norm
+                if !hp.do_batch_norm
                     tp.bias[hl] .= tp.bias[hl] .- (hp.alphaovermb .* tp.delta_b[hl])
                 end
 
                 # update batch normalization parameters
-                if hp.batch_norm
+                if hp.do_batch_norm
                     bn.gam[hl][:] -= hp.alphaovermb .* bn.delta_gam[hl]
                     bn.bet[hl][:] -= hp.alphaovermb .* bn.delta_bet[hl]
                 end
@@ -641,11 +647,11 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
 
     end # epoch loop
 
-    println("Training time: ",toq()," seconds")  # cpu time since tic() =>  toq() returns secs without printing
+    #####################################################################
+    # print and plot training statistics after all epochs
+    #####################################################################
 
-    #####################################################################
-    # output and plot training statistics after all epochs
-    #####################################################################
+    println("Training time: ",toq()," seconds")  # cpu time since tic() =>  toq() returns secs without printing
 
     feedfwd!(tp, bn, train, fwd_functions, hp, istrain=false)  # output for entire training set
     println("Fraction correct labels predicted training: ",
@@ -766,7 +772,7 @@ end
 #  functions to pre-allocate data updated during training loop
 ####################################################################
 
-function preallocate_feedfwd!(dat, tp, n, batch_norm)
+function preallocate_feedfwd!(dat, tp, n, do_batch_norm)
     # we don't pre-allocate epsilon, grad used during backprop
     dat.a = [dat.inputs]
     dat.z = [zeros(2,2)] # not used for input layer
@@ -777,7 +783,7 @@ function preallocate_feedfwd!(dat, tp, n, batch_norm)
     push!(dat.z, zeros(size(tp.theta[tp.output_layer],1),n))
     push!(dat.a, zeros(size(tp.theta[tp.output_layer],1),n))
 
-    if batch_norm  # required for full pass performance stats
+    if do_batch_norm  # required for full pass performance stats
         dat.z_norm = deepcopy(dat.z)
         dat.z_scale = deepcopy(dat.z)  # same size as z, often called "y"
     end
@@ -836,13 +842,13 @@ function preallocate_nn_params!(tp, hp, n_hid, in_k, n, out_k)
 end
 
 
-function preallocate_minibatch!(mb, tp, mb_size, in_k, n, out_k, batch_norm)
+function preallocate_minibatch!(mb, tp, mb_size, in_k, n, out_k, do_batch_norm)
     mb.inputs = zeros(in_k, mb_size)
     mb.targets = zeros(out_k, mb_size)
-    preallocate_feedfwd!(mb, tp, mb_size, batch_norm)
+    preallocate_feedfwd!(mb, tp, mb_size, do_batch_norm)
     mb.epsilon = deepcopy(mb.a)  # looks like activations of each unit above input layer
     mb.grad = deepcopy(mb.z)
-    if batch_norm
+    if do_batch_norm
         mb.z_norm = deepcopy(mb.z)
         mb.z_scale = deepcopy(mb.z)
     end
@@ -871,7 +877,7 @@ end
 ###########################################################################
 
 """
-function feedfwd!(tp, bn, dat, fwd_functions, batch_norm; istrain)
+function feedfwd!(tp, bn, dat, fwd_functions, do_batch_norm; istrain)
     modifies a, a_wb, z in place to reduce memory allocations
     send it all of the data or a mini-batch
 
@@ -883,7 +889,7 @@ function feedfwd!(tp, bn, dat, fwd_functions, hp; istrain=true)
 
     @fastmath for hl = 2:tp.output_layer-1  # hidden layers
 
-        if hp.batch_norm
+        if hp.do_batch_norm
             dat.z[hl][:] = tp.theta[hl] * dat.a[hl-1]  # linear with no bias
             batch_norm_fwd!(bn, dat, hl, istrain)
             unit_function!(dat.z_scale[hl],dat.a[hl]) # non-linear function
@@ -906,7 +912,7 @@ end
 
 
 """
-function backprop!(tp, dat, back_functions, batch_norm)
+function backprop!(tp, dat, back_functions, do_batch_norm)
     Argument tp.delta_w holds the computed gradients for weights, delta_b for bias
     Modifies tp.epsilon, tp.delta_w, tp.delta_b in place--caller uses tp.delta_w, tp.delta_b
     Use for training iterations
@@ -922,7 +928,7 @@ function backprop!(tp, bn, dat, back_functions, hp, t)
     @fastmath tp.delta_b[tp.output_layer][:] = sum(dat.epsilon[tp.output_layer],2)
 
     @fastmath for hl = (tp.output_layer - 1):-1:2  # loop over hidden layers
-        if hp.batch_norm
+        if hp.do_batch_norm
             gradient_function!(dat.z_scale[hl], dat.grad[hl])
             dat.epsilon[hl][:] = tp.theta[hl+1]' * dat.epsilon[hl+1] .* dat.grad[hl]
             batch_norm_back!(tp, dat, bn, hl)
@@ -982,11 +988,11 @@ end
 
 function momentum!(tp, hp)
     @fastmath for hl = (tp.output_layer - 1):-1:2  # loop over hidden layers
-        tp.delta_v_w[hl] .= tp.b1 .* tp.delta_v_w[hl] .+ (1.0 - tp.b1) .* tp.delta_w[hl]
+        tp.delta_v_w[hl] .= hp.b1 .* tp.delta_v_w[hl] .+ (1.0 - hp.b1) .* tp.delta_w[hl]
         tp.delta_w[hl] .= tp.delta_v_w[hl]
 
-        if !batch_norm  # then we need to do bias term
-            tp.delta_v_b[hl] .= tp.b1 .* tp.delta_v_b[hl] .+ (1.0 - tp.b1) .* tp.delta_b[hl]
+        if !hp.do_batch_norm  # then we need to do bias term
+            tp.delta_v_b[hl] .= hp.b1 .* tp.delta_v_b[hl] .+ (1.0 - hp.b1) .* tp.delta_b[hl]
             tp.delta_b[hl] .= tp.delta_v_b[hl]
         end
     end
@@ -1000,7 +1006,7 @@ function adam!(tp, hp, t)
         tp.delta_w[hl] .= (  (tp.delta_v_w[hl] ./ (1.0 - hp.b1^t)) ./
                               (sqrt.(tp.delta_s_w[hl] ./ (1.0 - hp.b2^t)) + hp.ltl_eps)  )
 
-        if !hp.batch_norm  # then we need to do bias term
+        if !hp.do_batch_norm  # then we need to do bias term
             tp.delta_v_b[hl] .= hp.b1 .* tp.delta_v_b[hl] .+ (1.0 - hp.b1) .* tp.delta_b[hl]
             tp.delta_s_b[hl] .= hp.b2 .* tp.delta_s_b[hl] .+ (1.0 - hp.b2) .* tp.delta_b[hl].^2
             tp.delta_b[hl] .= (  (tp.delta_v_b[hl] ./ (1.0 - hp.b1^t)) ./
@@ -1236,7 +1242,6 @@ function gather_stats!(i, plotdef, train, test, tp, bn, cost_function, fwd_funct
     if plotdef["plot_switch"]["Test"]
         feedfwd!(tp, bn, test, fwd_functions, hp, istrain=false)
         if plotdef["plot_switch"]["Cost"]
-            # feedfwd!(tp, bn, test, fwd_functions, hp, istrain=false)
             cost = cost_function(test.targets,
                 test.a[tp.output_layer], testn, tp.theta, hp, tp.output_layer)
                 # println("iter: ", i, " ", "cost: ", cost)
@@ -1244,7 +1249,6 @@ function gather_stats!(i, plotdef, train, test, tp, bn, cost_function, fwd_funct
         end
         if plotdef["plot_switch"]["Learning"]
             # printdims(Dict("test.a"=>test.a, "test.z"=>test.z))
-            # feedfwd!(tp, bn, test, fwd_functions, hp, istrain=false)
             plotdef["fracright_history"][i, plotdef["col_test"]] = (  hp.classify == "regression"
                     ? r_squared(test.targets, test.a[tp.output_layer])
                     : accuracy(test.targets, test.a[tp.output_layer], i)  )
@@ -1461,7 +1465,7 @@ function predict(inputs, theta)   ### TODO this is seriously broken!
     end
 
     a_test,  z_test = preallocate_feedfwd(inputs, tp, n)
-    predictions = feedfwd!(tp, bn, dat, fwd_functions, batch_norm, istrain=false)
+    predictions = feedfwd!(tp, bn, dat, fwd_functions, do_batch_norm, istrain=false)
 end
 
 

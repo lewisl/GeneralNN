@@ -452,7 +452,25 @@ Final cost test: 0.335070820094357
 Test data accuracy in final 10 iterations:
 0.960 : 0.960 : 0.961 : 0.962 : 0.963 : 0.963 : 0.964 : 0.964 : 0.963 : 0.964 : 
 
+train_nn("digits5000by784.mat",30,[100],norm_mode="minmax",plots=["Cost", "Training", "Test", "Learning"], units="relu",opt="Adam",mb_size=50, batch_norm=false);
+Training time: 8.907409404 seconds
+Fraction correct labels predicted training: 1.0
+Final cost training: 0.0032256591823557595
+Fraction correct labels predicted test: 0.9505
+Final cost test: NaN
+Test data accuracy in final 10 iterations:
+0.950 : 0.951 : 0.951 : 0.951 : 0.951 : 0.950 : 0.950 : 0.951 : 0.951 : 0.951 : 
 
+
+
+julia> train_nn("digits5000by784.mat",30,[100],norm_mode="minmax",plots=["Cost", "Training", "Test", "Learning"], units="relu",opt="Adam",mb_size=50, batch_norm=false, reg="L2",lambda=.035);
+Training time: 8.784142896 seconds
+Fraction correct labels predicted training: 1.0
+Final cost training: 0.0118469690397443
+Fraction correct labels predicted test: 0.9545
+Final cost test: NaN
+Test data accuracy in final 10 iterations:
+0.951 : 0.952 : 0.951 : 0.954 : 0.954 : 0.953 : 0.954 : 0.955 : 0.953 : 0.955 :
 
 
 
