@@ -1,8 +1,10 @@
 #DONE
-#   removed unused array delta_z_scale
+#   set function parameter types to AbstractArray when using view or actual array
 
 
 #TODO
+#   finish create_minibatch_views and preallocate_minibatch functions
+#   retest dropout with minibatch view changes
 #   cleaning up batch norm is complicated:
 #       affects feedfwd, backprop, pre-allocation (several), momentum, adam search for if [!hp.]*do_batch_norm
 #       type dispatch on bn:  either a struct or a bool to eliminate if tests all over to see if we batch normalize
@@ -185,17 +187,35 @@ Struct Model_view holds views to all model data and all layer outputs-->
 pre-allocate to reduce memory allocations and improve speed
 """
 mutable struct Model_view               # we will use mb for mini-batches
-    a
-    z
-    z_norm
-    z_scale
-    delta_z_norm
-    delta_z
-    grad
-    epsilon
-    drop_ran_w
-    drop_filt_w
-    targets
+    # array of views
+    a::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    z::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    z_norm::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    z_scale::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    # array view of training targets
+    targets::SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true}
+    # arrays as big as the minibatch size
+    delta_z_norm::Array{Array{Float64,2},1} 
+    delta_z::Array{Array{Float64,2},1} 
+    grad::Array{Array{Float64,2},1} 
+    epsilon::Array{Array{Float64,2},1} 
+    drop_ran_w::Array{Array{Float64,2},1} 
+    drop_filt_w::Array{Array{Float64,2},1} 
+
+    Model_view() = new(
+        [view(zeros(2,2),:,1:2) for i in 1:2],  # a
+        [view(zeros(2,2),:,1:2) for i in 1:2],  # z
+        [view(zeros(2,2),:,1:2) for i in 1:2],  # z_norm
+        [view(zeros(2,2),:,1:2) for i in 1:2],  # z_scale
+        view(zeros(2,2),:,1:2),                 # targets
+        Array{Array{Float64,2},1}(0),           # delta_z_norm
+        Array{Array{Float64,2},1}(0),           # delta_z
+        Array{Array{Float64,2},1}(0),           # grad
+        Array{Array{Float64,2},1}(0),           # epsilon
+        Array{Array{Float64,2},1}(0),           # drop_ran_w
+        Array{Array{Bool,2},1}(0),              # drop_filt_w        
+    )
+
 end
 
 
@@ -517,11 +537,10 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
         testn = 0
     end
 
-    # pre-allocate feedfwd mini-batch inputs and targets
-    mb = Model_data()  # mb holds all layer data for mini-batches
-    preallocate_minibatch!(mb, tp, mb_size, in_k, n, out_k, hp.do_batch_norm)
-    create_minibatch_views!(train, tp, hp, mb_size)
-
+    # pre-allocate feedfwd mini-batch training data
+    mb = Model_view()  # mb holds all layer data for mini-batches: views and hard data
+    preallocate_minibatch!(mb, tp, mb_size, in_k, n, out_k, hp)  
+    
     # batch normalization parameters
     bn = Batch_norm_params()  # do we always need the data structure to run?  yes--TODO fix this
     if hp.do_batch_norm
@@ -541,11 +560,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
                 push!(hp.droplim,droplim[end]) # pad
             end
         end
-        mb.drop_ran_w = deepcopy(mb.a)
-        push!(mb.drop_filt_w,fill(true,(2,2))) # for input layer, not used
-        for item in mb.drop_ran_w[2:end]
-            push!(mb.drop_filt_w,fill(true,size(item)))
-        end
+
     end
 
     # debug
@@ -606,9 +621,9 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     #   neural network training loop
     ##########################################################
 
-    t = 0
+    t = 0  # update counter:  epoch by mini-batch
 
-    # debug
+    # DEBUG
     # println(train.inputs)
     # println(train.targets)
 
@@ -617,11 +632,11 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
 
             first_example = (mb_j - 1) * mb_size + 1  # mini-batch subset for the inputs->layer 1
             last_example = first_example + mb_size - 1
+            colrng = first_example:last_example
 
             t += 1  # update counter
 
-            mb.a[1][:] = train.inputs[:,first_example:last_example] # m-b input layer activation
-            mb.targets[:] = train.targets[:, first_example:last_example]
+            update_minibatch_views!(mb, train, tp, hp, mb_size, colrng)
 
             feedfwd!(tp, bn, mb, fwd_functions, hp)  # for all layers
 
@@ -791,10 +806,11 @@ end
 #  functions to pre-allocate data updated during training loop
 ####################################################################
 
+# use for test and training data
 function preallocate_feedfwd!(dat, tp, n, do_batch_norm)
     # we don't pre-allocate epsilon, grad used during backprop
     dat.a = [dat.inputs]
-    dat.z = [zeros(2,2)] # not used for input layer
+    dat.z = [zeros(size(dat.inputs))] # not used for input layer  TODO--this permeates the code but not needed
     for i = 2:tp.output_layer-1  # hidden layers
         push!(dat.z, zeros(tp.layer_units[i], n))
         push!(dat.a, zeros(size(dat.z[i])))  #  and up...  ...output layer set after loop
@@ -861,69 +877,69 @@ function preallocate_nn_params!(tp, hp, n_hid, in_k, n, out_k)
 end
 
 
-function preallocate_minibatch!(mb, tp, mb_size, in_k, n, out_k, do_batch_norm)
+"""
+    Pre-allocate these arrays for the training batch--either minibatches or one big batch
+    Arrays: epsilon, grad, delta_z_norm, delta_z, drop_ran_w, drop_filt_w
+"""
+function preallocate_minibatch!(mb, tp, mb_size, in_k, n, out_k, hp)
     # mb.inputs = zeros(in_k, mb_size)  # only used for pre-allocation
-    mb.inputs = Array{Float64,2}(in_k, mb_size)
-    mb.targets = zeros(out_k, mb_size)
-    preallocate_feedfwd!(mb, tp, mb_size, do_batch_norm)
-    mb.epsilon = deepcopy(mb.a)  # looks like activations of each unit above input layer
-    mb.grad = deepcopy(mb.z)
-    if do_batch_norm
-        mb.z_norm = deepcopy(mb.z)
-        mb.z_scale = deepcopy(mb.z)
+    # mb.inputs = Array{Float64,2}(in_k, mb_size)
+    # mb.targets = zeros(out_k, mb_size)
+    # preallocate_feedfwd!(mb, tp, mb_size, do_batch_norm)
+    # for l = 1:tp.output_layer
+    #     mb.epsilon[l][:] = zeros(tp.layer_units[l], mb_size)                
+    #     mb.grad[l][:] = zeros(tp.layer_units[l], mb_size)                
+    # end
+
+    mb.epsilon = [zeros(tp.layer_units[l], mb_size) for l in 1:tp.output_layer]
+
+    mb.grad = deepcopy(mb.epsilon)       
+    if hp.do_batch_norm
+        mb.delta_z_norm = deepcopy(mb.epsilon)  # similar z
+        mb.delta_z = deepcopy(mb.epsilon)       # similar z
+    end
+
+    #    #debug
+    # println("size of pre-allocated mb.delta_z_norm $(size(mb.delta_z_norm))")
+    # for i in 1:size(mb.delta_z_norm,1)
+    #     println("$i size: $(size(mb.delta_z_norm[i]))")
+    # end
+    # error("that's all folks....")
+
+    if hp.reg == "dropout"
+        mb.drop_ran_w = deepcopy(mb.epsilon)
+        push!(mb.drop_filt_w,fill(true,(2,2))) # for input layer, not used
+        for item in mb.drop_ran_w[2:end]
+            push!(mb.drop_filt_w,fill(true,size(item)))
+        end
     end
 end
 
-
-function create_minibatch_views!(train, mb, tp, hp, mb_size)
+"""
+    Create or update views for the training data in minibatches or one big batch
+        Arrays: a, z, z_norm, z_scale, targets  are all fields of struct mb
+"""
+function update_minibatch_views!(mb::Model_view, train::Model_data, tp::NN_parameters, 
+    hp::Hyper_parameters, mb_size::Int, colrng::UnitRange{Int64})
     n_layers = tp.output_layer
 
-    v_a = [view(train.a[i],:,1:1) for i = 1:n_layers]
-    v_z = [view(train.z[i],:,1:1) for i = 1:n_layers]
-
-    # used only in backprop--"real" arrays not views because training data doesn't have these
-    v_grad = [zeros(size(v_z[i],1), mb_size) for i = 1:n_layers]
-    v_epsilon = [zeros(size(v_a[i], 1), mb_size) for i = 1:n_layers]
-
-    # used only if dropout
-    if hp.reg == "dropout"
-        v_drop_ran_w = deepcopy(v_epsilon)  # size of physical a
-        v_drop_filt_w = [fill(true,size(v_epsilon[i])) for i = 1:n_layers]
-    else
-        v_drop_ran_w = []
-        v_drop_filt_w = []
-    end
+    mb.a = [view(train.a[i],:,colrng) for i = 1:n_layers]
+    mb.z = [view(train.z[i],:,colrng) for i = 1:n_layers]
+    mb.targets = view(train.targets,:,colrng)  # only at the output layer
 
     if hp.do_batch_norm
-        v_z_norm = [view(train.z_norm[i],:,1:1) for i = 1:n_layers]
-        v_z_scale = [view(train.z_scale[i],:,1:1) for i = 1:n_layers]
-        v_delta_z_norm = [view(train.delta_z_norm[i],:,1:1) for i = 1:n_layers]
-        v_delta_z = [view(train.delta_z[i],:,1:1) for i = 1:n_layers]
-    else
-        v_z_norm = [view(train.z_norm,:,1:1)]
-        v_z_scale = [view(train.z_scale,:,1:1)]
-        v_delta_z_norm = [view(train.delta_z_norm,:,1:1)]
-        v_delta_z = [view(train.delta_z,:,1:1)]
+        mb.z_norm = [view(train.z_norm[i],:, colrng) for i = 1:n_layers]
+        mb.z_scale = [view(train.z_scale[i],:, colrng) for i = 1:n_layers]
     end
 
-    mb = GeneralNN.Model_view(
-        v_a,
-        v_z,
-        v_z_norm,
-        v_z_scale,
-        v_delta_z_norm,
-        v_delta_z,
-        v_grad,
-        v_epsilon,
-        v_drop_ran_w,
-        v_drop_filt_w,
-        v_a[tp.output_layer]   # view of targets = activation of the output layer  
-    )
+    # at line 936:
+    # MethodError: Cannot `convert` an object of 
+    # type 
+    # SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true} 
+    # to an object of type 
+    # SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},Base.Slice{Base.OneTo{Int64}}},true}
 
-    return mb
 end
-
-
 
 
 function preallocate_batchnorm!(bn, mb, layer_units)
@@ -942,9 +958,6 @@ function preallocate_batchnorm!(bn, mb, layer_units)
     bn.stddev = [zeros(i) for i in layer_units]
     bn.std_run = [zeros(i) for i in layer_units]
 
-    # part of Model_data--but only used if batch normalization and only for minibatches
-    mb.delta_z = deepcopy(mb.z_norm)
-    mb.delta_z_norm = deepcopy(mb.z_norm)
 end
 
 ###########################################################################
@@ -963,21 +976,21 @@ function feedfwd!(tp, bn, dat, fwd_functions, hp; istrain=true)
     @fastmath for hl = 2:tp.output_layer-1  # hidden layers
 
         if hp.do_batch_norm
-            dat.z[hl][:] = tp.theta[hl] * dat.a[hl-1]  # linear with no bias
+            dat.z[hl][:] = tp.theta[hl] * dat.a[hl-1]  # linear with no bias  @inbounds 
             batch_norm_fwd!(bn, dat, hl, istrain)
             unit_function!(dat.z_scale[hl],dat.a[hl]) # non-linear function
             if istrain && hp.reg == "Dropout"
                 dropout!(dat,hp,hl)
             end
         else
-            dat.z[hl][:] = tp.theta[hl] * dat.a[hl-1] .+ tp.bias[hl]  # linear with bias
+            dat.z[hl][:] = tp.theta[hl] * dat.a[hl-1] .+ tp.bias[hl]  # linear with bias @inbounds 
             unit_function!(dat.z[hl],dat.a[hl])
         end
 
     end
 
     @fastmath dat.z[tp.output_layer][:] = (tp.theta[tp.output_layer] * dat.a[tp.output_layer-1]
-        .+ tp.bias[tp.output_layer])  # TODO use bias in the output layer with no batch norm?
+        .+ tp.bias[tp.output_layer])  # TODO use bias in the output layer with no batch norm? @inbounds 
 
     classify_function!(dat.z[tp.output_layer], dat.a[tp.output_layer])  # a = activations = predictions
 
@@ -996,20 +1009,20 @@ function backprop!(tp, bn, dat, back_functions, hp, t)
 
     (batch_norm_back!, gradient_function!) = back_functions
 
-    dat.epsilon[tp.output_layer][:] = dat.a[tp.output_layer] .- dat.targets
-    @fastmath tp.delta_w[tp.output_layer][:] = dat.epsilon[tp.output_layer] * dat.a[tp.output_layer-1]' # 2nd term is effectively the grad for mse
-    @fastmath tp.delta_b[tp.output_layer][:] = sum(dat.epsilon[tp.output_layer],2)
+    dat.epsilon[tp.output_layer][:] = dat.a[tp.output_layer] .- dat.targets  # @inbounds 
+    @fastmath tp.delta_w[tp.output_layer][:] = dat.epsilon[tp.output_layer] * dat.a[tp.output_layer-1]' # 2nd term is effectively the grad for mse  @inbounds 
+    @fastmath tp.delta_b[tp.output_layer][:] = sum(dat.epsilon[tp.output_layer],2)  # @inbounds 
 
     @fastmath for hl = (tp.output_layer - 1):-1:2  # loop over hidden layers
         if hp.do_batch_norm
             gradient_function!(dat.z_scale[hl], dat.grad[hl])
-            dat.epsilon[hl][:] = tp.theta[hl+1]' * dat.epsilon[hl+1] .* dat.grad[hl]
+            dat.epsilon[hl][:] = tp.theta[hl+1]' * dat.epsilon[hl+1] .* dat.grad[hl]  # @inbounds 
             batch_norm_back!(tp, dat, bn, hl)
-            tp.delta_w[hl][:] = dat.delta_z[hl] * dat.a[hl-1]'
+            tp.delta_w[hl][:] = dat.delta_z[hl] * dat.a[hl-1]'  # @inbounds 
         else
             gradient_function!(dat.z[hl], dat.grad[hl])
-            dat.epsilon[hl][:] = tp.theta[hl+1]' * dat.epsilon[hl+1] .* dat.grad[hl]
-            tp.delta_w[hl][:] = dat.epsilon[hl] * dat.a[hl-1]'
+            dat.epsilon[hl][:] = tp.theta[hl+1]' * dat.epsilon[hl+1] .* dat.grad[hl]  # @inbounds 
+            tp.delta_w[hl][:] = dat.epsilon[hl] * dat.a[hl-1]'  # @inbounds 
             tp.delta_b[hl][:] = sum(dat.epsilon[hl],2)  #  times a column of 1's = sum(row)
         end
 
@@ -1061,11 +1074,11 @@ end
 
 function momentum!(tp, hp)
     @fastmath for hl = (tp.output_layer - 1):-1:2  # loop over hidden layers
-        tp.delta_v_w[hl] .= hp.b1 .* tp.delta_v_w[hl] .+ (1.0 - hp.b1) .* tp.delta_w[hl]
+        tp.delta_v_w[hl] .= hp.b1 .* tp.delta_v_w[hl] .+ (1.0 - hp.b1) .* tp.delta_w[hl]  # @inbounds 
         tp.delta_w[hl] .= tp.delta_v_w[hl]
 
         if !hp.do_batch_norm  # then we need to do bias term
-            tp.delta_v_b[hl] .= hp.b1 .* tp.delta_v_b[hl] .+ (1.0 - hp.b1) .* tp.delta_b[hl]
+            tp.delta_v_b[hl] .= hp.b1 .* tp.delta_v_b[hl] .+ (1.0 - hp.b1) .* tp.delta_b[hl]  # @inbounds 
             tp.delta_b[hl] .= tp.delta_v_b[hl]
         end
     end
@@ -1074,15 +1087,15 @@ end
 function adam!(tp, hp, t)
 
     @fastmath for hl = (tp.output_layer - 1):-1:2  # loop over hidden layers
-        tp.delta_v_w[hl] .= hp.b1 .* tp.delta_v_w[hl] .+ (1.0 - hp.b1) .* tp.delta_w[hl]
-        tp.delta_s_w[hl] .= hp.b2 .* tp.delta_s_w[hl] .+ (1.0 - hp.b2) .* tp.delta_w[hl].^2
-        tp.delta_w[hl] .= (  (tp.delta_v_w[hl] ./ (1.0 - hp.b1^t)) ./
+        tp.delta_v_w[hl] .= hp.b1 .* tp.delta_v_w[hl] .+ (1.0 - hp.b1) .* tp.delta_w[hl]  # @inbounds 
+        tp.delta_s_w[hl] .= hp.b2 .* tp.delta_s_w[hl] .+ (1.0 - hp.b2) .* tp.delta_w[hl].^2  # @inbounds 
+        tp.delta_w[hl] .= (  (tp.delta_v_w[hl] ./ (1.0 - hp.b1^t)) ./  # @inbounds 
                               (sqrt.(tp.delta_s_w[hl] ./ (1.0 - hp.b2^t)) + hp.ltl_eps)  )
 
         if !hp.do_batch_norm  # then we need to do bias term
-            tp.delta_v_b[hl] .= hp.b1 .* tp.delta_v_b[hl] .+ (1.0 - hp.b1) .* tp.delta_b[hl]
-            tp.delta_s_b[hl] .= hp.b2 .* tp.delta_s_b[hl] .+ (1.0 - hp.b2) .* tp.delta_b[hl].^2
-            tp.delta_b[hl] .= (  (tp.delta_v_b[hl] ./ (1.0 - hp.b1^t)) ./
+            tp.delta_v_b[hl] .= hp.b1 .* tp.delta_v_b[hl] .+ (1.0 - hp.b1) .* tp.delta_b[hl]  # @inbounds 
+            tp.delta_s_b[hl] .= hp.b2 .* tp.delta_s_b[hl] .+ (1.0 - hp.b2) .* tp.delta_b[hl].^2  # @inbounds 
+            tp.delta_b[hl] .= (  (tp.delta_v_b[hl] ./ (1.0 - hp.b1^t)) ./  # @inbounds 
                               (sqrt.(tp.delta_s_b[hl] ./ (1.0 - hp.b2^t)) + hp.ltl_eps)  )
         end
     end
@@ -1113,22 +1126,21 @@ function affine(weights, data)  # no bias
 end
 
 
-function sigmoid!(z::Array{Float64,2}, a::Array{Float64,2})
+function sigmoid!(z::AbstractArray{Float64,2}, a::AbstractArray{Float64,2})
     a[:] = 1.0 ./ (1.0 .+ exp.(-z))
 end
 
 
-function l_relu!(z::Array{Float64,2}, a::Array{Float64,2}) # leaky relu
+function l_relu!(z::AbstractArray{Float64,2}, a::AbstractArray{Float64,2}) # leaky relu
     a[:] = map(j -> j >= 0.0 ? j : l_relu_neg * j, z)
 end
 
-
-function relu!(z::Array{Float64,2}, a::Array{Float64,2})
+function relu!(z::AbstractArray{Float64,2}, a::AbstractArray{Float64,2})
     a[:] = max.(z, 0.0)
 end
 
 
-function softmax!(z::Array{Float64,2}, a::Array{Float64,2})
+function softmax!(z::AbstractArray{Float64,2}, a::AbstractArray{Float64,2})
 
     expf = similar(a)
     expf[:] = exp.(z .- maximum(z,1))
@@ -1137,7 +1149,7 @@ function softmax!(z::Array{Float64,2}, a::Array{Float64,2})
 end
 
 
-function regression!(z::Array{Float64,2}, a::Array{Float64,2})
+function regression!(z::AbstractArray{Float64,2}, a::AbstractArray{Float64,2})
     a[:] = z[:]
 end
 
@@ -1149,18 +1161,18 @@ function affine_gradient(data, layer)  # no bias
 end
 
 
-function sigmoid_gradient!(z::Array{Float64,2}, grad::Array{Float64,2})
+function sigmoid_gradient!(z::AbstractArray{Float64,2}, grad::AbstractArray{Float64,2})
     sigmoid!(z, grad)
     grad[:] = grad .* (1.0 .- grad)
 end
 
 
-function l_relu_gradient!(z::Array{Float64,2}, grad::Array{Float64,2})
+function l_relu_gradient!(z::AbstractArray{Float64,2}, grad::AbstractArray{Float64,2})
     grad[:] = map(j -> j > 0.0 ? 1.0 : l_relu_neg, z);
 end
 
 
-function relu_gradient!(z::Array{Float64,2}, grad::Array{Float64,2})
+function relu_gradient!(z::AbstractArray{Float64,2}, grad::AbstractArray{Float64,2})
     grad[:] = map(j -> j > 0.0 ? 1.0 : 0.0, z);
 end
 
@@ -1172,15 +1184,15 @@ function batch_norm_fwd!(bn, dat, hl, istrain=true)
     if istrain
         bn.mu[hl][:] = mean(dat.z[hl], 2)          # use in backprop
         bn.stddev[hl][:] = std(dat.z[hl], 2)
-        dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu[hl]) ./ bn.stddev[hl]  # normalized: 'aka' xhat or zhat
-        dat.z_scale[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y
-        bn.mu_run[hl][:] = (  bn.mu_run[hl][1] == 0.0 ? bn.mu[hl] :
+        dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu[hl]) ./ bn.stddev[hl]  # normalized: 'aka' xhat or zhat  @inbounds 
+        dat.z_scale[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y  @inbounds 
+        bn.mu_run[hl][:] = (  bn.mu_run[hl][1] == 0.0 ? bn.mu[hl] :  # @inbounds 
             0.9 .* bn.mu_run[hl] .+ 0.1 .* bn.mu[hl]  )
-        bn.std_run[hl][:] = (  bn.std_run[hl][1] == 0.0 ? bn.stddev[hl] :
+        bn.std_run[hl][:] = (  bn.std_run[hl][1] == 0.0 ? bn.stddev[hl] :  # @inbounds 
             0.9 .* bn.std_run[hl] + 0.1 .* bn.stddev[hl]  )
     else  # predictions with existing parameters
-        dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu_run[hl]) ./ bn.std_run[hl]  # normalized: 'aka' xhat or zhat
-        dat.z_scale[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y
+        dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu_run[hl]) ./ bn.std_run[hl]  # normalized: 'aka' xhat or zhat  @inbounds 
+        dat.z_scale[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y  @inbounds 
     end
 end
 
@@ -1189,8 +1201,24 @@ function batch_norm_back!(tp, dat, bn, hl)
     d,mb = size(dat.epsilon[hl])
     bn.delta_bet[hl][:] = sum(dat.epsilon[hl], 2)
     bn.delta_gam[hl][:] = sum(dat.epsilon[hl] .* dat.z_norm[hl], 2)
-    dat.delta_z_norm[hl][:] = bn.gam[hl] .* dat.epsilon[hl]
-    dat.delta_z[hl][:] = (
+
+    # debug
+    # println("size of pre-allocated dat.delta_z_norm $(size(dat.delta_z_norm))")
+    # for i in 1:size(dat.delta_z_norm,1)
+    #     println("$i size: $(size(dat.delta_z_norm[i]))")
+    # end
+    # error("that's all folks....")
+
+    # debug
+    # println("size of pre-allocated mb.epsilon $(size(dat.epsilon))")
+    # for i in 1:size(dat.epsilon,1)
+    #     println("$i size: $(size(dat.epsilon[i]))")
+    # end
+    # error("that's all folks....")
+
+    dat.delta_z_norm[hl][:] = bn.gam[hl] .* dat.epsilon[hl]  # @inbounds 
+
+    dat.delta_z[hl][:] = (                               # @inbounds 
         (1.0 / mb) .* (1.0 ./ bn.stddev[hl]) .* (
             mb .* dat.delta_z_norm[hl] .- sum(dat.delta_z_norm[hl],2) .-
             dat.z_norm[hl] .* sum(dat.delta_z_norm[hl] .* dat.z_norm[hl], 2)
