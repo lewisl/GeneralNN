@@ -1,9 +1,9 @@
 #DONE
-#   set function parameter types to AbstractArray when using view or actual array
+
 
 
 #TODO
-#   finish create_minibatch_views and preallocate_minibatch functions
+#   try batch norm with minmax normalization
 #   retest dropout with minibatch view changes
 #   cleaning up batch norm is complicated:
 #       affects feedfwd, backprop, pre-allocation (several), momentum, adam search for if [!hp.]*do_batch_norm
@@ -32,8 +32,6 @@
 #   pooling layers
 #   better way to handle test not using mini-batches
 #   implement early stopping
-
-#   scale weights for cost regularization to accommodate ReLU normalization?
 #   separate plots data structure from stats data structure?
 
 
@@ -67,7 +65,7 @@ module GeneralNN
 export NN_parameters, Model_data, Batch_norm_params, Hyper_parameters
 
 # functions to use
-export train_nn, test_score, save_params, load_params, accuracy, predictions_vector, extract_data
+export train_nn, test_score, save_params, load_params, accuracy, predictions_vector, extract_data, normalize_data
 
 using MAT
 using JLD
@@ -124,6 +122,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
     alphaovermb::Float64
     do_batch_norm::Bool
     norm_mode::String
+    dropout::Bool
     droplim::Array{Float64,1}
     reg::String
     opt::String
@@ -138,6 +137,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         0.35,           # alphaovermb -- calculated->not a valid default
         false,          # do_batch_norm
         "none",         # norm_mode
+        false,          # dropout
         [1.0],          # droplim
         "L2",           # reg
         "",             # opt
@@ -281,9 +281,10 @@ end
 
 
 """
-function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha=0.35,
+function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha::Float64=0.35,
     mb_size::Int64=0, lambda::Float64=0.01, classify::String="softmax", norm_mode::String="none",
-    mom=0.9, units::String="sigmoid", plots::Array{String,1}=["Training", "Learning"])
+    opt::String="", opt_params::Array{Float64,1}=[0.9,0.999], units::String="sigmoid", do_batch_norm::Bool=false,
+    reg::String="L2", dropout::Bool=false, droplim::Array{Float64,1}=[1.0], plots::Array{String,1}=["Training", "Learning"])
 
 Train sigmoid/softmax neural networks up to 11 layers.  Detects
 number of output labels from data. Detects number of features from data for output units.
@@ -315,6 +316,7 @@ Enables any size mini-batch that divides evenly into number of examples.  Plots
                     any choice of ["Learning", "Cost", "Training", "Test"];
                     for no plots use String[] or ["None"]
         reg     ::= type of regularization, must be one of "L2","Dropout", ""
+        dropout ::= do or don't use dropout network
         droplim ::= array of values between 0.5 and 1.0 determines how much dropout for
                     hidden layers and output layer (ex: [0.8] or [0.8,0.9, 1.0]).  A single
                     value will be applied to all layers.  If fewer values than layers, then the
@@ -325,7 +327,7 @@ Enables any size mini-batch that divides evenly into number of examples.  Plots
 function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha::Float64=0.35,
     mb_size::Int64=0, lambda::Float64=0.01, classify::String="softmax", norm_mode::String="none",
     opt::String="", opt_params::Array{Float64,1}=[0.9,0.999], units::String="sigmoid", do_batch_norm::Bool=false,
-    reg::String="L2", droplim::Array{Float64,1}=[1.0], plots::Array{String,1}=["Training", "Learning"])
+    reg::String="L2", dropout::Bool=false, droplim::Array{Float64,1}=[1.0], plots::Array{String,1}=["Training", "Learning"])
 
     ################################################################################
     #   This is a front-end function that verifies all inputs and calls run_training
@@ -367,6 +369,15 @@ function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha:
         error("classify must be \"softmax\", \"sigmoid\" or \"regression\".")
     end
 
+    norm_mode = lowercase(norm_mode)
+    if norm_mode == "" && norm_mode == "none"
+        norm_mode == "none"
+    elseif norm_mode == "standard"
+    elseif norm_mode == "minmax"
+    else
+        warn("Invalid norm mode: $norm_mode, using \"none\".")
+    end
+
     units = lowercase(units)
     if !in(units, ["l_relu", "sigmoid", "relu"])
         warn("units must be \"relu,\" \"l_relu,\" or \"sigmoid\". Setting to default \"sigmoid\".")
@@ -378,18 +389,18 @@ function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha:
         end
     end
 
-    opt = titlecase(lowercase(opt))  # match title case for string argument
-    if !in(opt, ["Momentum", "Adam", ""])
-        warn("opt must be \"Momentum\" or \"Adam\" or \"\" (nothing).  Setting to \"\" (nothing).")
+    opt = lowercase(opt)  # match title case for string argument
+    if !in(opt, ["momentum", "adam", ""])
+        warn("opt must be \"momentum\" or \"adam\" or \"\" (nothing).  Setting to \"\" (nothing).")
     end
 
     reg = titlecase(lowercase(reg))
-    if !in(reg, ["L2", "Dropout", ""])
-        warn("reg must be \"L2\", \"Dropout\" or \"\" (nothing). Setting to default \"L2\".")
+    if !in(reg, ["L2", ""])
+        warn("reg must be \"L2\" or \"\" (nothing). Setting to default \"L2\".")
         reg = "L2"
     end
 
-    if reg == "Dropout"
+    if dropout
         if !all([(c>=.5 && c<=1.0) for c in droplim])
             error("droplim values must be between 0.5 and 1.0. Quitting.")
         end
@@ -405,6 +416,7 @@ function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha:
         end
     end
 
+
     valid_plots = ["Training", "Test", "Learning", "Cost", "None", ""]
     plots = titlecase.(lowercase.(plots))  # user input doesn't have use perfect case
     new_plots = [pl for pl in valid_plots if in(pl, plots)] # both valid and input by the user
@@ -417,15 +429,15 @@ function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha:
     end
 
     run_training(matfname, epochs, n_hid,
-        plots=plots, reg=reg, droplim=droplim, alpha=alpha, mb_size=mb_size, lambda=lambda,
-        opt=opt, opt_params=opt_params, classify=classify,
+        plots=plots, reg=reg, alpha=alpha, mb_size=mb_size, lambda=lambda,
+        opt=opt, opt_params=opt_params, classify=classify, dropout=dropout, droplim=droplim,
         norm_mode=norm_mode, do_batch_norm=do_batch_norm, units=units);
 end
 
 
 function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
-    plots::Array{String,1}=["Training", "Learning"], reg="L2", droplim=[1.0], alpha=0.35,
-    mb_size=0, lambda=0.01, opt="", opt_params=[],
+    plots::Array{String,1}=["Training", "Learning"], reg="L2", alpha=0.35,
+    mb_size=0, lambda=0.01, opt="", opt_params=[], dropout=false, droplim=[1.0],
     classify="softmax", norm_mode="none", do_batch_norm=false, units="sigmoid")
 
     # start the cpu clock
@@ -445,7 +457,10 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     test = Model_data()
 
     # load training data and test data (if any)
-    train.inputs, train.targets, test.inputs, test.targets, norm_factors = extract_data(matfname, norm_mode)
+    train.inputs, train.targets, test.inputs, test.targets = extract_data(matfname)
+    
+    # normalize input data
+train.inputs, test.inputs, norm_factors = normalize_data(train.inputs, test.inputs, norm_mode)
     # debug
     # println("norm_factors ", typeof(norm_factors))
     # println(norm_factors)
@@ -474,24 +489,26 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
         train.targets[:] = train.targets[:, select_index]
     end
 
-    # set Hyper_parameters to provided inputs
+
     hp = Hyper_parameters()  #  sets the defaults!
+        # set Hyper_parameters to provided inputs
         hp.alpha =  alpha
         hp.lambda = lambda
         hp.reg = reg
         hp.classify = classify
+        hp.dropout = dropout
 
     # no batch normalization for 1 batch
     hp.do_batch_norm = n_mb == 1 ? false : do_batch_norm  
     hp.alphaovermb = alpha / mb_size  # calc once, use in loop
 
     # set parameters for Momentum or Adam optimization
-    if opt == "Momentum" || opt == "Adam"
+    if opt == "momentum" || opt == "adam"
         hp.opt = opt
         if !(opt_params == [])  # use inputs for opt_params
             # set b1 for Momentum and Adam
             if opt_params[1] > 1.0 || opt_params[1] < 0.5
-                warn("first opt_params for Momentum or Adam should be between 0.5 and 0.999. Using default")
+                warn("First opt_params for momentum or adam should be between 0.5 and 0.999. Using default")
                 # nothing to do:  hp.b1 = 0.9 and hp.b2 = 0.999 and hp.ltl_eps = 1e-8
             else
                 hp.b1 = opt_params[1] # use the passed parameter
@@ -499,7 +516,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
             # set b2 for Adam
             if length(opt_params) > 1
                 if opt_params[2] > 1.0 || opt_params[1] < 0.9
-                    warn("second opt_params for Adam should be between 0.9 and 0.999. Using default")
+                    warn("second opt_params for adam should be between 0.9 and 0.999. Using default")
                 else
                     hp.b2 = opt_params[2]
                 end
@@ -550,7 +567,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     # dropout parameters: droplim is in hp (Hyper_parameters),
     #    drop_ran_w and drop_filt_w are in mb or train (Model_data)
     # set a droplim for each layer (input layer will be ignored)
-    if hp.reg == "Dropout"
+    if hp.dropout
         hp.droplim = droplim
         # fill droplim to match number of layers
         if length(droplim) > length(tp.layer_units)
@@ -768,13 +785,48 @@ function extract_data(matfname::String, norm_mode::String="none")
         test_targets = zeros(0,0)
     end
 
+    # if lowercase(norm_mode) == "standard"
+    #     # normalize training data
+    #     x_mu = mean(inputs, 2)
+    #     x_std = std(inputs, 2)
+    #     inputs = (inputs .- x_mu) ./ (x_std .+ 1e-08)
+    #     # normalize test data
+    #     if in("test", keys(df))
+    #         test_inputs = (test_inputs .- x_mu) ./ (x_std .+ 1e-08)
+    #     end
+    #     norm_factors = (x_mu, x_std)
+    # elseif lowercase(norm_mode) == "minmax"
+    #     # normalize training data
+    #     x_max = maximum(inputs, 2)
+    #     x_min = minimum(inputs, 2)
+    #     inputs = (inputs .- x_min) ./ (x_max .- x_min .+ 1e-08)
+    #     # normalize test data
+    #     if in("test", keys(df))
+    #         test_inputs = (test_inputs .- x_min) ./ (x_max .- x_min .+ 1e-08)
+    #     end
+    #     norm_factors = (x_min, x_max) # tuple of Array{Float64,2}
+    # else  # handles case of "", "none" or really any crazy string
+    #     norm_factors = ([0.0], [1.0])
+    # end
+
+    # to translate to unnormalized regression coefficients: m = mhat / stdx, b = bhat - (m*xmu)
+    # precalculate a and b constants, and 
+    # then just apply newvalue = a * value + b. a = (max'-min')/(max-min) and b = max - a * max 
+    # (x - x.min()) / (x.max() - x.min())       # values from 0 to 1
+    # 2*(x - x.min()) / (x.max() - x.min()) - 1 # values from -1 to 1
+
+    return inputs, targets, test_inputs, test_targets
+end
+
+
+function normalize_data(inputs, test_inputs, norm_mode="none")
     if lowercase(norm_mode) == "standard"
         # normalize training data
         x_mu = mean(inputs, 2)
         x_std = std(inputs, 2)
         inputs = (inputs .- x_mu) ./ (x_std .+ 1e-08)
         # normalize test data
-        if in("test", keys(df))
+        if size(test_inputs) != (0,0)
             test_inputs = (test_inputs .- x_mu) ./ (x_std .+ 1e-08)
         end
         norm_factors = (x_mu, x_std)
@@ -784,7 +836,7 @@ function extract_data(matfname::String, norm_mode::String="none")
         x_min = minimum(inputs, 2)
         inputs = (inputs .- x_min) ./ (x_max .- x_min .+ 1e-08)
         # normalize test data
-        if in("test", keys(df))
+        if size(test_inputs) != (0,0)
             test_inputs = (test_inputs .- x_min) ./ (x_max .- x_min .+ 1e-08)
         end
         norm_factors = (x_min, x_max) # tuple of Array{Float64,2}
@@ -798,7 +850,7 @@ function extract_data(matfname::String, norm_mode::String="none")
     # (x - x.min()) / (x.max() - x.min())       # values from 0 to 1
     # 2*(x - x.min()) / (x.max() - x.min()) - 1 # values from -1 to 1
 
-    return inputs, targets, test_inputs, test_targets, norm_factors
+    return inputs, test_inputs, norm_factors
 end
 
 
@@ -906,7 +958,7 @@ function preallocate_minibatch!(mb, tp, mb_size, in_k, n, out_k, hp)
     # end
     # error("that's all folks....")
 
-    if hp.reg == "dropout"
+    if hp.dropout
         mb.drop_ran_w = deepcopy(mb.epsilon)
         push!(mb.drop_filt_w,fill(true,(2,2))) # for input layer, not used
         for item in mb.drop_ran_w[2:end]
@@ -975,17 +1027,32 @@ function feedfwd!(tp, bn, dat, fwd_functions, hp; istrain=true)
 
     @fastmath for hl = 2:tp.output_layer-1  # hidden layers
 
-        if hp.do_batch_norm
-            dat.z[hl][:] = tp.theta[hl] * dat.a[hl-1]  # linear with no bias  @inbounds 
+        # if hp.do_batch_norm
+        #     dat.z[hl][:] = tp.theta[hl] * dat.a[hl-1]  # linear with no bias  @inbounds 
+        #     batch_norm_fwd!(bn, dat, hl, istrain)
+        #     unit_function!(dat.z_scale[hl],dat.a[hl]) # non-linear function
+        #     if istrain && hp.reg == "Dropout"
+        #         dropout!(dat,hp,hl)
+        #     end
+        # else
+        #     dat.z[hl][:] = tp.theta[hl] * dat.a[hl-1] .+ tp.bias[hl]  # linear with bias @inbounds 
+        #     unit_function!(dat.z[hl],dat.a[hl])
+        # end
+
+        # simplification
+        dat.z[hl][:] = tp.theta[hl] * dat.a[hl-1]
+        if hp.do_batch_norm 
             batch_norm_fwd!(bn, dat, hl, istrain)
-            unit_function!(dat.z_scale[hl],dat.a[hl]) # non-linear function
-            if istrain && hp.reg == "Dropout"
-                dropout!(dat,hp,hl)
-            end
+            unit_function!(dat.z_scale[hl],dat.a[hl]) 
         else
-            dat.z[hl][:] = tp.theta[hl] * dat.a[hl-1] .+ tp.bias[hl]  # linear with bias @inbounds 
+            dat.z[hl][:] =  dat.z[hl] .+ tp.bias[hl]
             unit_function!(dat.z[hl],dat.a[hl])
         end
+
+        if istrain && hp.dropout 
+            dropout!(dat,hp,hl)
+        end
+
 
     end
 
