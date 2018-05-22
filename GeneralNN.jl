@@ -1,10 +1,9 @@
 #DONE
 
 
-
 #TODO
-#   use function variable for optimization: adam, momentum, nullopt
-#   see if we can get rid of z_scale and just recalculate z itself
+#   implement stepped learning decay
+#   retest batch norm
 #   try batch norm with minmax normalization
 #   cleaning up batch norm is complicated:
 #       affects feedfwd, backprop, pre-allocation (several), momentum, adam search for if [!hp.]*do_batch_norm
@@ -157,7 +156,7 @@ mutable struct Model_data               # we will use train for inputs, test for
     a::Array{Array{Float64,2},1}
     z::Array{Array{Float64,2},1}
     z_norm::Array{Array{Float64,2},1}   # same size as z--for batch_norm
-    z_scale::Array{Array{Float64,2},1}  # same size as z, often called "y"--for batch_norm
+    # z_scale::Array{Array{Float64,2},1}  # same size as z, often called "y"--for batch_norm
     delta_z_norm::Array{Array{Float64,2},1}    # same size as z
     delta_z::Array{Array{Float64,2},1}         # same size as z
     grad::Array{Array{Float64,2},1}
@@ -172,7 +171,7 @@ mutable struct Model_data               # we will use train for inputs, test for
         Array{Array{Float64,2},1}(0),   # a
         Array{Array{Float64,2},1}(0),   # z
         Array{Array{Float64,2},1}(0),   # z_norm -- only pre-allocate if batch_norm
-        Array{Array{Float64,2},1}(0),   # z_scale -- only pre-allocate if batch_norm
+        # Array{Array{Float64,2},1}(0),   # z_scale -- only pre-allocate if batch_norm
         Array{Array{Float64,2},1}(0),   # delta_z_norm
         Array{Array{Float64,2},1}(0),   # delta_z
         Array{Array{Float64,2},1}(0),   # grad
@@ -192,7 +191,7 @@ mutable struct Model_view               # we will use mb for mini-batches
     a::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     z::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     z_norm::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    z_scale::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    # z_scale::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     # array view of training targets
     targets::SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true}
     # arrays as big as the minibatch size
@@ -207,7 +206,7 @@ mutable struct Model_view               # we will use mb for mini-batches
         [view(zeros(2,2),:,1:2) for i in 1:2],  # a
         [view(zeros(2,2),:,1:2) for i in 1:2],  # z
         [view(zeros(2,2),:,1:2) for i in 1:2],  # z_norm
-        [view(zeros(2,2),:,1:2) for i in 1:2],  # z_scale
+        # [view(zeros(2,2),:,1:2) for i in 1:2],  # z_scale
         view(zeros(2,2),:,1:2),                 # targets
         Array{Array{Float64,2},1}(0),           # delta_z_norm
         Array{Array{Float64,2},1}(0),           # delta_z
@@ -685,17 +684,12 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
 
             feedfwd!(tp, bn, mb, hp)  # for all layers
 
-            # debug
-            # println(mb.a[2])
-
             backprop!(tp, bn, mb, hp, t)  # for all layers
 
             optimization_function!(tp, hp, t)
 
             # update weights, bias, and batch_norm parameters
-            @fastmath for hl = 2:tp.output_layer        # hl iterates over each hidden layer and the output layer
-
-                # update weights
+            @fastmath for hl = 2:tp.output_layer            
                 tp.theta[hl] .= tp.theta[hl] .- (hp.alphaovermb .* tp.delta_w[hl])
                 if hp.reg == "L2"  # subtract regularization term
                     tp.theta[hl] .= tp.theta[hl] .- (hp.alphaovermb .* (hp.lambda .* tp.theta[hl]))
@@ -708,8 +702,6 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
                     tp.bias[hl] .= tp.bias[hl] .- (hp.alphaovermb .* tp.delta_b[hl])
                 end
 
-            # debug
-            # println(tp.theta)
             end  # layer loop
         end # mini-batch loop
 
@@ -862,7 +854,7 @@ function preallocate_feedfwd!(dat, tp, n, do_batch_norm)
 
     if do_batch_norm  # required for full pass performance stats
         dat.z_norm = deepcopy(dat.z)
-        dat.z_scale = deepcopy(dat.z)  # same size as z, often called "y"
+        # dat.z_scale = deepcopy(dat.z)  # same size as z, often called "y"
     end
 end
 
@@ -971,7 +963,7 @@ function update_minibatch_views!(mb::Model_view, train::Model_data, tp::NN_param
 
     if hp.do_batch_norm
         mb.z_norm = [view(train.z_norm[i],:, colrng) for i = 1:n_layers]
-        mb.z_scale = [view(train.z_scale[i],:, colrng) for i = 1:n_layers]
+        # mb.z_scale = [view(train.z_scale[i],:, colrng) for i = 1:n_layers]
     end
 
     # at line 936:
@@ -1019,7 +1011,8 @@ function feedfwd!(tp, bn, dat, hp; istrain=true)
 
         if hp.do_batch_norm 
             batch_norm_fwd!(bn, dat, hl, istrain)
-            unit_function!(dat.z_scale[hl],dat.a[hl]) 
+            # unit_function!(dat.z_scale[hl],dat.a[hl]) 
+            unit_function!(dat.z[hl],dat.a[hl])
         else
             dat.z[hl][:] =  dat.z[hl] .+ tp.bias[hl]
             unit_function!(dat.z[hl],dat.a[hl])
@@ -1056,7 +1049,8 @@ function backprop!(tp, bn, dat, hp, t)
 
     @fastmath for hl = (tp.output_layer - 1):-1:2  # loop over hidden layers
         if hp.do_batch_norm
-            gradient_function!(dat.z_scale[hl], dat.grad[hl])
+            # gradient_function!(dat.z_scale[hl], dat.grad[hl])
+            gradient_function!(dat.z[hl], dat.grad[hl])
             hp.dropout && (dat.grad[hl] .* dat.drop_filt_w[hl])
             dat.epsilon[hl][:] = tp.theta[hl+1]' * dat.epsilon[hl+1] .* dat.grad[hl]  # @inbounds 
             batch_norm_back!(tp, dat, bn, hl)
@@ -1231,14 +1225,16 @@ function batch_norm_fwd!(bn, dat, hl, istrain=true)
         bn.mu[hl][:] = mean(dat.z[hl], 2)          # use in backprop
         bn.stddev[hl][:] = std(dat.z[hl], 2)
         dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu[hl]) ./ bn.stddev[hl]  # normalized: 'aka' xhat or zhat  @inbounds 
-        dat.z_scale[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y  @inbounds 
+        # dat.z_scale[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y  @inbounds 
+        dat.z[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y  @inbounds 
         bn.mu_run[hl][:] = (  bn.mu_run[hl][1] == 0.0 ? bn.mu[hl] :  # @inbounds 
             0.9 .* bn.mu_run[hl] .+ 0.1 .* bn.mu[hl]  )
         bn.std_run[hl][:] = (  bn.std_run[hl][1] == 0.0 ? bn.stddev[hl] :  # @inbounds 
             0.9 .* bn.std_run[hl] + 0.1 .* bn.stddev[hl]  )
     else  # predictions with existing parameters
         dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu_run[hl]) ./ bn.std_run[hl]  # normalized: 'aka' xhat or zhat  @inbounds 
-        dat.z_scale[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y  @inbounds 
+        # dat.z_scale[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y  @inbounds 
+        dat.z[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y  @inbounds 
     end
 end
 
