@@ -1,9 +1,9 @@
 #DONE
 
 
+
 #TODO
-#   implement stepped learning decay
-#   retest batch norm
+
 #   try batch norm with minmax normalization
 #   cleaning up batch norm is complicated:
 #       affects feedfwd, backprop, pre-allocation (several), momentum, adam search for if [!hp.]*do_batch_norm
@@ -127,6 +127,11 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
     reg::String
     opt::String
     classify::String
+    mb_size::Int64
+    n_mb::Int64
+    epochs::Int64
+    do_learn_decay::Bool
+    learn_decay::Array{Float64,1}
 
     Hyper_parameters() = new(       # constructor with defaults--we use hp as the struct variable
         0.35,           # alpha -- OK for nn. way too high for linear regression
@@ -141,7 +146,12 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         [0.5],          # droplim
         "L2",           # reg
         "",             # opt
-        "sigmoid"       # classify
+        "sigmoid",      # classify
+        50,             # mb_size
+        100,            # n_mb
+        30,             # epochs
+        false,          # do_learn_decay
+        [0.0, 1.0]      # learn_decay
     )
 end
 
@@ -327,7 +337,8 @@ Enables any size mini-batch that divides evenly into number of examples.  Plots
 function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha::Float64=0.35,
     mb_size::Int64=0, lambda::Float64=0.01, classify::String="softmax", norm_mode::String="none",
     opt::String="", opt_params::Array{Float64,1}=[0.9,0.999], units::String="sigmoid", do_batch_norm::Bool=false,
-    reg::String="L2", dropout::Bool=false, droplim::Array{Float64,1}=[0.5], plots::Array{String,1}=["Training", "Learning"])
+    reg::String="L2", dropout::Bool=false, droplim::Array{Float64,1}=[0.5], plots::Array{String,1}=["Training", "Learning"],
+    learn_decay::Array{Float64,1}=[0.0, 1.0])
 
     ################################################################################
     #   This is a front-end function that verifies all inputs and calls run_training
@@ -427,6 +438,16 @@ function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha:
         end
     end
 
+    if size(learn_decay) != (2,)
+        warn("learn_decay must be a vector of 2 numbers. Using no learn_decay")
+        learn_decay = [0.0, 1.0]
+    elseif !(learn_decay[1] >= 0.0 && learn_decay[1] < 1.0)
+        warn("First value of learn_decay must be >= 0.0 and < 1.0. Using no learn_decay")
+        learn_decay = [0.0, 1.0]
+    elseif !(learn_decay[2] >= 1.0 && learn_decay[2] < 10.0)
+        warn("Second value of learn_decay must be >= 1.0 and <= 10.0. Using no learn_decay")
+        learn_decay = [0.0, 1.0]
+    end
 
     valid_plots = ["Training", "Test", "Learning", "Cost", "None", ""]
     plots = titlecase.(lowercase.(plots))  # user input doesn't have use perfect case
@@ -442,14 +463,15 @@ function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha:
     run_training(matfname, epochs, n_hid,
         plots=plots, reg=reg, alpha=alpha, mb_size=mb_size, lambda=lambda,
         opt=opt, opt_params=opt_params, classify=classify, dropout=dropout, droplim=droplim,
-        norm_mode=norm_mode, do_batch_norm=do_batch_norm, units=units);
+        norm_mode=norm_mode, do_batch_norm=do_batch_norm, units=units, learn_decay=learn_decay);
 end
 
 
 function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     plots::Array{String,1}=["Training", "Learning"], reg="L2", alpha=0.35,
     mb_size=0, lambda=0.01, opt="", opt_params=[], dropout=false, droplim=[0.5],
-    classify="softmax", norm_mode="none", do_batch_norm=false, units="sigmoid")
+    classify="softmax", norm_mode="none", do_batch_norm=false, units="sigmoid",
+    learn_decay::Array{Float64,1}=[0.0, 1.0])
 
     # start the cpu clock
     tic()
@@ -508,6 +530,9 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
         hp.reg = reg
         hp.classify = classify
         hp.dropout = dropout
+        hp.epochs = epochs
+        hp.mb_size = mb_size
+        hp.n_mb = n_mb
 
     # no batch normalization for 1 batch
     hp.do_batch_norm = n_mb == 1 ? false : do_batch_norm  
@@ -536,6 +561,13 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     else
         hp.opt = ""
     end
+
+    if learn_decay == [0.0, 1.0]
+        hp.do_learn_decay = false
+    else
+        hp.do_learn_decay = true
+    end
+    hp.learn_decay = learn_decay
 
     # debug
     # println("opt params: $(hp.b1), $(hp.b2)")
@@ -672,6 +704,9 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     # println(train.targets)
 
     for ep_i = 1:epochs  # loop for "epochs" with counter epoch i as ep_i
+
+        hp.do_learn_decay && step_lrn_decay!(hp, ep_i)
+
         for mb_j = 1:n_mb  # loop for mini-batches with counter minibatch j as mb_j
 
             first_example = (mb_j - 1) * mb_size + 1  # mini-batch subset for the inputs->layer 1
@@ -1148,6 +1183,21 @@ function dropout!(dat,hp,hl)
     dat.drop_filt_w[hl][:] = dat.drop_ran_w[hl] .< hp.droplim[hl]
     dat.a[hl][:] = dat.a[hl] .* dat.drop_filt_w[hl]
     dat.a[hl][:] = dat.a[hl] ./ hp.droplim[hl]
+end
+
+
+function step_lrn_decay!(hp, ep_i)
+    decay_rate = hp.learn_decay[1]
+    e_steps = hp.learn_decay[2]
+    if ! (rem(ep_i,hp.epochs/e_steps) == 0.0)
+        return
+    elseif ep_i == hp.epochs
+        return
+    else
+        hp.alpha *= decay_rate
+        hp.alphaovermb *= decay_rate
+        println("\n\n **** at $ep_i stepping down learning rate to $(hp.alpha)")
+    end
 end
 
 
