@@ -3,14 +3,11 @@
 
 
 #TODO
-
+#   don't create plotdef if not plotting
 #   try batch norm with minmax normalization
 #   cleaning up batch norm is complicated:
 #       affects feedfwd, backprop, pre-allocation (several), momentum, adam search for if [!hp.]*do_batch_norm
 #       type dispatch on bn:  either a struct or a bool to eliminate if tests all over to see if we batch normalize
-#   don't allocate minibatch if only one--eg, using all of the data--use a pointer to the real data
-#       this might work for multiple little minibatches too
-#       but for lots of little minibatches, we only need the whole thing for full data predictions
 #   check for type stability: @code_warntype pisum(500,10000)
 #   is it worth having feedfwdpredict?  along with batchnormfwdpredict?  then no if test since we always know when we are predicting
 #   still lots of memory allocations despite the pre-allocation
@@ -46,9 +43,10 @@ Includes the following functions to run directly:
 - save_theta() -- save theta, which is returned by train_nn
 - predictions_vector() -- predictions given x and saved theta
 - accuracy() -- calculates accuracy of predictions compared to actual labels
+- extract_data() -- extracts data for MNIST from matlab files
+- normalize_data() -- normalize via standardization (mean, sd) or minmax
 
-To access, run this statement push!(LOAD_PATH, "/Path/To/My/Module/") with the path
-to this module.
+To use, include() the file.  Then enter using GeneralNN to use the module.
 
 These data structures are used to hold parameters and data:
 
@@ -114,24 +112,24 @@ end
 struct Hyper_parameters holds hyper_parameters used to control training
 """
 mutable struct Hyper_parameters          # we will use hp as the struct variable
-    alpha::Float64
-    lambda::Float64
-    b1::Float64
-    b2::Float64
-    ltl_eps::Float64
-    alphaovermb::Float64
-    do_batch_norm::Bool
-    norm_mode::String
-    dropout::Bool
-    droplim::Array{Float64,1}
-    reg::String
-    opt::String
-    classify::String
-    mb_size::Int64
-    n_mb::Int64
-    epochs::Int64
-    do_learn_decay::Bool
-    learn_decay::Array{Float64,1}
+    alpha::Float64              # learning 
+    lambda::Float64             # L2 regularization
+    b1::Float64                 # optimization for momentum or Adam
+    b2::Float64                 # 2nd optimization parameter for Adam
+    ltl_eps::Float64            # use in denominator with division of very small values to prevent overflow
+    alphaovermb::Float64        # calculate outside the learning loop
+    do_batch_norm::Bool         # true or false
+    norm_mode::String           # "", "none", "standard", or "minmax"
+    dropout::Bool               # true or false to choose dropout network
+    droplim::Array{Float64,1}   # the probability a node output is kept
+    reg::String                 # L2 or "none"
+    opt::String                 # Adam or momentum or "none" or "" for optimization
+    classify::String            # behavior of output layer: "softmax", "sigmoid", or "regression"
+    mb_size::Int64              # minibatch size--user input
+    n_mb::Int64                 # number of minibatches--calculated
+    epochs::Int64               # number of "outer" loops of training
+    do_learn_decay::Bool        # step down the learning rate across epochs
+    learn_decay::Array{Float64,1}  # reduction factor (fraction) and number of steps
 
     Hyper_parameters() = new(       # constructor with defaults--we use hp as the struct variable
         0.35,           # alpha -- OK for nn. way too high for linear regression
@@ -151,7 +149,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         100,            # n_mb
         30,             # epochs
         false,          # do_learn_decay
-        [0.0, 1.0]      # learn_decay
+        [1.0, 1.0]      # learn_decay
     )
 end
 
@@ -294,7 +292,8 @@ end
 function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha::Float64=0.35,
     mb_size::Int64=0, lambda::Float64=0.01, classify::String="softmax", norm_mode::String="none",
     opt::String="", opt_params::Array{Float64,1}=[0.9,0.999], units::String="sigmoid", do_batch_norm::Bool=false,
-    reg::String="L2", dropout::Bool=false, droplim::Array{Float64,1}=[1.0], plots::Array{String,1}=["Training", "Learning"])
+    reg::String="L2", dropout::Bool=false, droplim::Array{Float64,1}=[0.5], plots::Array{String,1}=["Training", "Learning"],
+    learn_decay::Array{Float64,1}=[1.0, 1.0])
 
 Train sigmoid/softmax neural networks up to 11 layers.  Detects
 number of output labels from data. Detects number of features from data for output units.
@@ -305,32 +304,36 @@ Enables any size mini-batch that divides evenly into number of examples.  Plots
         Batch_norm_params ::= struct that holds all batch_norm parameters
 
     key inputs:
-        alpha   ::= learning rate
-        lambda  ::= regularization rate
-        mb_size ::= mini-batch size=>integer, use 0 to run 1 batch of all examples,
-                    otherwise must be an even divisor of the number of examples
-        n_hid   ::= array of Int containing number of units in each hidden layer;
-                    make sure to use an array even with 1 hidden layer as in [40];
-                    use [0] to indicate no hidden layer (typically for linear regression)
-        norm_mode  ::= "standard", "minmax" or false => normalize inputs
-        do_batch_norm     ::= true or false => normalize each linear layer outputs
-        opt            ::= one of "Momentum", "Adam" or "".  default is blank string "".
-        opt_params     ::= parameters used by Momentum or Adam
+        alpha           ::= learning rate
+        lambda          ::= regularization rate
+        mb_size         ::= mini-batch size=>integer, use 0 to run 1 batch of all examples,
+                            otherwise must be an even divisor of the number of examples
+        n_hid           ::= array of Int containing number of units in each hidden layer;
+                            make sure to use an array even with 1 hidden layer as in [40];
+                            use [0] to indicate no hidden layer (typically for linear regression)
+        norm_mode       ::= "standard", "minmax" or false => normalize inputs
+        do_batch_norm   ::= true or false => normalize each linear layer outputs
+        opt             ::= one of "Momentum", "Adam" or "".  default is blank string "".
+        opt_params      ::= parameters used by Momentum or Adam
                            Momentum: one floating point value as [.9] (showing default)
                            Adam: 2 floating point values as [.9, .999] (showing defaults)
                            Note that epsilon is ALWAYS set to 1e-8
                            To accept defaults, don't input this parameter or use []
-        classify       ::= "softmax", "sigmoid", or "regression" for only the output layer
-        units          ::= "sigmoid", "l_relu", "relu" for non-linear activation of all hidden layers
-        plots   ::= determines training results collected and plotted
-                    any choice of ["Learning", "Cost", "Training", "Test"];
-                    for no plots use String[] or ["None"]
-        reg     ::= type of regularization, must be one of "L2","Dropout", ""
-        dropout ::= do or don't use dropout network
-        droplim ::= array of values between 0.5 and 1.0 determines how much dropout for
-                    hidden layers and output layer (ex: [0.8] or [0.8,0.9, 1.0]).  A single
-                    value will be applied to all layers.  If fewer values than layers, then the
-                    last value extends to remaining layers.
+        classify        ::= "softmax", "sigmoid", or "regression" for only the output layer
+        units           ::= "sigmoid", "l_relu", "relu" for non-linear activation of all hidden layers
+        plots           ::= determines training results collected and plotted
+                            any choice of ["Learning", "Cost", "Training", "Test"];
+                            for no plots use [""] or ["none"]
+        reg             ::= type of regularization, must be one of "L2","Dropout", ""
+        dropout         ::= true to use dropout network or false
+        droplim         ::= array of values between 0.5 and 1.0 determines how much dropout for
+                            hidden layers and output layer (ex: [0.8] or [0.8,0.9, 1.0]).  A single
+                            value will be applied to all layers.  If fewer values than layers, then the
+                            last value extends to remaining layers.
+        learn_decay     ::= array of 2 float values:  first is > 0.0 and <= 1.0 which is pct. reduction of 
+                            learning rate; second is >= 1.0 and <= 10.0 for number of times to 
+                            reduce learning decay_rate
+                            [1.0, 1.0] signals don't do learning decay
 
 
 """
@@ -338,7 +341,7 @@ function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha:
     mb_size::Int64=0, lambda::Float64=0.01, classify::String="softmax", norm_mode::String="none",
     opt::String="", opt_params::Array{Float64,1}=[0.9,0.999], units::String="sigmoid", do_batch_norm::Bool=false,
     reg::String="L2", dropout::Bool=false, droplim::Array{Float64,1}=[0.5], plots::Array{String,1}=["Training", "Learning"],
-    learn_decay::Array{Float64,1}=[0.0, 1.0])
+    learn_decay::Array{Float64,1}=[1.0, 1.0])
 
     ################################################################################
     #   This is a front-end function that verifies all inputs and calls run_training
@@ -363,10 +366,10 @@ function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha:
         error("Number of hidden units in a layer must be an integer value between 1 and 4096.")
     end
 
-    if alpha < 0.00001
+    if alpha < 0.000001
         warn("Alpha learning rate set too small. Setting to default 0.35")
         alpha = 0.35
-    elseif alpha > 1.0
+    elseif alpha > 3.0
         warn("Alpha learning rate set too large. Setting to defaut 0.35")
         alpha = 0.35
     end
@@ -440,13 +443,13 @@ function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha:
 
     if size(learn_decay) != (2,)
         warn("learn_decay must be a vector of 2 numbers. Using no learn_decay")
-        learn_decay = [0.0, 1.0]
-    elseif !(learn_decay[1] >= 0.0 && learn_decay[1] < 1.0)
+        learn_decay = [1.0, 1.0]
+    elseif !(learn_decay[1] >= 0.0 && learn_decay[1] <= 1.0)
         warn("First value of learn_decay must be >= 0.0 and < 1.0. Using no learn_decay")
-        learn_decay = [0.0, 1.0]
+        learn_decay = [1.0, 1.0]
     elseif !(learn_decay[2] >= 1.0 && learn_decay[2] < 10.0)
         warn("Second value of learn_decay must be >= 1.0 and <= 10.0. Using no learn_decay")
-        learn_decay = [0.0, 1.0]
+        learn_decay = [1.0, 1.0]
     end
 
     valid_plots = ["Training", "Test", "Learning", "Cost", "None", ""]
@@ -454,7 +457,7 @@ function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha:
     new_plots = [pl for pl in valid_plots if in(pl, plots)] # both valid and input by the user
     if sort(new_plots) != sort(plots) # the plots list included something not in valid_plots
         warn("Plots argument can only include \"Training\", \"Test\", \"Learning\" and \"Cost\" or \"None\" or \"\".
-            \nProceeding with default [\"None\"].")
+            \nProceeding no plots [\"None\"].")
         plots = ["None"]
     else
         plots = new_plots
@@ -471,7 +474,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     plots::Array{String,1}=["Training", "Learning"], reg="L2", alpha=0.35,
     mb_size=0, lambda=0.01, opt="", opt_params=[], dropout=false, droplim=[0.5],
     classify="softmax", norm_mode="none", do_batch_norm=false, units="sigmoid",
-    learn_decay::Array{Float64,1}=[0.0, 1.0])
+    learn_decay::Array{Float64,1}=[1.0, 1.0])
 
     # start the cpu clock
     tic()
@@ -482,18 +485,38 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
 
 
     ##########################################################
-    #   pre-allocate and initialize variables
+    #   setup model: data structs, many control parameters, functions,  pre-allocation
     ##########################################################
 
-    # create data containers
+    # instantiate data containers
     train = Model_data()  # train holds all the data and layer inputs/outputs
     test = Model_data()
 
+    mb = Model_view()  # layer data for mini-batches: as views on training data or arrays
+
+    tp = NN_parameters()  # trained parameters
+
+    bn = Batch_norm_params()  # do we always need the data structure to run?  yes--TODO fix this
+
+    hp = Hyper_parameters()  # hyper_parameters:  sets the defaults!
+    # update Hyper_parameters with user inputs--more below
+        hp.alpha = alpha
+        hp.lambda = lambda
+        hp.reg = reg
+        hp.classify = classify
+        hp.dropout = dropout
+        hp.epochs = epochs
+        hp.mb_size = mb_size
+        hp.norm_mode = norm_mode
+
     # load training data and test data (if any)
     train.inputs, train.targets, test.inputs, test.targets = extract_data(matfname)
-    
+
     # normalize input data
-    train.inputs, test.inputs, norm_factors = normalize_data(train.inputs, test.inputs, norm_mode)
+    if !(norm_mode == "" || lowercase(norm_mode) == "none")
+        train.inputs, test.inputs, norm_factors = normalize_data(train.inputs, test.inputs, norm_mode)
+        tp.norm_factors = norm_factors   
+    end
     # debug
     # println("norm_factors ", typeof(norm_factors))
     # println(norm_factors)
@@ -512,6 +535,9 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
         error("Mini-batch size $mb_size does not divide evenly into samples $n.")
     end
     n_mb = Int(n / mb_size)  # number of mini-batches
+    hp.n_mb = n_mb
+    hp.alphaovermb = alpha / mb_size  # calc once, use in hot loop
+    hp.do_batch_norm = n_mb == 1 ? false : do_batch_norm  # no batch normalization for 1 batch
 
     if mb_size < n
         # randomize order of all training samples:
@@ -521,22 +547,6 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
         train.inputs[:] = train.inputs[:, select_index]
         train.targets[:] = train.targets[:, select_index]
     end
-
-
-    hp = Hyper_parameters()  #  sets the defaults!
-        # set Hyper_parameters to provided inputs
-        hp.alpha =  alpha
-        hp.lambda = lambda
-        hp.reg = reg
-        hp.classify = classify
-        hp.dropout = dropout
-        hp.epochs = epochs
-        hp.mb_size = mb_size
-        hp.n_mb = n_mb
-
-    # no batch normalization for 1 batch
-    hp.do_batch_norm = n_mb == 1 ? false : do_batch_norm  
-    hp.alphaovermb = alpha / mb_size  # calc once, use in loop
 
     # set parameters for Momentum or Adam optimization
     if opt == "momentum" || opt == "adam"
@@ -562,7 +572,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
         hp.opt = ""
     end
 
-    if learn_decay == [0.0, 1.0]
+    if learn_decay == [1.0, 1.0]
         hp.do_learn_decay = false
     else
         hp.do_learn_decay = true
@@ -584,12 +594,8 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     #  pre-allocate variables
     ##########################################################################
 
-    # neural net model parameters
-    tp = NN_parameters()  # trainedparameters: tp holds all the parameters that will be trained and some metadata
     preallocate_nn_params!(tp, hp, n_hid, in_k, n, out_k)
-    tp.norm_factors = norm_factors
 
-    # feedfwd training data
     preallocate_feedfwd!(train, tp, n, hp.do_batch_norm)
 
     # feedfwd test data--if inputs are not all zeros
@@ -601,11 +607,9 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     end
 
     # pre-allocate feedfwd mini-batch training data
-    mb = Model_view()  # mb holds all layer data for mini-batches: views and hard data
     preallocate_minibatch!(mb, tp, mb_size, in_k, n, out_k, hp)  
     
     # batch normalization parameters
-    bn = Batch_norm_params()  # do we always need the data structure to run?  yes--TODO fix this
     if hp.do_batch_norm
         preallocate_batchnorm!(bn, mb, tp.layer_units)
     end
@@ -638,7 +642,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     #   define and choose functions to be used in neural net training
     #################################################################
 
-    # all the other functions are module level, e.g. global--call them anywhere
+    # all the other functions are module level, e.g. global--make these function variables module level, too
     global unit_function!
     global gradient_function!
     global classify_function!
@@ -783,7 +787,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     # plot the progress of cost and/or learning accuracy
     plot_output(plotdef)
 
-    return train, tp, bn, hp;  # trained model parameters, batch_norm parameters, hyper parameters
+    return train, tp, bn, hp;  # training data, trained model parameters, batch_norm parameters, hyper parameters
 
 end  # function run_training
 
@@ -1156,8 +1160,8 @@ function momentum!(tp, hp, t)
     end
 end
 
-function adam!(tp, hp, t)
 
+function adam!(tp, hp, t)
     @fastmath for hl = (tp.output_layer - 1):-1:2  # loop over hidden layers
         tp.delta_v_w[hl] .= hp.b1 .* tp.delta_v_w[hl] .+ (1.0 - hp.b1) .* tp.delta_w[hl]  # @inbounds 
         tp.delta_s_w[hl] .= hp.b2 .* tp.delta_s_w[hl] .+ (1.0 - hp.b2) .* tp.delta_w[hl].^2  # @inbounds 
