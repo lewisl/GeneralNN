@@ -3,6 +3,7 @@
 
 
 #TODO
+#   test the setting of the droplim variable for different number of layers
 #   try different versions of ensemble predictions_vector
 #   allow dropout to drop from the input layer
 #   augment data by perturbing the images
@@ -62,6 +63,8 @@ data used for training: delta_gam, delta_bet, delta_z_norm, delta_z, mu, stddev,
 module GeneralNN
 
 
+# ----------------------------------------------------------------------------------------
+
 # data structures for neural network
 export NN_parameters, Model_data, Batch_norm_params, Hyper_parameters
 
@@ -76,225 +79,12 @@ pyplot()  # initialize the backend used by Plots
 @pyimport seaborn  # prettier charts
 # using ImageView    BIG BUG HERE--SEGFAULT--REPORTED
 
+include("layer_functions.jl")
+include("nn_data_structs.jl")
+
 const l_relu_neg = .01  # makes the type constant; value can be changed
 
-"""
-struct NN_parameters holds model parameters learned by training and model metadata
-"""
-mutable struct NN_parameters              # we will use tp as the struct variable
-    theta::Array{Array{Float64,2},1}
-    bias::Array{Array{Float64,1},1}
-    delta_w::Array{Array{Float64,2},1}
-    delta_b::Array{Array{Float64,1},1}
-    delta_v_w::Array{Array{Float64,2},1}  # momentum weighted average of gradient--also for Adam
-    delta_v_b::Array{Array{Float64,1},1}  # hold momentum weighted average of gradient--also for Adam
-    delta_s_w::Array{Array{Float64,2},1}  # s update term for ADAM
-    delta_s_b::Array{Array{Float64,1},1}  # s update term for ADAM
-    theta_dims::Array{Tuple{Int64, Int64},1}
-    output_layer::Int64
-    layer_units::Array{Int64,1}
-    norm_factors::Tuple{Any, Any}
-
-    NN_parameters() = new(               # empty constructor
-        Array{Array{Float64,2},1}(0),    # theta::Array{Array{Float64,2}}
-        Array{Array{Float64,2},1}(0),    # bias::Array{Array{Float64,1}}
-        Array{Array{Float64,2},1}(0),    # delta_w
-        Array{Array{Float64,1},1}(0),    # delta_b
-        Array{Array{Float64,2},1}(0),    # delta_v_w
-        Array{Array{Float64,1},1}(0),    # delta_v_b
-        Array{Array{Float64,2},1}(0),    # delta_s_w
-        Array{Array{Float64,1},1}(0),    # delta_s_b
-        Array{Tuple{Int, Int},1}(0),     # theta_dims::Array{Array{Int64,2}}
-        3,                               # output_layer
-        Array{Int64,1}(0),               # layer_units
-        ([0.0 0.0], [1.0 0.0])           # norm_factors (mean, std)
-    )
-end
-
-"""
-struct Hyper_parameters holds hyper_parameters used to control training
-"""
-mutable struct Hyper_parameters          # we will use hp as the struct variable
-    alpha::Float64              # learning 
-    lambda::Float64             # L2 regularization
-    b1::Float64                 # optimization for momentum or Adam
-    b2::Float64                 # 2nd optimization parameter for Adam
-    ltl_eps::Float64            # use in denominator with division of very small values to prevent overflow
-    alphaovermb::Float64        # calculate outside the learning loop
-    do_batch_norm::Bool         # true or false
-    norm_mode::String           # "", "none", "standard", or "minmax"
-    dropout::Bool               # true or false to choose dropout network
-    droplim::Array{Float64,1}   # the probability a node output is kept
-    reg::String                 # L2 or "none"
-    opt::String                 # Adam or momentum or "none" or "" for optimization
-    classify::String            # behavior of output layer: "softmax", "sigmoid", or "regression"
-    mb_size::Int64              # minibatch size--user input
-    n_mb::Int64                 # number of minibatches--calculated
-    epochs::Int64               # number of "outer" loops of training
-    do_learn_decay::Bool        # step down the learning rate across epochs
-    learn_decay::Array{Float64,1}  # reduction factor (fraction) and number of steps
-
-    Hyper_parameters() = new(       # constructor with defaults--we use hp as the struct variable
-        0.35,           # alpha -- OK for nn. way too high for linear regression
-        0.01,           # lambda
-        0.9,            # b1
-        0.999,          # b2
-        1e-8,           # ltl_eps
-        0.35,           # alphaovermb -- calculated->not a valid default
-        false,          # do_batch_norm
-        "none",         # norm_mode
-        false,          # dropout
-        [0.5],          # droplim
-        "L2",           # reg
-        "",             # opt
-        "sigmoid",      # classify
-        50,             # mb_size
-        100,            # n_mb
-        30,             # epochs
-        false,          # do_learn_decay
-        [1.0, 1.0]      # learn_decay
-    )
-end
-
-
-"""
-Struct Model_data hold examples and all layer outputs-->
-pre-allocate to reduce memory allocations and improve speed
-"""
-mutable struct Model_data               # we will use train for inputs, test for test data and mb for mini-batches
-    inputs::Array{Float64,2}            # in_k features by n examples
-    targets::Array{Float64,2}           # labels for each example
-    a::Array{Array{Float64,2},1}
-    z::Array{Array{Float64,2},1}
-    z_norm::Array{Array{Float64,2},1}   # same size as z--for batch_norm
-    # z_scale::Array{Array{Float64,2},1}  # same size as z, often called "y"--for batch_norm
-    delta_z_norm::Array{Array{Float64,2},1}    # same size as z
-    delta_z::Array{Array{Float64,2},1}         # same size as z
-    grad::Array{Array{Float64,2},1}
-    epsilon::Array{Array{Float64,2},1}
-    drop_ran_w::Array{Array{Float64,2},1} # randomization for dropout--dims of a
-    drop_filt_w::Array{Array{Bool,2},1}   # boolean filter for dropout--dims of a
-    n::Int64                             # number of examples
-    in_k::Int64                          # number of input features
-    out_k::Int64                         # number of output features (units)
-    
-
-    Model_data() = new(                 # empty constructor
-        Array{Float64,2}(2,2),          # inputs
-        Array{Float64,2}(2,2),          # targets
-        Array{Array{Float64,2},1}(0),   # a
-        Array{Array{Float64,2},1}(0),   # z
-        Array{Array{Float64,2},1}(0),   # z_norm -- only pre-allocate if batch_norm
-        # Array{Array{Float64,2},1}(0),   # z_scale -- only pre-allocate if batch_norm
-        Array{Array{Float64,2},1}(0),   # delta_z_norm
-        Array{Array{Float64,2},1}(0),   # delta_z
-        Array{Array{Float64,2},1}(0),   # grad
-        Array{Array{Float64,2},1}(0),   # epsilon
-        Array{Array{Float64,2},1}(0),   # drop_ran_w
-        Array{Array{Bool,2},1}(0),      # drop_filt_w
-        0,                              # n
-        0,                              # in_k
-        0                               # out_k
-    )
-end
-
-
-"""
-Struct Training_view holds views to all model data and all layer outputs-->
-pre-allocate to reduce memory allocations and improve speed
-"""
-mutable struct Training_view               # we will use mb for mini-batch training
-    # array of views
-    a::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    targets::SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true}
-    z::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    z_norm::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    # z_scale::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    # arrays as big as the minibatch size
-    delta_z_norm::Array{Array{Float64,2},1} 
-    delta_z::Array{Array{Float64,2},1} 
-    grad::Array{Array{Float64,2},1} 
-    epsilon::Array{Array{Float64,2},1} 
-    drop_ran_w::Array{Array{Float64,2},1} 
-    drop_filt_w::Array{Array{Float64,2},1} 
-
-    Training_view() = new(
-        [view(zeros(2,2),:,1:2) for i in 1:2],  # a
-        view(zeros(2,2),:,1:2),                 # targets
-        [view(zeros(2,2),:,1:2) for i in 1:2],  # z
-        [view(zeros(2,2),:,1:2) for i in 1:2],  # z_norm
-        # [view(zeros(2,2),:,1:2) for i in 1:2],  # z_scale
-    
-        Array{Array{Float64,2},1}(0),           # delta_z_norm
-        Array{Array{Float64,2},1}(0),           # delta_z
-        Array{Array{Float64,2},1}(0),           # grad
-        Array{Array{Float64,2},1}(0),           # epsilon
-        Array{Array{Float64,2},1}(0),           # drop_ran_w
-        Array{Array{Bool,2},1}(0),              # drop_filt_w        
-    )
-
-end
-
-
-"""
-struct Batch_norm_params holds batch normalization parameters for
-feedfwd calculations and backprop training.
-"""
-mutable struct Batch_norm_params               # we will use bn as the struct variable
-    gam::Array{Array{Float64,1},1}
-    bet::Array{Array{Float64,1},1}
-    delta_gam::Array{Array{Float64,1},1}
-    delta_bet::Array{Array{Float64,1},1}
-
-    mu::Array{Array{Float64,1},1}              # same size as bias = no. of layer units
-    stddev::Array{Array{Float64,1},1}          #    ditto
-    mu_run::Array{Array{Float64,1},1}
-    std_run::Array{Array{Float64,1},1}
-
-    Batch_norm_params() = new(           # empty constructor
-        Array{Array{Float64,1},1}(0),    # gam::Array{Array{Float64,1}}
-        Array{Array{Float64,1},1}(0),    # bet::Array{Array{Float64,1}}
-        Array{Array{Float64,2},1}(0),    # delta_gam
-        Array{Array{Float64,2},1}(0),    # delta_bet
-        Array{Array{Float64,1},1}(0),    # mu
-        Array{Array{Float64,1},1}(0),    # stddev
-        Array{Array{Float64,1},1}(0),    # mu_run
-        Array{Array{Float64,1},1}(0)     # std_run
-    )
-end
-
-
-# """
-# Layer template to contain metadata for a single layer above input
-# usage (example with 1 hidden layer and softmax output:
-#     mylayers = [] # array holds layer dicts for all layers: input=1 to output=n
-
-#     mylayer = deepcopy(layer_template) # do this every time to prevent accidental hold over values!
-#     mylayer["kind"] = "input"
-#     mylayer["units"] = 40
-#     push!(mylayers, mylayer) # absolutely push in order from input to output
-
-#     mylayer = deepcopy(layer_template) # do this every time to prevent accidental hold over values!
-#     mylayer["kind"] = "relu"  # note: this is default so could leave as is
-#     mylayer["units"] = 10
-#     push!(mylayers, mylayer) # absolutely push in order from input to output
-
-#     mylayer = deepcopy(layer_template) # do this every time to prevent accidental hold over values!
-#     mylayer["kind"] = "softmax"  # note: this is default so could leave as is
-#     mylayer["units"] = 4
-#     push!(mylayers, mylayer) # absolutely push in order from input to output
-
-# """
-# const layer_template = Dict(
-#     "kind" => "relu", # valid: "input", "linear", relu", "sigmoid", "softmax", "l_relu", "conv", "pooling"
-#     "units" => 10,
-#     "filter_size" => (3,3), # use for conv or pooling
-#     "conv_filters" => 6,
-#     "pooling_op" => "max", # valid: "max", "avg"
-#     "l_relu_neg" => 0.01, # for negative Z values
-#     "input_X" => [1.0 2.0 3.0; 4.0 5.0 6.0],  # this seems wrong
-#     "input_Y" => [1.0 2.0 3.0]  #  this seems wrong
-#     )
+# ----------------------------------------------------------------------------------------
 
 
 """
@@ -508,12 +298,18 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     # update Hyper_parameters with user inputs--more below
         hp.alpha = alpha
         hp.lambda = lambda
+        hp.n_hid = n_hid
         hp.reg = reg
         hp.classify = classify
         hp.dropout = dropout
+        hp.droplim = droplim
         hp.epochs = epochs
         hp.mb_size = mb_size
         hp.norm_mode = norm_mode
+        hp.opt = opt
+        hp.opt_params = opt_params
+        hp.learn_decay = learn_decay
+        hp.do_batch_norm = do_batch_norm
 
     # load training data and test data (if any)
     train.inputs, train.targets, test.inputs, test.targets = extract_data(matfname)
@@ -532,172 +328,14 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     train.out_k = size(train.targets,1)  # number of output units
     dotest = size(test.inputs, 1) > 0  # there is testing data -> true, else false
 
-    #setup mini-batch
-    if mb_size < 1
-        mb_size = train.n  # use 1 (mini-)batch with all of the examples
-    elseif mb_size > train.n
-        mb_size = train.n
-    elseif mod(train.n, mb_size) != 0
-        error("Mini-batch size $mb_size does not divide evenly into samples $n.")
-    end
-    n_mb = Int(n / mb_size)  # number of mini-batches
-    hp.n_mb = n_mb
-    hp.alphaovermb = alpha / mb_size  # calc once, use in hot loop
-    hp.do_batch_norm = n_mb == 1 ? false : do_batch_norm  # no batch normalization for 1 batch
+    #  optimization parameters, minibatch, preallocate data storage
+    setup_model!(mb, hp, tp, bn, dotest, train, test)
 
-    if mb_size < train.n
-        # randomize order of all training samples:
-            # labels in training data often in a block, which will make
-            # mini-batch train badly because a batch will not contain mix of target labels
-        select_index = randperm(n)
-        train.inputs[:] = train.inputs[:, select_index]
-        train.targets[:] = train.targets[:, select_index]
-    end
+    # choose layer functions and cost function based on inputs
+    setup_functions(units, train.out_k, opt, classify)
 
-    # set parameters for Momentum or Adam optimization
-    if opt == "momentum" || opt == "adam"
-        hp.opt = opt
-        if !(opt_params == [])  # use inputs for opt_params
-            # set b1 for Momentum and Adam
-            if opt_params[1] > 1.0 || opt_params[1] < 0.5
-                warn("First opt_params for momentum or adam should be between 0.5 and 0.999. Using default")
-                # nothing to do:  hp.b1 = 0.9 and hp.b2 = 0.999 and hp.ltl_eps = 1e-8
-            else
-                hp.b1 = opt_params[1] # use the passed parameter
-            end
-            # set b2 for Adam
-            if length(opt_params) > 1
-                if opt_params[2] > 1.0 || opt_params[2] < 0.9
-                    warn("second opt_params for adam should be between 0.9 and 0.999. Using default")
-                else
-                    hp.b2 = opt_params[2]
-                end
-            end
-        end
-    else
-        hp.opt = ""
-    end
-
-    hp.do_learn_decay = learn_decay == [1.0, 1.0] ? false :  true
-    hp.learn_decay = learn_decay
-
-    # dropout parameters: droplim is in hp (Hyper_parameters),
-    #    drop_ran_w and drop_filt_w are in mb or train (Model_data)
-    # set a droplim for each layer (input layer and output layer will be ignored)
-    if hp.dropout
-        # fill droplim to match number of hidden layers
-        if length(droplim) > length(n_hid)
-            hp.droplim = droplim[1:n_hid] # truncate
-        elseif length(droplim) < length(n_hid)
-            for i = 1:length(n_hid)-length(droplim)
-                push!(hp.droplim,droplim[end]) # pad
-            end
-        else
-            hp.droplim = droplim
-        end
-        hp.droplim = [1.0, hp.droplim..., 1.0] # placeholders for input and output layers
-    end
-    
-    # statistics for plots and history data
+       # statistics for plots and history data
     plotdef = setup_plots(epochs, dotest, plots)
-
-    # debug
-    # println("opt params: $(hp.b1), $(hp.b2)")
-
-    # DEBUG see if hyper_parameters set correctly
-    # for sym in fieldnames(hp)
-    #    println(sym," ",getfield(hp,sym), " ", typeof(getfield(hp,sym)))
-    # end
-
-    ##########################################################################
-    #  pre-allocate variables
-    ##########################################################################
-
-    preallocate_nn_params!(tp, hp, n_hid, train.in_k, train.n, train.out_k)
-
-    preallocate_feedfwd!(train, tp, train.n, hp.do_batch_norm)
-
-    # feedfwd test data--if test input found
-    if dotest
-        test.n = size(test.inputs,2)
-        preallocate_feedfwd!(test, tp, test.n, hp.do_batch_norm)
-    else
-        test.n = 0
-    end
-
-    # pre-allocate feedfwd mini-batch training data
-    preallocate_minibatch!(mb, tp, hp)  
-    
-    # batch normalization parameters
-    if hp.do_batch_norm
-        preallocate_batchnorm!(bn, mb, tp.layer_units)
-    end
-
-    # debug
-    # verify correct dimensions of dropout filter
-    # for item in mb.drop_filt_w
-    #     println(size(item))
-    # end
-    # error("that's all folks!....")
-
-    #################################################################
-    #   define and choose functions to be used in neural net training
-    #################################################################
-
-    # all the other functions are module level, e.g. global--make these function variables module level, too
-    global unit_function!
-    global gradient_function!
-    global classify_function!
-    global batch_norm_fwd!
-    global batch_norm_back!
-    global cost_function
-    global optimization_function!
-
-    if units == "sigmoid"
-        unit_function! = sigmoid!
-        do_batch_norm = false
-    elseif units == "l_relu"
-        unit_function! = l_relu!
-    elseif units == "relu"
-        unit_function! = relu!
-    end
-
-    if unit_function! == sigmoid!
-        gradient_function! = sigmoid_gradient!
-    elseif unit_function! == l_relu!
-        gradient_function! = l_relu_gradient!
-    elseif unit_function! == relu!
-        gradient_function! = relu_gradient!
-    end
-
-    if train.out_k > 1  # more than one output (unit)
-        if classify == "sigmoid"
-            classify_function! = sigmoid!
-        elseif classify == "softmax"
-            classify_function! = softmax!
-        else
-            error("Function to classify output labels must be \"sigmoid\" or \"softmax\".")
-        end
-    else
-        if classify == "sigmoid"
-            classify_function! = sigmoid!  # for one output label
-        elseif classify == "regression"
-            classify_function! = regression!
-        else
-            error("Function to classify output must be \"sigmoid\" or \"regression\".")
-        end
-    end
-
-    if opt == "momentum"
-        optimization_function! = momentum!
-    elseif opt == "adam"
-        optimization_function! = adam!
-    else
-        optimization_function! = no_optimization
-    end
-
-    # set cost function
-    cost_function = classify=="regression" ? mse_cost : cross_entropy_cost
 
     ##########################################################
     #   neural network training loop
@@ -709,14 +347,14 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     # println(train.inputs)
     # println(train.targets)
 
-    for ep_i = 1:epochs  # loop for "epochs" with counter epoch i as ep_i
+    for ep_i = 1:hp.epochs  # loop for "epochs" with counter epoch i as ep_i
 
         hp.do_learn_decay && step_lrn_decay!(hp, ep_i)
 
-        for mb_j = 1:n_mb  # loop for mini-batches with counter minibatch j as mb_j
+        for mb_j = 1:hp.n_mb  # loop for mini-batches with counter minibatch j as mb_j
 
-            first_example = (mb_j - 1) * mb_size + 1  # mini-batch subset for the inputs->layer 1
-            last_example = first_example + mb_size - 1
+            first_example = (mb_j - 1) * hp.mb_size + 1  # mini-batch subset for the inputs->layer 1
+            last_example = first_example + hp.mb_size - 1
             colrng = first_example:last_example
 
             t += 1  # update counter
@@ -747,7 +385,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
         end # mini-batch loop
 
         # stats for all mini-batches of one epoch
-        gather_stats!(ep_i, plotdef, train, test, tp, bn, cost_function, train.n, test.n, hp)  # n or mb_size
+        gather_stats!(ep_i, plotdef, train, test, tp, bn, cost_function, train.n, test.n, hp)  
 
     end # epoch loop
 
@@ -761,7 +399,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     println("Fraction correct labels predicted training: ",
             hp.classify == "regression" ? r_squared(train.targets, train.a[tp.output_layer])
                 : accuracy(train.targets, train.a[tp.output_layer],epochs))
-    println("Final cost training: ", cost_function(train.targets, train.a[tp.output_layer], n,
+    println("Final cost training: ", cost_function(train.targets, train.a[tp.output_layer], train.n,
                     tp.theta, hp, tp.output_layer))
 
     # output test statistics
@@ -877,6 +515,111 @@ function normalize_data(inputs, test_inputs, norm_mode="none")
 end
 
 
+function setup_model!(mb, hp, tp, bn, dotest, train, test)
+
+#setup mini-batch
+    if hp.mb_size < 1
+        hp.mb_size = train.n  # use 1 (mini-)batch with all of the examples
+    elseif hp.mb_size > train.n
+        hp.mb_size = train.n
+    elseif mod(train.n, hp.mb_size) != 0
+        error("Mini-batch size $(hp.mb_size) does not divide evenly into samples $n.")
+    end
+    hp.n_mb = Int(train.n / hp.mb_size)  # number of mini-batches
+    hp.alphaovermb = hp.alpha / hp.mb_size  # calc once, use in hot loop
+    hp.do_batch_norm = hp.n_mb == 1 ? false : hp.do_batch_norm  # no batch normalization for 1 batch
+
+    if hp.mb_size < train.n
+        # randomize order of all training samples:
+            # labels in training data often in a block, which will make
+            # mini-batch train badly because a batch will not contain mix of target labels
+        select_index = randperm(train.n)
+        train.inputs[:] = train.inputs[:, select_index]
+        train.targets[:] = train.targets[:, select_index]
+    end
+
+    # set parameters for Momentum or Adam optimization
+    if hp.opt == "momentum" || hp.opt == "adam"
+        if !(hp.opt_params == [])  # use inputs for opt_params
+            # set b1 for Momentum and Adam
+            if hp.opt_params[1] > 1.0 || hp.opt_params[1] < 0.5
+                warn("First opt_params for momentum or adam should be between 0.5 and 0.999. Using default")
+                # nothing to do:  hp.b1 = 0.9 and hp.b2 = 0.999 and hp.ltl_eps = 1e-8
+            else
+                hp.b1 = hp.opt_params[1] # use the passed parameter
+            end
+            # set b2 for Adam
+            if length(hp.opt_params) > 1
+                if hp.opt_params[2] > 1.0 || hp.opt_params[2] < 0.9
+                    warn("second opt_params for adam should be between 0.9 and 0.999. Using default")
+                else
+                    hp.b2 = hp.opt_params[2]
+                end
+            end
+        end
+    else
+        hp.opt = ""
+    end
+
+    hp.do_learn_decay = hp.learn_decay == [1.0, 1.0] ? false :  true
+
+    # dropout parameters: droplim is in hp (Hyper_parameters),
+    #    drop_ran_w and drop_filt_w are in mb or train (Model_data)
+    # set a droplim for each layer (input layer and output layer will be ignored)
+    if hp.dropout
+        # fill droplim to match number of hidden layers
+        if length(hp.droplim) > length(hp.n_hid)
+            hp.droplim = hp.droplim[1:hp.n_hid] # truncate
+        elseif length(hp.droplim) < length(hp.n_hid)
+            for i = 1:length(hp.n_hid)-length(hp.droplim)
+                push!(hp.droplim,hp.droplim[end]) # pad
+            end
+        end
+        hp.droplim = [1.0, hp.droplim..., 1.0] # placeholders for input and output layers
+    end
+
+    # debug
+    # println("opt params: $(hp.b1), $(hp.b2)")
+
+    # DEBUG see if hyper_parameters set correctly
+    # for sym in fieldnames(hp)
+    #    println(sym," ",getfield(hp,sym), " ", typeof(getfield(hp,sym)))
+    # end
+
+    ##########################################################################
+    #  pre-allocate data storage
+    ##########################################################################
+
+    preallocate_nn_params!(tp, hp, hp.n_hid, train.in_k, train.n, train.out_k)
+
+    preallocate_feedfwd!(train, tp, train.n, hp.do_batch_norm)
+
+    # feedfwd test data--if test input found
+    if dotest
+        test.n = size(test.inputs,2)
+        preallocate_feedfwd!(test, tp, test.n, hp.do_batch_norm)
+    else
+        test.n = 0
+    end
+
+    # pre-allocate feedfwd mini-batch training data
+    preallocate_minibatch!(mb, tp, hp)  
+    
+    # batch normalization parameters
+    if hp.do_batch_norm
+        preallocate_batchnorm!(bn, mb, tp.layer_units)
+    end
+
+    # debug
+    # verify correct dimensions of dropout filter
+    # for item in mb.drop_filt_w
+    #     println(size(item))
+    # end
+    # error("that's all folks!....")
+
+end
+
+
 ####################################################################
 #  functions to pre-allocate data updated during training loop
 ####################################################################
@@ -982,6 +725,7 @@ function preallocate_minibatch!(mb, tp, hp)
     end
 end
 
+
 """
     Create or update views for the training data in minibatches or one big batch
         Arrays: a, z, z_norm, z_scale, targets  are all fields of struct mb
@@ -1020,6 +764,68 @@ function preallocate_batchnorm!(bn, mb, layer_units)
 end
 
 ###########################################################################
+
+"""
+define and choose functions to be used in neural net training
+"""
+function setup_functions(units, out_k, opt, classify)
+
+    # all the other functions are module level, e.g. global--make these function variables module level, too
+    global unit_function!
+    global gradient_function!
+    global classify_function!
+    global batch_norm_fwd!
+    global batch_norm_back!
+    global cost_function
+    global optimization_function!
+
+    if units == "sigmoid"
+        unit_function! = sigmoid!
+        do_batch_norm = false
+    elseif units == "l_relu"
+        unit_function! = l_relu!
+    elseif units == "relu"
+        unit_function! = relu!
+    end
+
+    if unit_function! == sigmoid!
+        gradient_function! = sigmoid_gradient!
+    elseif unit_function! == l_relu!
+        gradient_function! = l_relu_gradient!
+    elseif unit_function! == relu!
+        gradient_function! = relu_gradient!
+    end
+
+    if out_k > 1  # more than one output (unit)
+        if classify == "sigmoid"
+            classify_function! = sigmoid!
+        elseif classify == "softmax"
+            classify_function! = softmax!
+        else
+            error("Function to classify output labels must be \"sigmoid\" or \"softmax\".")
+        end
+    else
+        if classify == "sigmoid"
+            classify_function! = sigmoid!  # for one output label
+        elseif classify == "regression"
+            classify_function! = regression!
+        else
+            error("Function to classify output must be \"sigmoid\" or \"regression\".")
+        end
+    end
+
+    if opt == "momentum"
+        optimization_function! = momentum!
+    elseif opt == "adam"
+        optimization_function! = adam!
+    else
+        optimization_function! = no_optimization
+    end
+
+    # set cost function
+    cost_function = classify=="regression" ? mse_cost : cross_entropy_cost
+
+end
 
 """
 function feedfwd!(tp, bn, dat, do_batch_norm; istrain)
@@ -1088,170 +894,6 @@ function backprop!(tp, bn, dat, hp, t)
 
     end
 
-end
-
-
-function cross_entropy_cost(targets, predictions, n, theta, hp, output_layer)
-    # n is count of all samples in data set--use with regularization term
-    # mb_size is count of all samples used in training batch--use with cost
-    # these may be equal
-    cost = (-1.0 / n) * (dot(targets,log.(predictions .+ 1e-50)) +
-        dot((1.0 .- targets), log.(1.0 .- predictions .+ 1e-50)))
-
-    # if isnan(cost)
-    #    println("predictions <= 0? ",any(predictions .== 0.0))
-    #    println("log 1 - predictions? ", any(isinf.(log.(1.0 .- predictions))))
-    #    error("problem with cost function")
-    # end
-    @fastmath if hp.reg == "L2"  # set reg="" if not using regularization
-        # regterm = hp.lambda/(2.0 * n) .* sum([sum(th .* th) for th in theta[2:output_layer]])
-        regterm = hp.lambda/(2.0 * n) .* sum([dot(th, th) for th in theta[2:output_layer]])
-        cost = cost + regterm
-    end
-    return cost
-end
-
-
-function mse_cost(targets, predictions, n, theta, hp, output_layer)
-    cost = (1.0 / (2.0 * n)) .* sum((targets .- predictions) .^ 2.0)
-    @fastmath if hp.reg == "L2"  # set reg="" if not using regularization
-        regterm = hp.lambda/(2.0 * n) .* sum([dot(th, th) for th in theta[2:output_layer]])
-        cost = cost + regterm
-    end
-    return cost
-end
-
-
-# not using yet
-function mse_grad!(mb, layer) # only for output layer using mse_cost
-    # do we really need this?
-
-    mb.grad[layer] = mb.a[layer-1]
-
-end
-
-
-function momentum!(tp, hp, t)
-    @fastmath for hl = (tp.output_layer - 1):-1:2  # loop over hidden layers
-        tp.delta_v_w[hl] .= hp.b1 .* tp.delta_v_w[hl] .+ (1.0 - hp.b1) .* tp.delta_w[hl]  # @inbounds 
-        tp.delta_w[hl] .= tp.delta_v_w[hl]
-
-        if !hp.do_batch_norm  # then we need to do bias term
-            tp.delta_v_b[hl] .= hp.b1 .* tp.delta_v_b[hl] .+ (1.0 - hp.b1) .* tp.delta_b[hl]  # @inbounds 
-            tp.delta_b[hl] .= tp.delta_v_b[hl]
-        end
-    end
-end
-
-
-function adam!(tp, hp, t)
-    @fastmath for hl = (tp.output_layer - 1):-1:2  # loop over hidden layers
-        tp.delta_v_w[hl] .= hp.b1 .* tp.delta_v_w[hl] .+ (1.0 - hp.b1) .* tp.delta_w[hl]  # @inbounds 
-        tp.delta_s_w[hl] .= hp.b2 .* tp.delta_s_w[hl] .+ (1.0 - hp.b2) .* tp.delta_w[hl].^2  # @inbounds 
-        tp.delta_w[hl] .= (  (tp.delta_v_w[hl] ./ (1.0 - hp.b1^t)) ./  # @inbounds 
-                              (sqrt.(tp.delta_s_w[hl] ./ (1.0 - hp.b2^t)) + hp.ltl_eps)  )
-
-        if !hp.do_batch_norm  # then we need to do bias term
-            tp.delta_v_b[hl] .= hp.b1 .* tp.delta_v_b[hl] .+ (1.0 - hp.b1) .* tp.delta_b[hl]  # @inbounds 
-            tp.delta_s_b[hl] .= hp.b2 .* tp.delta_s_b[hl] .+ (1.0 - hp.b2) .* tp.delta_b[hl].^2  # @inbounds 
-            tp.delta_b[hl] .= (  (tp.delta_v_b[hl] ./ (1.0 - hp.b1^t)) ./  # @inbounds 
-                              (sqrt.(tp.delta_s_b[hl] ./ (1.0 - hp.b2^t)) + hp.ltl_eps)  )
-        end
-    end
-end
-
-
-function no_optimization(tp, hp, t)
-end
-
-
-function dropout!(dat,hp,hl)
-    dat.drop_ran_w[hl][:] = rand(size(dat.drop_ran_w[hl]))
-    dat.drop_filt_w[hl][:] = dat.drop_ran_w[hl] .< hp.droplim[hl]
-    dat.a[hl][:] = dat.a[hl] .* dat.drop_filt_w[hl]
-    dat.a[hl][:] = dat.a[hl] ./ hp.droplim[hl]
-end
-
-
-function step_lrn_decay!(hp, ep_i)
-    decay_rate = hp.learn_decay[1]
-    e_steps = hp.learn_decay[2]
-    stepsize = floor(hp.epochs / e_steps)
-    if hp.epochs - ep_i < stepsize
-        return
-    elseif (rem(ep_i,stepsize) == 0.0)
-        hp.alpha *= decay_rate
-        hp.alphaovermb *= decay_rate
-        println("\n\n **** at $ep_i stepping down learning rate to $(hp.alpha)")
-    else
-        return
-    end
-end
-
-
-###########################################################################
-#  layer functions:  activation and gradients for units of different types
-###########################################################################
-
-# two methods for linear layer units, with bias and without
-function affine(weights, data, bias)  # with bias
-    return weights * data .+ bias
-end
-
-
-function affine(weights, data)  # no bias
-    return weights * data
-end
-
-
-function sigmoid!(z::AbstractArray{Float64,2}, a::AbstractArray{Float64,2})
-    a[:] = 1.0 ./ (1.0 .+ exp.(-z))
-end
-
-
-function l_relu!(z::AbstractArray{Float64,2}, a::AbstractArray{Float64,2}) # leaky relu
-    a[:] = map(j -> j >= 0.0 ? j : l_relu_neg * j, z)
-end
-
-function relu!(z::AbstractArray{Float64,2}, a::AbstractArray{Float64,2})
-    a[:] = max.(z, 0.0)
-end
-
-
-function softmax!(z::AbstractArray{Float64,2}, a::AbstractArray{Float64,2})
-
-    expf = similar(a)
-    expf[:] = exp.(z .- maximum(z,1))
-    a[:] = expf ./ sum(expf, 1)
-
-end
-
-
-function regression!(z::AbstractArray{Float64,2}, a::AbstractArray{Float64,2})
-    a[:] = z[:]
-end
-
-
-# two methods for gradient of linear layer units:  without bias and with
-# not using this yet
-function affine_gradient(data, layer)  # no bias
-    return data.a[layer-1]'
-end
-
-
-function sigmoid_gradient!(z::AbstractArray{Float64,2}, grad::AbstractArray{Float64,2})
-    sigmoid!(z, grad)
-    grad[:] = grad .* (1.0 .- grad)
-end
-
-
-function l_relu_gradient!(z::AbstractArray{Float64,2}, grad::AbstractArray{Float64,2})
-    grad[:] = map(j -> j > 0.0 ? 1.0 : l_relu_neg, z);
-end
-
-
-function relu_gradient!(z::AbstractArray{Float64,2}, grad::AbstractArray{Float64,2})
-    grad[:] = map(j -> j > 0.0 ? 1.0 : 0.0, z);
 end
 
 
@@ -1403,7 +1045,7 @@ function setup_plots(epochs::Int64, dotest::Bool, plots::Array{String,1})
 end
 
 
-function gather_stats!(i, plotdef, train, test, tp, bn, cost_function, train_n, test.n, hp)
+function gather_stats!(i, plotdef, train, test, tp, bn, cost_function, train_n, test_n, hp)
 
     if plotdef["plot_switch"]["Training"]
         feedfwd!(tp, bn, train, hp, istrain=false)
@@ -1647,6 +1289,17 @@ function predict(inputs, theta)   ### TODO this is seriously broken!
     a_test,  z_test = preallocate_feedfwd(inputs, tp, n)
     predictions = feedfwd!(tp, bn, dat, do_batch_norm, istrain=false)
 end
+
+# predict:  
+#     do one pass for a set of data
+#     need to do training or test data in own pass--data is data at this stage
+# read the model data
+# read the hyperparameters, trained parameters, batch_norm hyper_parameters
+# set up feedforward:  
+#     pre-allocate data
+#     pre-allocate feedfwd
+#     define needed functions
+# feedforward
 
 
 function printby2(nby2)  # not used currently
