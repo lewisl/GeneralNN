@@ -1,8 +1,12 @@
 #DONE
-
-
+#   rename Model_view to Training_view
+#   put convenience variables (n, in_k, out_k) into struct Model_data
+#   clean version before coding function predict with re-factoring
 
 #TODO
+#   try different versions of ensemble predictions_vector
+#   allow dropout to drop from the input layer
+#   augment data by perturbing the images
 #   don't create plotdef if not plotting
 #   try batch norm with minmax normalization
 #   cleaning up batch norm is complicated:
@@ -102,7 +106,7 @@ mutable struct NN_parameters              # we will use tp as the struct variabl
         Array{Array{Float64,2},1}(0),    # delta_s_w
         Array{Array{Float64,1},1}(0),    # delta_s_b
         Array{Tuple{Int, Int},1}(0),     # theta_dims::Array{Array{Int64,2}}
-        2,                               # output_layer
+        3,                               # output_layer
         Array{Int64,1}(0),               # layer_units
         ([0.0 0.0], [1.0 0.0])           # norm_factors (mean, std)
     )
@@ -171,6 +175,9 @@ mutable struct Model_data               # we will use train for inputs, test for
     epsilon::Array{Array{Float64,2},1}
     drop_ran_w::Array{Array{Float64,2},1} # randomization for dropout--dims of a
     drop_filt_w::Array{Array{Bool,2},1}   # boolean filter for dropout--dims of a
+    n::Int64                             # number of examples
+    in_k::Int64                          # number of input features
+    out_k::Int64                         # number of output features (units)
     
 
     Model_data() = new(                 # empty constructor
@@ -186,22 +193,24 @@ mutable struct Model_data               # we will use train for inputs, test for
         Array{Array{Float64,2},1}(0),   # epsilon
         Array{Array{Float64,2},1}(0),   # drop_ran_w
         Array{Array{Bool,2},1}(0),      # drop_filt_w
+        0,                              # n
+        0,                              # in_k
+        0                               # out_k
     )
 end
 
 
 """
-Struct Model_view holds views to all model data and all layer outputs-->
+Struct Training_view holds views to all model data and all layer outputs-->
 pre-allocate to reduce memory allocations and improve speed
 """
-mutable struct Model_view               # we will use mb for mini-batches
+mutable struct Training_view               # we will use mb for mini-batch training
     # array of views
     a::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    targets::SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true}
     z::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     z_norm::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     # z_scale::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    # array view of training targets
-    targets::SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true}
     # arrays as big as the minibatch size
     delta_z_norm::Array{Array{Float64,2},1} 
     delta_z::Array{Array{Float64,2},1} 
@@ -210,12 +219,13 @@ mutable struct Model_view               # we will use mb for mini-batches
     drop_ran_w::Array{Array{Float64,2},1} 
     drop_filt_w::Array{Array{Float64,2},1} 
 
-    Model_view() = new(
+    Training_view() = new(
         [view(zeros(2,2),:,1:2) for i in 1:2],  # a
+        view(zeros(2,2),:,1:2),                 # targets
         [view(zeros(2,2),:,1:2) for i in 1:2],  # z
         [view(zeros(2,2),:,1:2) for i in 1:2],  # z_norm
         # [view(zeros(2,2),:,1:2) for i in 1:2],  # z_scale
-        view(zeros(2,2),:,1:2),                 # targets
+    
         Array{Array{Float64,2},1}(0),           # delta_z_norm
         Array{Array{Float64,2},1}(0),           # delta_z
         Array{Array{Float64,2},1}(0),           # grad
@@ -484,18 +494,15 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     srand(70653)  # seed int value is meaningless
 
 
-    ##########################################################
+    ##################################################################################
     #   setup model: data structs, many control parameters, functions,  pre-allocation
-    ##########################################################
+    #################################################################################
 
     # instantiate data containers
     train = Model_data()  # train holds all the data and layer inputs/outputs
     test = Model_data()
-
-    mb = Model_view()  # layer data for mini-batches: as views on training data or arrays
-
+    mb = Training_view()  # layer data for mini-batches: as views on training data or arrays
     tp = NN_parameters()  # trained parameters
-
     bn = Batch_norm_params()  # do we always need the data structure to run?  yes--TODO fix this
 
     hp = Hyper_parameters()  # hyper_parameters:  sets the defaults!
@@ -522,16 +529,16 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     # println(norm_factors)
 
     # set some useful variables
-    in_k,n = size(train.inputs)  # number of features in_k (rows) by no. of examples n (columns)
-    out_k = size(train.targets,1)  # number of output units
-    dotest = size(test.inputs, 1) > 0  # there is testing data
+    train.in_k, train.n = size(train.inputs)  # number of features in_k (rows) by no. of examples n (columns)
+    train.out_k = size(train.targets,1)  # number of output units
+    dotest = size(test.inputs, 1) > 0  # there is testing data -> true, else false
 
     #setup mini-batch
     if mb_size < 1
-        mb_size = n  # use 1 (mini-)batch with all of the examples
-    elseif mb_size > n
-        mb_size = n
-    elseif mod(n, mb_size) != 0
+        mb_size = train.n  # use 1 (mini-)batch with all of the examples
+    elseif mb_size > train.n
+        mb_size = train.n
+    elseif mod(train.n, mb_size) != 0
         error("Mini-batch size $mb_size does not divide evenly into samples $n.")
     end
     n_mb = Int(n / mb_size)  # number of mini-batches
@@ -539,7 +546,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     hp.alphaovermb = alpha / mb_size  # calc once, use in hot loop
     hp.do_batch_norm = n_mb == 1 ? false : do_batch_norm  # no batch normalization for 1 batch
 
-    if mb_size < n
+    if mb_size < train.n
         # randomize order of all training samples:
             # labels in training data often in a block, which will make
             # mini-batch train badly because a batch will not contain mix of target labels
@@ -572,47 +579,8 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
         hp.opt = ""
     end
 
-    if learn_decay == [1.0, 1.0]
-        hp.do_learn_decay = false
-    else
-        hp.do_learn_decay = true
-    end
+    hp.do_learn_decay = learn_decay == [1.0, 1.0] ? false :  true
     hp.learn_decay = learn_decay
-
-    # debug
-    # println("opt params: $(hp.b1), $(hp.b2)")
-
-    # DEBUG see if hyper_parameters set correctly
-    # for sym in fieldnames(hp)
-    #    println(sym," ",getfield(hp,sym), " ", typeof(getfield(hp,sym)))
-    # end
-
-    # statistics for plots and history data
-    plotdef = setup_plots(epochs, dotest, plots)
-
-    ##########################################################################
-    #  pre-allocate variables
-    ##########################################################################
-
-    preallocate_nn_params!(tp, hp, n_hid, in_k, n, out_k)
-
-    preallocate_feedfwd!(train, tp, n, hp.do_batch_norm)
-
-    # feedfwd test data--if inputs are not all zeros
-    if dotest
-        testn = size(test.inputs,2)
-        preallocate_feedfwd!(test, tp, testn, hp.do_batch_norm)
-    else
-        testn = 0
-    end
-
-    # pre-allocate feedfwd mini-batch training data
-    preallocate_minibatch!(mb, tp, mb_size, in_k, n, out_k, hp)  
-    
-    # batch normalization parameters
-    if hp.do_batch_norm
-        preallocate_batchnorm!(bn, mb, tp.layer_units)
-    end
 
     # dropout parameters: droplim is in hp (Hyper_parameters),
     #    drop_ran_w and drop_filt_w are in mb or train (Model_data)
@@ -629,6 +597,41 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
             hp.droplim = droplim
         end
         hp.droplim = [1.0, hp.droplim..., 1.0] # placeholders for input and output layers
+    end
+    
+    # statistics for plots and history data
+    plotdef = setup_plots(epochs, dotest, plots)
+
+    # debug
+    # println("opt params: $(hp.b1), $(hp.b2)")
+
+    # DEBUG see if hyper_parameters set correctly
+    # for sym in fieldnames(hp)
+    #    println(sym," ",getfield(hp,sym), " ", typeof(getfield(hp,sym)))
+    # end
+
+    ##########################################################################
+    #  pre-allocate variables
+    ##########################################################################
+
+    preallocate_nn_params!(tp, hp, n_hid, train.in_k, train.n, train.out_k)
+
+    preallocate_feedfwd!(train, tp, train.n, hp.do_batch_norm)
+
+    # feedfwd test data--if test input found
+    if dotest
+        test.n = size(test.inputs,2)
+        preallocate_feedfwd!(test, tp, test.n, hp.do_batch_norm)
+    else
+        test.n = 0
+    end
+
+    # pre-allocate feedfwd mini-batch training data
+    preallocate_minibatch!(mb, tp, hp)  
+    
+    # batch normalization parameters
+    if hp.do_batch_norm
+        preallocate_batchnorm!(bn, mb, tp.layer_units)
     end
 
     # debug
@@ -668,7 +671,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
         gradient_function! = relu_gradient!
     end
 
-    if out_k > 1  # more than one output (unit)
+    if train.out_k > 1  # more than one output (unit)
         if classify == "sigmoid"
             classify_function! = sigmoid!
         elseif classify == "softmax"
@@ -719,7 +722,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
 
             t += 1  # update counter
 
-            update_minibatch_views!(mb, train, tp, hp, mb_size, colrng)  # next minibatch
+            update_training_views!(mb, train, tp, hp, colrng)  # next minibatch
 
             feedfwd!(tp, bn, mb, hp)  # for all layers
 
@@ -745,7 +748,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
         end # mini-batch loop
 
         # stats for all mini-batches of one epoch
-        gather_stats!(ep_i, plotdef, train, test, tp, bn, cost_function, n, testn, hp)  # n or mb_size
+        gather_stats!(ep_i, plotdef, train, test, tp, bn, cost_function, train.n, test.n, hp)  # n or mb_size
 
     end # epoch loop
 
@@ -768,7 +771,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
         println("Fraction correct labels predicted test: ",
                 hp.classify == "regression" ? r_squared(test.targets, test.a[tp.output_layer])
                     : accuracy(test.targets, test.a[tp.output_layer],epochs))
-        println("Final cost test: ", cost_function(test.targets, test.a[tp.output_layer], testn,
+        println("Final cost test: ", cost_function(test.targets, test.a[tp.output_layer], test.n,
             tp.theta, hp, tp.output_layer))
     end
 
@@ -787,8 +790,8 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     # plot the progress of cost and/or learning accuracy
     plot_output(plotdef)
 
-    return train, tp, bn, hp;  # training data, trained model parameters, batch_norm parameters, hyper parameters
-
+    return train.a[tp.output_layer], test.a[tp.output_layer], tp, bn, hp;  
+    # training predictions, test predictions, trained params, batch_norm parameters, hyper parameters
 end  # function run_training
 
 
@@ -954,19 +957,11 @@ end
     Pre-allocate these arrays for the training batch--either minibatches or one big batch
     Arrays: epsilon, grad, delta_z_norm, delta_z, drop_ran_w, drop_filt_w
 """
-function preallocate_minibatch!(mb, tp, mb_size, in_k, n, out_k, hp)
-    # mb.inputs = zeros(in_k, mb_size)  # only used for pre-allocation
-    # mb.inputs = Array{Float64,2}(in_k, mb_size)
-    # mb.targets = zeros(out_k, mb_size)
-    # preallocate_feedfwd!(mb, tp, mb_size, do_batch_norm)
-    # for l = 1:tp.output_layer
-    #     mb.epsilon[l][:] = zeros(tp.layer_units[l], mb_size)                
-    #     mb.grad[l][:] = zeros(tp.layer_units[l], mb_size)                
-    # end
+function preallocate_minibatch!(mb, tp, hp)
 
-    mb.epsilon = [zeros(tp.layer_units[l], mb_size) for l in 1:tp.output_layer]
+    mb.epsilon = [zeros(tp.layer_units[l], hp.mb_size) for l in 1:tp.output_layer]
+    mb.grad = deepcopy(mb.epsilon)   
 
-    mb.grad = deepcopy(mb.epsilon)       
     if hp.do_batch_norm
         mb.delta_z_norm = deepcopy(mb.epsilon)  # similar z
         mb.delta_z = deepcopy(mb.epsilon)       # similar z
@@ -992,8 +987,8 @@ end
     Create or update views for the training data in minibatches or one big batch
         Arrays: a, z, z_norm, z_scale, targets  are all fields of struct mb
 """
-function update_minibatch_views!(mb::Model_view, train::Model_data, tp::NN_parameters, 
-    hp::Hyper_parameters, mb_size::Int, colrng::UnitRange{Int64})
+function update_training_views!(mb::Training_view, train::Model_data, tp::NN_parameters, 
+    hp::Hyper_parameters, colrng::UnitRange{Int64})
     n_layers = tp.output_layer
 
     mb.a = [view(train.a[i],:,colrng) for i = 1:n_layers]
@@ -1002,15 +997,7 @@ function update_minibatch_views!(mb::Model_view, train::Model_data, tp::NN_param
 
     if hp.do_batch_norm
         mb.z_norm = [view(train.z_norm[i],:, colrng) for i = 1:n_layers]
-        # mb.z_scale = [view(train.z_scale[i],:, colrng) for i = 1:n_layers]
     end
-
-    # at line 936:
-    # MethodError: Cannot `convert` an object of 
-    # type 
-    # SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true} 
-    # to an object of type 
-    # SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},Base.Slice{Base.OneTo{Int64}}},true}
 
 end
 
@@ -1050,7 +1037,6 @@ function feedfwd!(tp, bn, dat, hp; istrain=true)
 
         if hp.do_batch_norm 
             batch_norm_fwd!(bn, dat, hl, istrain)
-            # unit_function!(dat.z_scale[hl],dat.a[hl]) 
             unit_function!(dat.z[hl],dat.a[hl])
         else
             dat.z[hl][:] =  dat.z[hl] .+ tp.bias[hl]
@@ -1088,7 +1074,6 @@ function backprop!(tp, bn, dat, hp, t)
 
     @fastmath for hl = (tp.output_layer - 1):-1:2  # loop over hidden layers
         if hp.do_batch_norm
-            # gradient_function!(dat.z_scale[hl], dat.grad[hl])
             gradient_function!(dat.z[hl], dat.grad[hl])
             hp.dropout && (dat.grad[hl] .* dat.drop_filt_w[hl])
             dat.epsilon[hl][:] = tp.theta[hl+1]' * dat.epsilon[hl+1] .* dat.grad[hl]  # @inbounds 
@@ -1131,7 +1116,6 @@ end
 function mse_cost(targets, predictions, n, theta, hp, output_layer)
     cost = (1.0 / (2.0 * n)) .* sum((targets .- predictions) .^ 2.0)
     @fastmath if hp.reg == "L2"  # set reg="" if not using regularization
-        # regterm = hp.lambda/(2.0 * n) .* sum([sum(th .* th) for th in theta[2:output_layer]])
         regterm = hp.lambda/(2.0 * n) .* sum([dot(th, th) for th in theta[2:output_layer]])
         cost = cost + regterm
     end
@@ -1193,14 +1177,15 @@ end
 function step_lrn_decay!(hp, ep_i)
     decay_rate = hp.learn_decay[1]
     e_steps = hp.learn_decay[2]
-    if ! (rem(ep_i,hp.epochs/e_steps) == 0.0)
+    stepsize = floor(hp.epochs / e_steps)
+    if hp.epochs - ep_i < stepsize
         return
-    elseif ep_i == hp.epochs
-        return
-    else
+    elseif (rem(ep_i,stepsize) == 0.0)
         hp.alpha *= decay_rate
         hp.alphaovermb *= decay_rate
         println("\n\n **** at $ep_i stepping down learning rate to $(hp.alpha)")
+    else
+        return
     end
 end
 
@@ -1279,7 +1264,6 @@ function batch_norm_fwd!(bn, dat, hl, istrain=true)
         bn.mu[hl][:] = mean(dat.z[hl], 2)          # use in backprop
         bn.stddev[hl][:] = std(dat.z[hl], 2)
         dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu[hl]) ./ bn.stddev[hl]  # normalized: 'aka' xhat or zhat  @inbounds 
-        # dat.z_scale[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y  @inbounds 
         dat.z[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y  @inbounds 
         bn.mu_run[hl][:] = (  bn.mu_run[hl][1] == 0.0 ? bn.mu[hl] :  # @inbounds 
             0.9 .* bn.mu_run[hl] .+ 0.1 .* bn.mu[hl]  )
@@ -1287,7 +1271,6 @@ function batch_norm_fwd!(bn, dat, hl, istrain=true)
             0.9 .* bn.std_run[hl] + 0.1 .* bn.stddev[hl]  )
     else  # predictions with existing parameters
         dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu_run[hl]) ./ bn.std_run[hl]  # normalized: 'aka' xhat or zhat  @inbounds 
-        # dat.z_scale[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y  @inbounds 
         dat.z[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y  @inbounds 
     end
 end
@@ -1421,7 +1404,7 @@ function setup_plots(epochs::Int64, dotest::Bool, plots::Array{String,1})
 end
 
 
-function gather_stats!(i, plotdef, train, test, tp, bn, cost_function, train_n, testn, hp)
+function gather_stats!(i, plotdef, train, test, tp, bn, cost_function, train_n, test.n, hp)
 
     if plotdef["plot_switch"]["Training"]
         feedfwd!(tp, bn, train, hp, istrain=false)
@@ -1441,7 +1424,7 @@ function gather_stats!(i, plotdef, train, test, tp, bn, cost_function, train_n, 
         feedfwd!(tp, bn, test, hp, istrain=false)
         if plotdef["plot_switch"]["Cost"]
             cost = cost_function(test.targets,
-                test.a[tp.output_layer], testn, tp.theta, hp, tp.output_layer)
+                test.a[tp.output_layer], test.n, tp.theta, hp, tp.output_layer)
                 # println("iter: ", i, " ", "cost: ", cost)
             plotdef["cost_history"][i, plotdef["col_test"]] =cost
         end
@@ -1684,4 +1667,4 @@ function printdims(indict)
     println("")
 end
 
-end # module GeneralNN
+end  # module GeneralNN

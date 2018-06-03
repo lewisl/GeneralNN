@@ -277,3 +277,166 @@ Fraction correct labels predicted test: 0.9812
 Final cost test: 0.21163352733193352
 Test data accuracy in final 10 iterations:
 0.981 : 0.982 : 0.983 : 0.982 : 0.984 : 0.984 : 0.984 : 0.984 : 0.984 : 0.981 : 
+
+Last login: Sun May 27 14:15:46 on ttys000
+MacBook-Pro:nn by hand lewis$ julia
+               _
+   _       _ _(_)_     |  A fresh approach to technical computing
+  (_)     | (_) (_)    |  Documentation: https://docs.julialang.org
+   _ _   _| |_  __ _   |  Type "?help" for help.
+  | | | | | | |/ _` |  |
+  | | |_| | | | (_| |  |  Version 0.6.2 (2017-12-13 18:08 UTC)
+ _/ |\__'_|_|_|\__'_|  |  Official http://julialang.org/ release
+|__/                   |  x86_64-apple-darwin14.5.0
+
+julia> using Revise
+
+julia> include("GeneralNN.jl")
+GeneralNN
+
+julia> Revise.track("GeneralNN.jl")
+
+julia> using GeneralNN
+
+julia> train_nn("digits60000by784.mat",21,[200,200],reg="",lambda=.000005,alpha=1.50,do_batch_norm=true,plots=["Learning","Training","Test"],mb_size=50,units="relu",opt="adam",dropout=true,droplim=[.9,.9],learn_decay=[.8,3.0]);
+
+
+ **** at 7 stepping down learning rate to 1.2000000000000002
+
+
+ **** at 14 stepping down learning rate to 0.9600000000000002
+Training time: 239.82163737 seconds
+Fraction correct labels predicted training: 0.997
+Final cost training: 0.01789507197682112
+Fraction correct labels predicted test: 0.9812
+Final cost test: 0.21163352733193352
+Test data accuracy in final 10 iterations:
+0.981 : 0.982 : 0.983 : 0.982 : 0.984 : 0.984 : 0.984 : 0.984 : 0.984 : 0.981 : 
+Press enter to close plot window...
+
+
+julia> train_nn("digits60000by784.mat",18,[200,200],reg="",lambda=.000005,alpha=1.80,do_batch_norm=true,plots=["Learning","Training","Test"],mb_size=50,units="relu",opt="adam",dropout=true,droplim=[.9,.9],learn_decay=[.8,2.0]);
+WARNING: Method definition run_training(String, Int64, Array{Int64, 1}) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:480 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:480.
+WARNING: Method definition #run_training(Array{Any, 1}, typeof(GeneralNN.run_training), String, Int64, Array{Int64, 1}) in module GeneralNN overwritten.
+
+
+ **** at 9 stepping down learning rate to 1.4400000000000002
+Training time: 237.773413957 seconds
+Fraction correct labels predicted training: 0.9958166666666667
+Final cost training: 0.026741615892462545
+Fraction correct labels predicted test: 0.9809
+Final cost test: 0.21083764417098932
+Test data accuracy in final 10 iterations:
+0.979 : 0.982 : 0.981 : 0.981 : 0.980 : 0.980 : 0.981 : 0.980 : 0.979 : 0.981 : 
+Press enter to close plot window...
+
+
+julia> 20/3
+WARNING: Method definition step_lrn_decay!(Any, Any) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:1191 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:1191.
+6.666666666666667
+
+julia> Int(3.0)
+3
+
+julia> int(3.1)
+ERROR: UndefVarError: int not defined
+
+julia> Int(2.1)
+ERROR: InexactError()
+Stacktrace:
+ [1] convert(::Type{Int64}, ::Float64) at ./float.jl:679
+ [2] Int64(::Float64) at ./sysimg.jl:77
+
+julia> 20/3.0
+6.666666666666667
+
+julia> floor(20/3)
+WARNING: Method definition step_lrn_decay!(Any, Any) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:1191 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:1191.
+6.0
+
+julia> rem(6,6.0)
+0.0
+
+julia> rem(0,6)
+0
+
+julia> train_nn("digits60000by784.mat",18,[80,80],reg="",lambda=.000005,alpha=1.80,do_batch_norm=true,plots=["Learning","Training","Test"],mb_size=50,units="relu",opt="adam",dropout=true,droplim=[.9,.9],learn_decay=[.8,2.0]);
+WARNING: Method definition step_lrn_decay!(Any, Any) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:1191 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:1191.
+
+
+ **** at 9 stepping down learning rate to 1.4400000000000002
+Training time: 59.967088653 seconds
+Fraction correct labels predicted training: 0.99255
+Final cost training: 0.04899374223559486
+Fraction correct labels predicted test: 0.9778
+Final cost test: 0.20625222894613346
+Test data accuracy in final 10 iterations:
+0.976 : 0.976 : 0.978 : 0.977 : 0.978 : 0.978 : 0.976 : 0.979 : 0.975 : 0.978 : 
+Press enter to close plot window...
+
+
+julia> train_nn("digits60000by784.mat",20,[80,80],reg="",lambda=.000005,alpha=1.80,do_batch_norm=true,plots=["Learning","Training","Test"],mb_size=50,units="relu",opt="adam",dropout=true,droplim=[.9,.9],learn_decay=[.8,3.0]);
+
+
+ **** at 6 stepping down learning rate to 1.4400000000000002
+
+
+ **** at 12 stepping down learning rate to 1.1520000000000001
+Training time: 66.69484935 seconds
+Fraction correct labels predicted training: 0.99255
+Final cost training: 0.053265440119169984
+Fraction correct labels predicted test: 0.9786
+Final cost test: 0.22096731952705037
+Test data accuracy in final 10 iterations:
+0.977 : 0.979 : 0.977 : 0.978 : 0.978 : 0.980 : 0.978 : 0.978 : 0.981 : 0.979 : 
+Press enter to close plot window...
+
+
+julia> train_nn("digits60000by784.mat",20,[200,200],reg="",lambda=.000005,alpha=1.80,do_batch_norm=true,plots=["Learning","Training","Test"],mb_size=50,units="relu",opt="adam",dropout=true,droplim=[.9,.9],learn_decay=[.8,3.0]);
+
+
+ **** at 6 stepping down learning rate to 1.4400000000000002
+
+
+ **** at 12 stepping down learning rate to 1.1520000000000001
+Training time: 264.228284023 seconds
+Fraction correct labels predicted training: 0.9972666666666666
+Final cost training: 0.018234323006297338
+Fraction correct labels predicted test: 0.9815
+Final cost test: 0.20747522164257085
+Test data accuracy in final 10 iterations:
+0.979 : 0.980 : 0.983 : 0.980 : 0.984 : 0.981 : 0.978 : 0.982 : 0.980 : 0.982 : 
+Press enter to close plot window...
+
+
+julia> train_nn("digits60000by784.mat",20,[200,200],reg="",lambda=.000005,alpha=1.50,do_batch_norm=true,plots=["Learning","Training","Test"],mb_size=50,units="relu",opt="adam",dropout=true,droplim=[.9,.9],learn_decay=[.8,3.0]);
+
+
+ **** at 6 stepping down learning rate to 1.2000000000000002
+
+
+ **** at 12 stepping down learning rate to 0.9600000000000002
+Training time: 203.782543874 seconds
+Fraction correct labels predicted training: 0.9973
+Final cost training: 0.01628772991851464
+Fraction correct labels predicted test: 0.9828
+Final cost test: 0.1756588159233208
+Test data accuracy in final 10 iterations:
+0.981 : 0.981 : 0.983 : 0.983 : 0.983 : 0.984 : 0.982 : 0.984 : 0.984 : 0.983 : 
+Press enter to close plot window...
+
+
+julia> train_nn("digits60000by784.mat",19,[200,200],reg="",lambda=.000005,alpha=1.50,do_batch_norm=true,plots=["Learning","Training","Test"],mb_size=50,units="relu",opt="adam",dropout=true,droplim=[.9,.9],learn_decay=[.8,3.0]);
+
+
+ **** at 6 stepping down learning rate to 1.2000000000000002
+
+
+ **** at 12 stepping down learning rate to 0.9600000000000002
+Training time: 201.710253459 seconds
+Fraction correct labels predicted training: 0.9973666666666666
+Final cost training: 0.016248690476649917
+Fraction correct labels predicted test: 0.9837
+Final cost test: 0.16550443888419472
+Test data accuracy in final 10 iterations:
+0.982 : 0.981 : 0.981 : 0.983 : 0.983 : 0.983 : 0.984 : 0.982 : 0.984 : 0.984 :
