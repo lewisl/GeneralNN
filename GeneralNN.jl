@@ -1,7 +1,6 @@
 #DONE
-#   rename Model_view to Training_view
-#   put convenience variables (n, in_k, out_k) into struct Model_data
-#   clean version before coding function predict with re-factoring
+
+
 
 #TODO
 #   try different versions of ensemble predictions_vector
