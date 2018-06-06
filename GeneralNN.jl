@@ -1,5 +1,5 @@
 #DONE
-#   Refactor:  moved setup functions to new source file
+
 
 
 #TODO
@@ -48,7 +48,7 @@ Includes the following functions to run directly:
 - predictions_vector() -- predictions given x and saved theta
 - accuracy() -- calculates accuracy of predictions compared to actual labels
 - extract_data() -- extracts data for MNIST from matlab files
-- normalize_data() -- normalize via standardization (mean, sd) or minmax
+- normalize_inputs() -- normalize via standardization (mean, sd) or minmax
 
 To use, include() the file.  Then enter using GeneralNN to use the module.
 
@@ -69,10 +69,12 @@ module GeneralNN
 export NN_parameters, Model_data, Batch_norm_params, Hyper_parameters
 
 # functions to use
-export train_nn, test_score, save_params, load_params, accuracy, predictions_vector, extract_data, normalize_data
+export train_nn, test_score, save_params, load_params, accuracy, predictions_vector
+export extract_data, normalize_inputs, normalize_replay
 
 using MAT
-using JLD
+using JLD2
+using FileIO
 using PyCall
 using Plots
 pyplot()  # initialize the backend used by Plots
@@ -82,6 +84,7 @@ pyplot()  # initialize the backend used by Plots
 include("layer_functions.jl")
 include("nn_data_structs.jl")
 include("setup_functions.jl")
+include("utilities.jl")
 
 const l_relu_neg = .01  # makes the type constant; value can be changed
 
@@ -279,8 +282,6 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     classify="softmax", norm_mode="none", do_batch_norm=false, units="sigmoid",
     learn_decay::Array{Float64,1}=[1.0, 1.0])
 
-    # start the cpu clock
-    tic()
 
     # seed random number generator.  For runs of identical models the same weight initialization
     # will be used, given the number of parameters to be estimated.  Enables better comparisons.
@@ -295,11 +296,12 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     train = Model_data()  # train holds all the data and layer inputs/outputs
     test = Model_data()
     mb = Training_view()  # layer data for mini-batches: as views on training data or arrays
-    tp = NN_parameters()  # trained parameters
+    nnp = NN_parameters()  # trained parameters
     bn = Batch_norm_params()  # do we always need the data structure to run?  yes--TODO fix this
 
     hp = Hyper_parameters()  # hyper_parameters:  sets defaults
     # update Hyper_parameters with user inputs--more below
+        hp.units = units
         hp.alpha = alpha
         hp.lambda = lambda
         hp.n_hid = n_hid
@@ -320,8 +322,8 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
 
     # normalize input data
     if !(norm_mode == "" || lowercase(norm_mode) == "none")
-        train.inputs, test.inputs, norm_factors = normalize_data(train.inputs, test.inputs, norm_mode)
-        tp.norm_factors = norm_factors   
+        train.inputs, test.inputs, norm_factors = normalize_inputs(train.inputs, test.inputs, norm_mode)
+        nnp.norm_factors = norm_factors   
     end
     # debug
     # println("norm_factors ", typeof(norm_factors))
@@ -333,10 +335,10 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     dotest = size(test.inputs, 1) > 0  # there is testing data -> true, else false
 
     #  optimization parameters, minibatch, preallocate data storage
-    setup_model!(mb, hp, tp, bn, dotest, train, test)
+    setup_model!(mb, hp, nnp, bn, dotest, train, test)
 
     # choose layer functions and cost function based on inputs
-    setup_functions(units, train.out_k, opt, classify)
+    setup_functions!(hp.units, train.out_k, hp.opt, hp.classify)
 
     # statistics for plots and history data
     plotdef = setup_plots(epochs, dotest, plots)
@@ -344,9 +346,9 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     ##########################################################
     #   neural network training loop
     ##########################################################
-
-    t = 0  # update counter:  epoch by mini-batch
-
+    # start the cpu clock
+    tic()
+    t = 0  # update total counter:  all minibatches and epochs
     # DEBUG
     # println(train.inputs)
     # println(train.targets)
@@ -363,33 +365,33 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
 
             t += 1  # update counter
 
-            update_training_views!(mb, train, tp, hp, colrng)  # next minibatch
+            update_training_views!(mb, train, nnp, hp, colrng)  # next minibatch
 
-            feedfwd!(tp, bn, mb, hp)  # for all layers
+            feedfwd!(mb, nnp, bn,  hp)  # for all layers
 
-            backprop!(tp, bn, mb, hp, t)  # for all layers
+            backprop!(nnp, bn, mb, hp, t)  # for all layers
 
-            optimization_function!(tp, hp, t)
+            optimization_function!(nnp, hp, t)
 
             # update weights, bias, and batch_norm parameters
-            @fastmath for hl = 2:tp.output_layer            
-                tp.theta[hl] .= tp.theta[hl] .- (hp.alphaovermb .* tp.delta_w[hl])
+            @fastmath for hl = 2:nnp.output_layer            
+                nnp.theta[hl] .= nnp.theta[hl] .- (hp.alphaovermb .* nnp.delta_w[hl])
                 if hp.reg == "L2"  # subtract regularization term
-                    tp.theta[hl] .= tp.theta[hl] .- (hp.alphaovermb .* (hp.lambda .* tp.theta[hl]))
+                    nnp.theta[hl] .= nnp.theta[hl] .- (hp.alphaovermb .* (hp.lambda .* nnp.theta[hl]))
                 end
                 
                 if hp.do_batch_norm  # update batch normalization parameters
                     bn.gam[hl][:] -= hp.alphaovermb .* bn.delta_gam[hl]
                     bn.bet[hl][:] -= hp.alphaovermb .* bn.delta_bet[hl]
                 else  # update bias
-                    tp.bias[hl] .= tp.bias[hl] .- (hp.alphaovermb .* tp.delta_b[hl])
+                    nnp.bias[hl] .= nnp.bias[hl] .- (hp.alphaovermb .* nnp.delta_b[hl])
                 end
 
             end  # layer loop
         end # mini-batch loop
 
         # stats for all mini-batches of one epoch
-        gather_stats!(ep_i, plotdef, train, test, tp, bn, cost_function, train.n, test.n, hp)  
+        gather_stats!(ep_i, plotdef, train, test, nnp, bn, cost_function, train.n, test.n, hp)  
 
     end # epoch loop
 
@@ -399,21 +401,21 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
 
     println("Training time: ",toq()," seconds")  # cpu time since tic() =>  toq() returns secs without printing
 
-    feedfwd!(tp, bn, train, hp, istrain=false)  # output for entire training set
+    feedfwd!(train, nnp, bn, hp, istrain=false)  # output for entire training set
     println("Fraction correct labels predicted training: ",
-            hp.classify == "regression" ? r_squared(train.targets, train.a[tp.output_layer])
-                : accuracy(train.targets, train.a[tp.output_layer],epochs))
-    println("Final cost training: ", cost_function(train.targets, train.a[tp.output_layer], train.n,
-                    tp.theta, hp, tp.output_layer))
+            hp.classify == "regression" ? r_squared(train.targets, train.a[nnp.output_layer])
+                : accuracy(train.targets, train.a[nnp.output_layer],epochs))
+    println("Final cost training: ", cost_function(train.targets, train.a[nnp.output_layer], train.n,
+                    nnp.theta, hp, nnp.output_layer))
 
     # output test statistics
     if dotest
-        feedfwd!(tp, bn, test, hp, istrain=false)
+        feedfwd!(test, nnp, bn,  hp, istrain=false)
         println("Fraction correct labels predicted test: ",
-                hp.classify == "regression" ? r_squared(test.targets, test.a[tp.output_layer])
-                    : accuracy(test.targets, test.a[tp.output_layer],epochs))
-        println("Final cost test: ", cost_function(test.targets, test.a[tp.output_layer], test.n,
-            tp.theta, hp, tp.output_layer))
+                hp.classify == "regression" ? r_squared(test.targets, test.a[nnp.output_layer])
+                    : accuracy(test.targets, test.a[nnp.output_layer],epochs))
+        println("Final cost test: ", cost_function(test.targets, test.a[nnp.output_layer], test.n,
+            nnp.theta, hp, nnp.output_layer))
     end
 
     # output improvement of last 10 iterations for test data
@@ -431,19 +433,18 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     # plot the progress of cost and/or learning accuracy
     plot_output(plotdef)
 
-    return train.a[tp.output_layer], test.a[tp.output_layer], tp, bn, hp;  
+    return train.a[nnp.output_layer], test.a[nnp.output_layer], nnp, bn, hp;  
     # training predictions, test predictions, trained params, batch_norm parameters, hyper parameters
 end  # function run_training
-
 
 
 """
     Create or update views for the training data in minibatches or one big batch
         Arrays: a, z, z_norm, z_scale, targets  are all fields of struct mb
 """
-function update_training_views!(mb::Training_view, train::Model_data, tp::NN_parameters, 
+function update_training_views!(mb::Training_view, train::Model_data, nnp::NN_parameters, 
     hp::Hyper_parameters, colrng::UnitRange{Int64})
-    n_layers = tp.output_layer
+    n_layers = nnp.output_layer
 
     mb.a = [view(train.a[i],:,colrng) for i = 1:n_layers]
     mb.z = [view(train.z[i],:,colrng) for i = 1:n_layers]
@@ -456,25 +457,24 @@ function update_training_views!(mb::Training_view, train::Model_data, tp::NN_par
 end
 
 
-
 """
-function feedfwd!(tp, bn, dat, do_batch_norm; istrain)
+function feedfwd!(dat, nnp, bn, do_batch_norm; istrain)
     modifies a, a_wb, z in place to reduce memory allocations
     send it all of the data or a mini-batch
 
     feed forward from inputs to output layer predictions
 """
-function feedfwd!(tp, bn, dat, hp; istrain=true)
+function feedfwd!(dat::Union{Model_data, Training_view}, nnp, bn,  hp; istrain=true)
 
-    @fastmath for hl = 2:tp.output_layer-1  # hidden layers
+    @fastmath for hl = 2:nnp.output_layer-1  # hidden layers
 
-        dat.z[hl][:] = tp.theta[hl] * dat.a[hl-1]
+        dat.z[hl][:] = nnp.theta[hl] * dat.a[hl-1]
 
         if hp.do_batch_norm 
             batch_norm_fwd!(bn, dat, hl, istrain)
             unit_function!(dat.z[hl],dat.a[hl])
         else
-            dat.z[hl][:] =  dat.z[hl] .+ tp.bias[hl]
+            dat.z[hl][:] =  dat.z[hl] .+ nnp.bias[hl]
             unit_function!(dat.z[hl],dat.a[hl])
         end
 
@@ -485,49 +485,47 @@ function feedfwd!(tp, bn, dat, hp; istrain=true)
 
     end
 
-    @fastmath dat.z[tp.output_layer][:] = (tp.theta[tp.output_layer] * dat.a[tp.output_layer-1]
-        .+ tp.bias[tp.output_layer])  # TODO use bias in the output layer with no batch norm? @inbounds 
+    @fastmath dat.z[nnp.output_layer][:] = (nnp.theta[nnp.output_layer] * dat.a[nnp.output_layer-1]
+        .+ nnp.bias[nnp.output_layer])  # TODO use bias in the output layer with no batch norm? @inbounds 
 
-    classify_function!(dat.z[tp.output_layer], dat.a[tp.output_layer])  # a = activations = predictions
+    classify_function!(dat.z[nnp.output_layer], dat.a[nnp.output_layer])  # a = activations = predictions
 
 end
 
 
 """
-function backprop!(tp, dat, do_batch_norm)
-    Argument tp.delta_w holds the computed gradients for weights, delta_b for bias
-    Modifies dat.epsilon, tp.delta_w, tp.delta_b in place--caller uses tp.delta_w, tp.delta_b
+function backprop!(nnp, dat, do_batch_norm)
+    Argument nnp.delta_w holds the computed gradients for weights, delta_b for bias
+    Modifies dat.epsilon, nnp.delta_w, nnp.delta_b in place--caller uses nnp.delta_w, nnp.delta_b
     Use for training iterations
     Send it all of the data or a mini-batch
-    Intermediate storage of dat.a, dat.z, dat.epsilon, tp.delta_w, tp.delta_b reduces memory allocations
+    Intermediate storage of dat.a, dat.z, dat.epsilon, nnp.delta_w, nnp.delta_b reduces memory allocations
 """
-function backprop!(tp, bn, dat, hp, t)
+function backprop!(nnp, bn, dat, hp, t)
 
-    dat.epsilon[tp.output_layer][:] = dat.a[tp.output_layer] .- dat.targets  # @inbounds 
-    @fastmath tp.delta_w[tp.output_layer][:] = dat.epsilon[tp.output_layer] * dat.a[tp.output_layer-1]' # 2nd term is effectively the grad for mse  @inbounds 
-    @fastmath tp.delta_b[tp.output_layer][:] = sum(dat.epsilon[tp.output_layer],2)  # @inbounds 
+    dat.epsilon[nnp.output_layer][:] = dat.a[nnp.output_layer] .- dat.targets  # @inbounds 
+    @fastmath nnp.delta_w[nnp.output_layer][:] = dat.epsilon[nnp.output_layer] * dat.a[nnp.output_layer-1]' # 2nd term is effectively the grad for mse  @inbounds 
+    @fastmath nnp.delta_b[nnp.output_layer][:] = sum(dat.epsilon[nnp.output_layer],2)  # @inbounds 
 
-    @fastmath for hl = (tp.output_layer - 1):-1:2  # loop over hidden layers
+    @fastmath for hl = (nnp.output_layer - 1):-1:2  # loop over hidden layers
         if hp.do_batch_norm
             gradient_function!(dat.z[hl], dat.grad[hl])
             hp.dropout && (dat.grad[hl] .* dat.drop_filt_w[hl])
-            dat.epsilon[hl][:] = tp.theta[hl+1]' * dat.epsilon[hl+1] .* dat.grad[hl]  # @inbounds 
-            batch_norm_back!(tp, dat, bn, hl)
-            tp.delta_w[hl][:] = dat.delta_z[hl] * dat.a[hl-1]'  # @inbounds 
+            dat.epsilon[hl][:] = nnp.theta[hl+1]' * dat.epsilon[hl+1] .* dat.grad[hl]  # @inbounds 
+            batch_norm_back!(nnp, dat, bn, hl)
+            nnp.delta_w[hl][:] = dat.delta_z[hl] * dat.a[hl-1]'  # @inbounds 
         else
             gradient_function!(dat.z[hl], dat.grad[hl])
             hp.dropout && (dat.grad[hl] .* dat.drop_filt_w[hl])
-            dat.epsilon[hl][:] = tp.theta[hl+1]' * dat.epsilon[hl+1] .* dat.grad[hl]  # @inbounds 
-            tp.delta_w[hl][:] = dat.epsilon[hl] * dat.a[hl-1]'  # @inbounds 
-            tp.delta_b[hl][:] = sum(dat.epsilon[hl],2)  #  times a column of 1's = sum(row)
+            dat.epsilon[hl][:] = nnp.theta[hl+1]' * dat.epsilon[hl+1] .* dat.grad[hl]  # @inbounds 
+            nnp.delta_w[hl][:] = dat.epsilon[hl] * dat.a[hl-1]'  # @inbounds 
+            nnp.delta_b[hl][:] = sum(dat.epsilon[hl],2)  #  times a column of 1's = sum(row)
         end
 
     end
 
 end
 
-
-###########################################################################
 
 function batch_norm_fwd!(bn, dat, hl, istrain=true)
     in_k,mb = size(dat.z[hl])
@@ -547,7 +545,7 @@ function batch_norm_fwd!(bn, dat, hl, istrain=true)
 end
 
 
-function batch_norm_back!(tp, dat, bn, hl)
+function batch_norm_back!(nnp, dat, bn, hl)
     d,mb = size(dat.epsilon[hl])
     bn.delta_bet[hl][:] = sum(dat.epsilon[hl], 2)
     bn.delta_gam[hl][:] = sum(dat.epsilon[hl] .* dat.z_norm[hl], 2)
@@ -602,47 +600,44 @@ function plot_output(plotdef)
 end
 
 
-
-function gather_stats!(i, plotdef, train, test, tp, bn, cost_function, train_n, test_n, hp)
+function gather_stats!(i, plotdef, train, test, nnp, bn, cost_function, train_n, test_n, hp)
 
     if plotdef["plot_switch"]["Training"]
-        feedfwd!(tp, bn, train, hp, istrain=false)
+        feedfwd!(train, nnp, bn, hp, istrain=false)
 
         if plotdef["plot_switch"]["Cost"]
             plotdef["cost_history"][i, plotdef["col_train"]] = cost_function(train.targets,
-                train.a[tp.output_layer], train_n, tp.theta, hp, tp.output_layer)
+                train.a[nnp.output_layer], train_n, nnp.theta, hp, nnp.output_layer)
         end
         if plotdef["plot_switch"]["Learning"]
             plotdef["fracright_history"][i, plotdef["col_train"]] = (  hp.classify == "regression"
-                    ? r_squared(train.targets, train.a[tp.output_layer])
-                    : accuracy(train.targets, train.a[tp.output_layer], i)  )
+                    ? r_squared(train.targets, train.a[nnp.output_layer])
+                    : accuracy(train.targets, train.a[nnp.output_layer], i)  )
         end
     end
 
     if plotdef["plot_switch"]["Test"]
-        feedfwd!(tp, bn, test, hp, istrain=false)
+        feedfwd!(test, nnp, bn, hp, istrain=false)
         if plotdef["plot_switch"]["Cost"]
             cost = cost_function(test.targets,
-                test.a[tp.output_layer], test.n, tp.theta, hp, tp.output_layer)
+                test.a[nnp.output_layer], test.n, nnp.theta, hp, nnp.output_layer)
                 # println("iter: ", i, " ", "cost: ", cost)
             plotdef["cost_history"][i, plotdef["col_test"]] =cost
         end
         if plotdef["plot_switch"]["Learning"]
             # printdims(Dict("test.a"=>test.a, "test.z"=>test.z))
             plotdef["fracright_history"][i, plotdef["col_test"]] = (  hp.classify == "regression"
-                    ? r_squared(test.targets, test.a[tp.output_layer])
-                    : accuracy(test.targets, test.a[tp.output_layer], i)  )
+                    ? r_squared(test.targets, test.a[nnp.output_layer])
+                    : accuracy(test.targets, test.a[nnp.output_layer], i)  )
         end
     end
 
     # println("train 1 - predictions:")
-    # println(1.0 .- train.a[tp.output_layer][:, 1:2])
+    # println(1.0 .- train.a[nnp.output_layer][:, 1:2])
 
     # println("test 1 - predictions:")
-    # println(1.0 .- test.a[tp.output_layer][:, 1:2])
+    # println(1.0 .- test.a[nnp.output_layer][:, 1:2])
     
-
-
 end
 
 
@@ -671,63 +666,6 @@ end
 function r_squared(targets, preds)
     ybar = mean(targets)
     return 1.0 - sum((targets .- preds).^2.) / sum((targets .- ybar).^2.)
-end
-
-
-"""
-
-    function save_params(jld_fname, tp, bn, hp)
-
-Save the trained parameters: tp, batch_norm parameters: bn, and hyper parameters: hp,
-as a JLD file.
-
-Can be used to run the model on prediction data or to evaluate other
-test data results (cost and accuracy).
-"""
-function save_params(jld_fname, tp, bn, hp )
-    # check if output file exists and ask permission to overwrite
-    if isfile(jld_fname)
-        print("Output file $jld_fname exists. OK to overwrite? ")
-        resp = readline()
-        if contains(lowercase(resp), "y")
-            rm(jld_fname)
-        else
-            error("File exists. Replied no to overwrite. Quitting.")
-        end
-    end
-
-    # to translate to unnormalized regression coefficients: m = mhat / stdx, b = bhat - (m*xmu)
-
-    # write the JLD formatted file (based on hdf5)
-    jldopen(jld_fname, "w") do f
-        write(f, "tp", tp)
-        write(f, "hp", hp)
-        write(f, "bn", bn)
-    end
-
-end
-
-
-"""
-
-    function load_params(jld_fname)
-
-Load the trained parameters: tp, batch_norm parameters: bn, and hyper parameters: hp,
-from a JLD file.
-
-Can be used to run the model on prediction data or to evaluate other
-test data results (cost and accuracy).
-
-returns: tp, bn, hp
-These are mutable structs.  Use fieldnames(tp) to list the fields.
-"""
-function load_params(jld_fname)
-    jldopen(jld_fname, "r") do f
-        tp = read(f, "tp")
-        bn = read(f, "bn")
-        hp = read(f, "hp")
-    end
-    return tp,bn,hp
 end
 
 
@@ -812,69 +750,54 @@ function predictions_vector(theta_fname, data_fname, lambda = 0.01, classify="so
 end
 
 
-# TODO -- THIS IS BROKEN!
 """
 
-    function predict(inputs, theta)
+    function predict()
 
-Generate predictions given theta and inputs.
+Two methods:
+    with a .mat file as input: 
+        function predict(matfname::String, hp, nnp, bn; test::Bool=false, norm_mode::String="")
+    with arrays as input:
+        function predict(inputs, targets, hp, nnp, bn, norm_factors)
+
+Generate predictions given previously trained parameters and input data.
 Not suitable in a loop because of all the additional allocations.
 Use with one-off needs like scoring a test data set or
 producing predictions for operational data fed into an existing model.
 """
-function predict(inputs, theta)   ### TODO this is seriously broken!
-    # set some useful variables
-    in_k,n = size(inputs) # number of features in_k by no. of examples n
-    output_layer = size(theta,1)
-    out_k = size(theta[output_layer],1)  # number of output units or
+function predict(matfname::String, hp, nnp, bn; test::Bool=false)
 
-    # setup cost
-    cost_function = cross_entropy_cost
-
-    # setup class function
-    if t > 1  # more than one output (unit)
-        if classify == "sigmoid"
-            classify_function! = sigmoid!
-        elseif classify == "softmax"
-            classify_function! = softmax!
-        else
-            error("Function to classify output labels must be \"sigmoid\" or \"softmax\".")
-        end
+    if !test
+        inputs, targets, _, __ = extract_data(matfname)  # training data
     else
-        classify_function! = sigmoid!  # for one output (unit)
+        _, __, inputs, targets = extract_data(matfname)  # test data
     end
 
-    a_test,  z_test = preallocate_feedfwd(inputs, tp, n)
-    predictions = feedfwd!(tp, bn, dat, do_batch_norm, istrain=false)
-end
-
-# predict:  
-#     do one pass for a set of data
-#     need to do training or test data in own pass--data is data at this stage
-# read the model data
-# read the hyperparameters, trained parameters, batch_norm hyper_parameters
-# set up feedforward:  
-#     pre-allocate data
-#     pre-allocate feedfwd
-#     define needed functions
-# feedforward
-
-
-function printby2(nby2)  # not used currently
-    for i = 1:size(nby2,1)
-        println(nby2[i,1], "    ", nby2[i,2])
-    end
+    predict(inputs, targets, hp, nnp, bn)
 end
 
 
-"""Print the sizes of matrices you pass in as Dict("name"=>var,...)"""
-function printdims(indict)
-    n = length(indict)
-    println("\nSizes of matrices\n")
-    for (n, item) in indict
-        println(n,": ",size(item))
+function predict(inputs, targets, hp, nnp, bn)
+    dataset = Model_data()
+        dataset.inputs = inputs
+        dataset.targets = targets
+        dataset.in_k, dataset.n = size(inputs)  # number of features in_k (rows) by no. of examples n (columns)
+        dataset.out_k = size(dataset.targets,1)  # number of output units
+
+    if hp.norm_mode == "standard" || hp.norm_mode == "minmax"
+        normalize_replay!(dataset.inputs, hp.norm_mode, nnp.norm_factors)
     end
-    println("")
+
+    preallocate_feedfwd!(dataset, nnp, dataset.n, hp.do_batch_norm)
+
+    setup_functions!(hp.units, dataset.out_k, hp.opt, hp.classify)  # for feedforward calculations
+
+    feedfwd!(dataset, nnp, bn, hp, istrain=false)  # output for entire dataset
+
+    println("Fraction correct labels predicted: ",
+        hp.classify == "regression" ? r_squared(dataset.targets, dataset.a[nnp.output_layer])
+                                    : accuracy(dataset.targets, dataset.a[nnp.output_layer], hp.epochs))
+    return dataset
 end
 
 end  # module GeneralNN

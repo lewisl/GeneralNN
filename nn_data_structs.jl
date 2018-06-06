@@ -2,7 +2,7 @@
 """
 struct NN_parameters holds model parameters learned by training and model metadata
 """
-mutable struct NN_parameters              # we will use tp as the struct variable
+mutable struct NN_parameters              # we will use nnp as the struct variable
     theta::Array{Array{Float64,2},1}
     bias::Array{Array{Float64,1},1}
     delta_w::Array{Array{Float64,2},1}
@@ -36,9 +36,11 @@ end
 struct Hyper_parameters holds hyper_parameters used to control training
 """
 mutable struct Hyper_parameters          # we will use hp as the struct variable
+    units::String
     alpha::Float64              # learning 
     lambda::Float64             # L2 regularization
-    b1::Float64                 # optimization for momentum or Adam
+    n_hid::Array{Int64,1}       # number of units in each hidden layer
+    b1::Float64                 # 1st optimization for momentum or Adam
     b2::Float64                 # 2nd optimization parameter for Adam
     ltl_eps::Float64            # use in denominator with division of very small values to prevent overflow
     alphaovermb::Float64        # calculate outside the learning loop
@@ -48,6 +50,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
     droplim::Array{Float64,1}   # the probability a node output is kept
     reg::String                 # L2 or "none"
     opt::String                 # Adam or momentum or "none" or "" for optimization
+    opt_params::Array{Float64,1}# parameters for optimization
     classify::String            # behavior of output layer: "softmax", "sigmoid", or "regression"
     mb_size::Int64              # minibatch size--user input
     n_mb::Int64                 # number of minibatches--calculated
@@ -56,8 +59,10 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
     learn_decay::Array{Float64,1}  # reduction factor (fraction) and number of steps
 
     Hyper_parameters() = new(       # constructor with defaults--we use hp as the struct variable
+        "sigmoid",      # units
         0.35,           # alpha -- OK for nn. way too high for linear regression
         0.01,           # lambda
+        [],             # h_hid
         0.9,            # b1
         0.999,          # b2
         1e-8,           # ltl_eps
@@ -68,6 +73,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         [0.5],          # droplim
         "L2",           # reg
         "",             # opt
+        [],             # opt_params
         "sigmoid",      # classify
         50,             # mb_size
         100,            # n_mb

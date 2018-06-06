@@ -47,7 +47,7 @@ function extract_data(matfname::String, norm_mode::String="none")
 end
 
 
-function normalize_data(inputs, test_inputs, norm_mode="none")
+function normalize_inputs(inputs, test_inputs, norm_mode="none")
     if lowercase(norm_mode) == "standard"
         # normalize training data
         x_mu = mean(inputs, 2)
@@ -57,7 +57,7 @@ function normalize_data(inputs, test_inputs, norm_mode="none")
         if size(test_inputs) != (0,0)
             test_inputs = (test_inputs .- x_mu) ./ (x_std .+ 1e-08)
         end
-        norm_factors = (x_mu, x_std)
+        norm_factors = (x_mu, x_std) # tuple of Array{Float64,2}
     elseif lowercase(norm_mode) == "minmax"
         # normalize training data
         x_max = maximum(inputs, 2)
@@ -79,6 +79,21 @@ function normalize_data(inputs, test_inputs, norm_mode="none")
     # 2*(x - x.min()) / (x.max() - x.min()) - 1 # values from -1 to 1
 
     return inputs, test_inputs, norm_factors
+end
+
+
+function normalize_replay!(inputs, norm_mode, norm_factors)
+    if norm_mode == "standard"
+        x_mu = norm_factors[1]
+        x_std = norm_factors[2]
+        inputs = (inputs .- x_mu) ./ (x_std .+ 1e-08)
+    elseif norm_mode == "minmax"
+        x_min = norm_factors[1]
+        x_max = norm_factors[2]
+        inputs = (inputs .- x_min) ./ (x_max .- x_min .+ 1e-08)
+    else
+        error("Input norm_mode = $norm_mode must be standard or minmax")
+    end
 end
 
 
@@ -193,7 +208,6 @@ end
 
 # use for test and training data
 function preallocate_feedfwd!(dat, tp, n, do_batch_norm)
-    # we don't pre-allocate epsilon, grad used during backprop
     dat.a = [dat.inputs]
     dat.z = [zeros(size(dat.inputs))] # not used for input layer  TODO--this permeates the code but not needed
     for i = 2:tp.output_layer-1  # hidden layers
@@ -258,7 +272,6 @@ function preallocate_nn_params!(tp, hp, n_hid, in_k, n, out_k)
         tp.delta_s_b = [zeros(size(a)) for a in tp.delta_b]
     end
 
-
 end
 
 
@@ -316,7 +329,7 @@ end
 """
 define and choose functions to be used in neural net training
 """
-function setup_functions(units, out_k, opt, classify)
+function setup_functions!(units, out_k, opt, classify)
 
     # all the other functions are module level, e.g. global--make these function variables module level, too
     global unit_function!

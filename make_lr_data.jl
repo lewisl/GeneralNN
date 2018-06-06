@@ -3,8 +3,8 @@ using MAT
 """
 Create test data for linear regression as a matlab file
 """
-function make_lr_data(x_range::Array{Float64,2},n_examples::Int64,
-slope::Array{Float64,1}, y_std::Float64,y_val::Float64;
+function make_lr_data(x_range::Array{Float64,2}, n_examples::Int64,
+slope::Array{Float64,1}, y_std::Float64, y_val::Float64;
 matfname::String="lrdat.mat",y_type="mean")
 
     # datafiles follow the convention of rows as examples and columns as features
