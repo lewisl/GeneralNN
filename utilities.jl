@@ -12,7 +12,7 @@ not compatible.
 Can be used to run the model on prediction data or to evaluate other
 test data results (cost and accuracy).
 """
-function save_params(jld_fname, nnp, bn, hp; train_preds=[], test_preds=[])
+function save_params(jld_fname, nnp, bn, hp; train_y=[], test_y=[])
     # check if output file exists and ask permission to overwrite
     if isfile(jld_fname)
         print("Output file $jld_fname exists. OK to overwrite? ")
@@ -27,14 +27,13 @@ function save_params(jld_fname, nnp, bn, hp; train_preds=[], test_preds=[])
     # to translate to unnormalized regression coefficients: m = mhat / stdx, b = bhat - (m*xmu)
 
     # write the JLD formatted file (based on hdf5)
-    f = jldopen(jld_fname, "w")
-    f["nnp"] = nnp
-    f["hp"] = hp
-    f["bn"] = bn
-    if size(train_preds) != (0, ) ;  f["train_y"] = train_preds; end
-    if size(test_preds) != (0, ) ;  f["test_y"] = test_preds; end
-    
-    close(f)
+    jldopen(jld_fname, "w") do f
+        f["nnp"] = nnp
+        f["hp"] = hp
+        f["bn"] = bn
+        if size(train_y) != (0, ) ;  f["train_y"] = train_y ; end
+        if size(test_y) != (0, ) ;  f["test_y"] = test_y ; end
+    end
 
 end
 
@@ -56,9 +55,9 @@ function load_params(jld_fname)
     f = jldopen(jld_fname, "r")
     ret = Dict(j=>f[j] for j in keys(f))
     close(f)
+    f = []   # flush it before gc gets to it
     return ret
 end
-
 
 
 function printby2(nby2)  # not used currently

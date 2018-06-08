@@ -3,7 +3,7 @@
 
 
 #TODO
-#   test the setting of the droplim variable for different number of layers
+#   relax minibatch size being exact factor of training data size
 #   try different versions of ensemble predictions_vector
 #   allow dropout to drop from the input layer
 #   augment data by perturbing the images
@@ -13,7 +13,6 @@
 #       affects feedfwd, backprop, pre-allocation (several), momentum, adam search for if [!hp.]*do_batch_norm
 #       type dispatch on bn:  either a struct or a bool to eliminate if tests all over to see if we batch normalize
 #   check for type stability: @code_warntype pisum(500,10000)
-#   is it worth having feedfwdpredict?  along with batchnormfwdpredict?  then no if test since we always know when we are predicting
 #   still lots of memory allocations despite the pre-allocation
         # You can devectorize r -= d[j]*A[:,j] with r .= -.(r,d[j]*A[:.j]) 
         #        to get rid of some more temporaries. 
@@ -23,15 +22,12 @@
 #   stats on individual regression parameters
 #   figure out memory use between train set and minibatch set
 #   fix predictions
-#   method that uses saved parameters as inputs
 #   make affine units a separate layer with functions for feedfwd, gradient and test--do we need to?
 #   try "flatscale" x = x / max(x)
 #   performance improvements for batch_norm calculations
-#   relax minibatch size being exact factor of training data size
 #   implement a gradient checking function with option to run it
 #   convolutional layers
 #   pooling layers
-#   better way to handle test not using mini-batches
 #   implement early stopping
 #   separate plots data structure from stats data structure?
 
@@ -69,8 +65,8 @@ module GeneralNN
 export NN_parameters, Model_data, Batch_norm_params, Hyper_parameters
 
 # functions to use
-export train_nn, test_score, save_params, load_params, accuracy, predictions_vector
-export extract_data, normalize_inputs, normalize_replay
+export train_nn, test_score, save_params, load_params, accuracy
+export extract_data, normalize_inputs, normalize_replay!, nnpredict
 
 using MAT
 using JLD2
@@ -300,7 +296,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     bn = Batch_norm_params()  # do we always need the data structure to run?  yes--TODO fix this
 
     hp = Hyper_parameters()  # hyper_parameters:  sets defaults
-    # update Hyper_parameters with user inputs--more below
+    # update Hyper_parameters with user inputs--more below based on other logic
         hp.units = units
         hp.alpha = alpha
         hp.lambda = lambda
@@ -466,8 +462,8 @@ function feedfwd!(dat, nnp, bn, do_batch_norm; istrain)
 """
 function feedfwd!(dat::Union{Model_data, Training_view}, nnp, bn,  hp; istrain=true)
 
-    @fastmath for hl = 2:nnp.output_layer-1  # hidden layers
-
+    # hidden layers
+    @fastmath for hl = 2:nnp.output_layer-1  
         dat.z[hl][:] = nnp.theta[hl] * dat.a[hl-1]
 
         if hp.do_batch_norm 
@@ -481,10 +477,9 @@ function feedfwd!(dat::Union{Model_data, Training_view}, nnp, bn,  hp; istrain=t
         if istrain && hp.dropout  
             dropout!(dat,hp,hl)
         end
-
-
     end
 
+    # output layer
     @fastmath dat.z[nnp.output_layer][:] = (nnp.theta[nnp.output_layer] * dat.a[nnp.output_layer-1]
         .+ nnp.bias[nnp.output_layer])  # TODO use bias in the output layer with no batch norm? @inbounds 
 
@@ -709,49 +704,6 @@ end
 
 """
 
-    function predictions_vector(theta_fname, data_fname, lambda = 0.01,
-        classify="softmax")
-
-    returns vector of all predictions
-
-Return predicted values given inputs and theta.  Not used by training.
-Use when theta is already trained and saved to make predictions
-for input operational data to use your model. Resolves sigmoid or softmax outputs
-to (zero, one) values for each output unit.
-
-Simply does feedforward, but does some data staging first.
-"""
-function predictions_vector(theta_fname, data_fname, lambda = 0.01, classify="softmax")
-  # read theta
-    dtheta = matread(theta_fname)
-    theta = dtheta["theta"]
-
-    # read the operational data:  can be in a "train" key with x or can be top-level key x
-    df = matread(data_fname)
-
-    if in("train", keys(df))
-        inputs = df["train"]["x"]'  # set examples as columns to optimize for julia column-dominant operations
-    else
-        inputs = df["x"]'
-    end
-    n = size(inputs,2)
-    output_layer = size(theta,1)
-
-    predictions = predict(inputs, theta)
-    if size(predictions,1) > 1
-        # works for output units sigmoid or softmax
-        ret = [indmax(predictions[:,i]) for i in 1:size(predictions,2)]
-    else
-        # works because single output unit is sigmoid
-        ret = [j >= 0.5 ? 1.0 : 0.0 for j in predictions]
-    end
-
-    return ret
-end
-
-
-"""
-
     function predict()
 
 Two methods:
@@ -765,19 +717,18 @@ Not suitable in a loop because of all the additional allocations.
 Use with one-off needs like scoring a test data set or
 producing predictions for operational data fed into an existing model.
 """
-function predict(matfname::String, hp, nnp, bn; test::Bool=false)
-
+function nnpredict(matfname::String, hp, nnp, bn; test::Bool=false)
     if !test
         inputs, targets, _, __ = extract_data(matfname)  # training data
     else
         _, __, inputs, targets = extract_data(matfname)  # test data
     end
 
-    predict(inputs, targets, hp, nnp, bn)
+    nnpredict(inputs, targets, hp, nnp, bn)
 end
 
 
-function predict(inputs, targets, hp, nnp, bn)
+function nnpredict(inputs, targets, hp, nnp, bn)
     dataset = Model_data()
         dataset.inputs = inputs
         dataset.targets = targets
@@ -797,7 +748,7 @@ function predict(inputs, targets, hp, nnp, bn)
     println("Fraction correct labels predicted: ",
         hp.classify == "regression" ? r_squared(dataset.targets, dataset.a[nnp.output_layer])
                                     : accuracy(dataset.targets, dataset.a[nnp.output_layer], hp.epochs))
-    return dataset
+    return dataset.a[tp.output_layer]
 end
 
 end  # module GeneralNN

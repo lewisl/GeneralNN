@@ -624,8 +624,6 @@ Test data accuracy in final 10 iterations:
 0.949 : 0.954 : 0.952 : 0.953 : 0.955 : 0.953 : 0.953 : 0.960 : 0.951 : 0.954 : 
 
 train, test, nnp,bn,hp = train_nn("digits10000by784.mat",20,[50,50],alpha=1.0,mb_size=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0]);
-
-
  **** at 10 stepping down learning rate to 0.5
 Training time: 10.300372102 seconds
 Fraction correct labels predicted training: 0.9999

@@ -15,7 +15,7 @@
 
 
 include("GeneralNN.jl")
-import GeneralNN  # module:  must qualify all function names
+import GeneralNN  # import module:  must qualify all function names
 
 
 
@@ -83,7 +83,6 @@ function basic(matfname, norm_mode="minmax", unroll=false)
         @time for ci = 1:n
             unimg[:,:,:,ci] = unroll_img(imgstack[:,:,:,ci], w1)
         end
-        
 
         unfil = unroll_fil(imgstack[:,:,:,1], w1)
         @time for ci = 1:n
@@ -170,10 +169,8 @@ function convolve_multi(img, fil; same=false, stri=1, pad=0)
         for j = zip(1:y_out, 1:stri:imgy)  # column major access
             for i = zip(1:x_out, 1:stri:imgx)
                 element = 0.0
-                # piece = img[i[2]:i[2]+filx-1, j[2]:j[2]+fily-1, :]  # SLOW! take a slice of the image inc. channels
-                for ic = 1:imgc, fj = 1:fily, fi = 1:filx  # loop across x,y of the filter for all 3 dims of the slice
+                for ic = 1:imgc, fj = 1:fily, fi = 1:filx  # scalar multiply faster than slice and broadcast
                     element += img[i[2]+fi-1,j[2]+fj-1,ic] * fil[fi, fj, ic, z]
-                    # element += piece[fi,fj,ic] * fil[fi, fj, ic, z]
                 end
                 ret[i[1],j[1],z] = element
             end
@@ -497,15 +494,3 @@ edg2 =  [10 10 10 0 0 0;
          0 0 0 10 10 10;
          0 0 0 10 10 10]
 
-# a hard way to pad that is a bit hard to follow
-# if pad > 0  # make a padded image
-#     p_img = Array{eltype(img),2}(2.+size(img))
-#     p_img[2:2+size(img,1)-1,2:2+size(img,2)-1] = img
-#     p_img[1,:] = 0
-#     p_img[end,:] = 0
-#     p_img[:,1] = 0
-#     p_img[:,end] = 0
-#     focus = p_img
-# else
-#     focus = img
-# end
