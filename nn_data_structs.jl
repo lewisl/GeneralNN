@@ -113,7 +113,6 @@ mutable struct Model_data               # we will use train for inputs, test for
         Array{Array{Float64,2},1}(0),   # a
         Array{Array{Float64,2},1}(0),   # z
         Array{Array{Float64,2},1}(0),   # z_norm -- only pre-allocate if batch_norm
-        # Array{Array{Float64,2},1}(0),   # z_scale -- only pre-allocate if batch_norm
         Array{Array{Float64,2},1}(0),   # delta_z_norm
         Array{Array{Float64,2},1}(0),   # delta_z
         Array{Array{Float64,2},1}(0),   # grad
