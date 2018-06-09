@@ -51,7 +51,7 @@ To use, include() the file.  Then enter using GeneralNN to use the module.
 These data structures are used to hold parameters and data:
 
 - NN_parameters holds theta, bias, delta_w, delta_b, theta_dims, output_layer, layer_units
-- Model_data holds inputs, targets, a, z, z_norm, z_scale, epsilon, gradient_function
+- Model_data holds inputs, targets, a, z, z_norm, epsilon, gradient_function
 - Batch_norm_params holds gam (gamma), bet (beta) for batch normalization and Intermediate
 data used for training: delta_gam, delta_bet, delta_z_norm, delta_z, mu, stddev, mu_run, std_run
 
@@ -140,7 +140,7 @@ This is a front-end function that verifies all inputs and calls run_training().
 
 """
 function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha::Float64=0.35,
-    mb_size::Int64=0, lambda::Float64=0.01, classify::String="softmax", norm_mode::String="none",
+    mb_size_in::Int64=0, lambda::Float64=0.01, classify::String="softmax", norm_mode::String="none",
     opt::String="", opt_params::Array{Float64,1}=[0.9,0.999], units::String="sigmoid", do_batch_norm::Bool=false,
     reg::String="L2", dropout::Bool=false, droplim::Array{Float64,1}=[0.5], plots::Array{String,1}=["Training", "Learning"],
     learn_decay::Array{Float64,1}=[1.0, 1.0])
@@ -171,12 +171,12 @@ function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha:
     if alpha < 0.000001
         warn("Alpha learning rate set too small. Setting to default 0.35")
         alpha = 0.35
-    elseif alpha > 3.0
+    elseif alpha > 9.0
         warn("Alpha learning rate set too large. Setting to defaut 0.35")
         alpha = 0.35
     end
 
-    if mb_size < 0
+    if mb_size_in < 0
         error("Input mb_size must be an integer greater or equal to 0")
     end
 
@@ -266,7 +266,7 @@ function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha:
     end
 
     run_training(matfname, epochs, n_hid,
-        plots=plots, reg=reg, alpha=alpha, mb_size=mb_size, lambda=lambda,
+        plots=plots, reg=reg, alpha=alpha, mb_size_in=mb_size_in, lambda=lambda,
         opt=opt, opt_params=opt_params, classify=classify, dropout=dropout, droplim=droplim,
         norm_mode=norm_mode, do_batch_norm=do_batch_norm, units=units, learn_decay=learn_decay);
 end
@@ -274,7 +274,7 @@ end
 
 function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     plots::Array{String,1}=["Training", "Learning"], reg="L2", alpha=0.35,
-    mb_size=0, lambda=0.01, opt="", opt_params=[], dropout=false, droplim=[0.5],
+    mb_size_in=0, lambda=0.01, opt="", opt_params=[], dropout=false, droplim=[0.5],
     classify="softmax", norm_mode="none", do_batch_norm=false, units="sigmoid",
     learn_decay::Array{Float64,1}=[1.0, 1.0])
 
@@ -306,7 +306,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
         hp.dropout = dropout
         hp.droplim = droplim
         hp.epochs = epochs
-        hp.mb_size = mb_size
+        hp.mb_size_in = mb_size_in
         hp.norm_mode = norm_mode
         hp.opt = opt
         hp.opt_params = opt_params
@@ -346,18 +346,36 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     tic()
     t = 0  # update total counter:  all minibatches and epochs
     # DEBUG
-    # println(train.inputs)
-    # println(train.targets)
+    # println(hp.n_mb)
+    # println(hp.mb_size)
 
     for ep_i = 1:hp.epochs  # loop for "epochs" with counter epoch i as ep_i
 
         hp.do_learn_decay && step_lrn_decay!(hp, ep_i)
 
+        # Debug
+        # ep_i == 3 && error("that's all folks...")
+
+        done = 0
+        hp.mb_size = hp.mb_size_in
+
+        # debug
+        # println(hp.mb_size)
+
         for mb_j = 1:hp.n_mb  # loop for mini-batches with counter minibatch j as mb_j
+            left = train.n - done
+            hp.mb_size = left > hp.mb_size ? hp.mb_size : left
+            done += hp.mb_size
+
+            #debug
+            # println("minibatch size: $(hp.mb_size)")
 
             first_example = (mb_j - 1) * hp.mb_size + 1  # mini-batch subset for the inputs->layer 1
             last_example = first_example + hp.mb_size - 1
             colrng = first_example:last_example
+
+            # debug
+            # println(colrng)
 
             t += 1  # update counter
 
@@ -384,6 +402,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
                 end
 
             end  # layer loop
+
         end # mini-batch loop
 
         # stats for all mini-batches of one epoch
@@ -436,7 +455,7 @@ end  # function run_training
 
 """
     Create or update views for the training data in minibatches or one big batch
-        Arrays: a, z, z_norm, z_scale, targets  are all fields of struct mb
+        Arrays: a, z, z_norm, targets  are all fields of struct mb
 """
 function update_training_views!(mb::Training_view, train::Model_data, nnp::NN_parameters, 
     hp::Hyper_parameters, colrng::UnitRange{Int64})
@@ -446,8 +465,18 @@ function update_training_views!(mb::Training_view, train::Model_data, nnp::NN_pa
     mb.z = [view(train.z[i],:,colrng) for i = 1:n_layers]
     mb.targets = view(train.targets,:,colrng)  # only at the output layer
 
+    mb.epsilon = [view(train.epsilon[i], :, colrng) for i = 1:n_layers]
+    mb.grad = [view(train.grad[i], :, colrng) for i = 1:n_layers]
+    mb.delta_z = [view(train.delta_z[i], :, colrng) for i = 1:n_layers]
+
     if hp.do_batch_norm
         mb.z_norm = [view(train.z_norm[i],:, colrng) for i = 1:n_layers]
+        mb.delta_z_norm = [view(train.delta_z_norm[i], :, colrng) for i = 1:n_layers]
+    end
+
+    if hp.dropout
+        mb.drop_ran_w = [view(train.drop_ran_w[i], :, colrng) for i = 1:n_layers]
+        mb.drop_filt_w = [view(train.drop_filt_w[i], :, colrng) for i = 1:n_layers]
     end
 
 end
@@ -497,8 +526,10 @@ function backprop!(nnp, dat, do_batch_norm)
     Intermediate storage of dat.a, dat.z, dat.epsilon, nnp.delta_w, nnp.delta_b reduces memory allocations
 """
 function backprop!(nnp, bn, dat, hp, t)
+    #DEBUG
+    #println("size a: $(size(dat.a[nnp.output_layer])), size targets: $(size(dat.targets))")
 
-    dat.epsilon[nnp.output_layer][:] = dat.a[nnp.output_layer] .- dat.targets  # @inbounds 
+    dat.epsilon[nnp.output_layer] = dat.a[nnp.output_layer] .- dat.targets  # @inbounds 
     @fastmath nnp.delta_w[nnp.output_layer][:] = dat.epsilon[nnp.output_layer] * dat.a[nnp.output_layer-1]' # 2nd term is effectively the grad for mse  @inbounds 
     @fastmath nnp.delta_b[nnp.output_layer][:] = sum(dat.epsilon[nnp.output_layer],2)  # @inbounds 
 

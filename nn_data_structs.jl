@@ -52,7 +52,8 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
     opt::String                 # Adam or momentum or "none" or "" for optimization
     opt_params::Array{Float64,1}# parameters for optimization
     classify::String            # behavior of output layer: "softmax", "sigmoid", or "regression"
-    mb_size::Int64              # minibatch size--user input
+    mb_size::Int64              # minibatch size--calculated; last mini-batch may be smaller
+    mb_size_in::Int64           # input of requested minibatch size:  last actual size may be smaller
     n_mb::Int64                 # number of minibatches--calculated
     epochs::Int64               # number of "outer" loops of training
     do_learn_decay::Bool        # step down the learning rate across epochs
@@ -75,7 +76,8 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         "",             # opt
         [],             # opt_params
         "sigmoid",      # classify
-        50,             # mb_size
+        0,              # mb_size
+        50,             # mb_size_in  
         100,            # n_mb
         30,             # epochs
         false,          # do_learn_decay
@@ -94,7 +96,6 @@ mutable struct Model_data               # we will use train for inputs, test for
     a::Array{Array{Float64,2},1}
     z::Array{Array{Float64,2},1}
     z_norm::Array{Array{Float64,2},1}   # same size as z--for batch_norm
-    # z_scale::Array{Array{Float64,2},1}  # same size as z, often called "y"--for batch_norm
     delta_z_norm::Array{Array{Float64,2},1}    # same size as z
     delta_z::Array{Array{Float64,2},1}         # same size as z
     grad::Array{Array{Float64,2},1}
@@ -136,28 +137,40 @@ mutable struct Training_view               # we will use mb for mini-batch train
     targets::SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true}
     z::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     z_norm::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    # z_scale::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     # arrays as big as the minibatch size
-    delta_z_norm::Array{Array{Float64,2},1} 
-    delta_z::Array{Array{Float64,2},1} 
-    grad::Array{Array{Float64,2},1} 
-    epsilon::Array{Array{Float64,2},1} 
-    drop_ran_w::Array{Array{Float64,2},1} 
-    drop_filt_w::Array{Array{Float64,2},1} 
+    # delta_z_norm::Array{Array{Float64,2},1} 
+    # delta_z::Array{Array{Float64,2},1} 
+    # grad::Array{Array{Float64,2},1} 
+    # epsilon::Array{Array{Float64,2},1} 
+    # drop_ran_w::Array{Array{Float64,2},1} 
+    # drop_filt_w::Array{Array{Float64,2},1} 
+    # views on the minibatch arrays to accommodate varying size minibatches
+    delta_z_norm::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    delta_z::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    grad::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    epsilon::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    drop_ran_w::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    drop_filt_w::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
 
     Training_view() = new(
         [view(zeros(2,2),:,1:2) for i in 1:2],  # a
         view(zeros(2,2),:,1:2),                 # targets
         [view(zeros(2,2),:,1:2) for i in 1:2],  # z
         [view(zeros(2,2),:,1:2) for i in 1:2],  # z_norm
-        # [view(zeros(2,2),:,1:2) for i in 1:2],  # z_scale
     
-        Array{Array{Float64,2},1}(0),           # delta_z_norm
-        Array{Array{Float64,2},1}(0),           # delta_z
-        Array{Array{Float64,2},1}(0),           # grad
-        Array{Array{Float64,2},1}(0),           # epsilon
-        Array{Array{Float64,2},1}(0),           # drop_ran_w
-        Array{Array{Bool,2},1}(0),              # drop_filt_w        
+        # Array{Array{Float64,2},1}(0),           # delta_z_norm
+        # Array{Array{Float64,2},1}(0),           # delta_z
+        # Array{Array{Float64,2},1}(0),           # grad
+        # Array{Array{Float64,2},1}(0),           # epsilon
+        # Array{Array{Float64,2},1}(0),           # drop_ran_w
+        # Array{Array{Bool,2},1}(0),              # drop_filt_w       
+        
+        [view(zeros(2,2),:,1:2) for i in 1:2],           # delta_z_norm
+        [view(zeros(2,2),:,1:2) for i in 1:2],           # delta_z
+        [view(zeros(2,2),:,1:2) for i in 1:2],           # grad
+        [view(zeros(2,2),:,1:2) for i in 1:2],           # epsilon
+        [view(zeros(2,2),:,1:2) for i in 1:2],           # drop_ran_w
+        [view(trues(2,2),:,1:2) for i in 1:2]            # drop_filt_w     
     )
 
 end

@@ -632,3 +632,2556 @@ Fraction correct labels predicted test: 0.9572
 Final cost test: 0.3349413219440479
 Test data accuracy in final 10 iterations:
 0.956 : 0.956 : 0.956 : 0.956 : 0.957 : 0.958 : 0.957 : 0.957 : 0.957 : 0.957 : 
+
+train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0],dropout=false, droplim=[0.7,0.9],norm_mode="",lambda=0.001);
+ **** at 15 stepping down learning rate to 0.5
+Training time: 16.292144014 seconds
+Fraction correct labels predicted training: 0.9994
+Final cost training: 0.005836390620458265
+Fraction correct labels predicted test: 0.9592
+Final cost test: 0.3894672047203984
+Test data accuracy in final 10 iterations:
+0.958 : 0.958 : 0.959 : 0.959 : 0.959 : 0.959 : 0.959 : 0.959 : 0.960 : 0.959 : 
+
+
+## quite good for using 10000 samples and a smallish network
+train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0],dropout=false, droplim=[0.7,0.9],norm_mode="",lambda=0.0005);
+ **** at 15 stepping down learning rate to 0.5
+Training time: 16.240193722 seconds
+Fraction correct labels predicted training: 0.9997
+Final cost training: 0.004556931924207483
+Fraction correct labels predicted test: 0.9608
+Final cost test: 0.3812761226098544
+Test data accuracy in final 10 iterations:
+0.958 : 0.959 : 0.960 : 0.960 : 0.960 : 0.960 : 0.961 : 0.961 : 0.961 : 0.961 : 
+
+train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0001);
+ **** at 15 stepping down learning rate to 0.5
+Training time: 18.202544079 seconds
+Fraction correct labels predicted training: 0.9997
+Final cost training: 0.0033905767234180973
+Fraction correct labels predicted test: 0.9638
+Final cost test: 0.3720602093453879
+Test data accuracy in final 10 iterations:
+0.964 : 0.963 : 0.963 : 0.963 : 0.964 : 0.963 : 0.963 : 0.963 : 0.963 : 0.964 : 
+
+Last login: Fri Jun  8 09:04:22 on ttys000
+MacBook-Pro:nn by hand lewis$ julia
+               _
+   _       _ _(_)_     |  A fresh approach to technical computing
+  (_)     | (_) (_)    |  Documentation: https://docs.julialang.org
+   _ _   _| |_  __ _   |  Type "?help" for help.
+  | | | | | | |/ _` |  |
+  | | |_| | | | (_| |  |  Version 0.6.3 (2018-05-28 20:20 UTC)
+ _/ |\__'_|_|_|\__'_|  |  Official http://julialang.org/ release
+|__/                   |  x86_64-apple-darwin14.5.0
+
+julia> using Revise
+
+julia> include("GeneralNN.jl")
+GeneralNN
+
+julia> Track.revise("GeneralNN.jl")
+ERROR: UndefVarError: Track not defined
+
+julia> Revise.track("GeneralNN.jl")
+
+julia> using GeneralNN
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[0.8]);
+ERROR: UndefVarError: mb_size_input not defined
+Stacktrace:
+ [1] #train_nn#90(::Float64, ::Int64, ::Float64, ::String, ::String, ::String, ::Array{Float64,1}, ::String, ::Bool, ::String, ::Bool, ::Array{Float64,1}, ::Array{String,1}, ::Array{Float64,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:268
+ [2] (::GeneralNN.#kw##train_nn)(::Array{Any,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[0.8]);
+WARNING: Method definition train_nn(String, Int64, Array{Int64, 1}) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:152 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:152.
+WARNING: Method definition #train_nn(Array{Any, 1}, typeof(GeneralNN.train_nn), String, Int64, Array{Int64, 1}) in module GeneralNN overwritten.
+WARNING: replacing docs for 'GeneralNN.train_nn :: Tuple{String,Int64,Array{Int64,1}}' in module 'GeneralNN'.
+ERROR: UndefVarError: mb_size_input not defined
+Stacktrace:
+ [1] #train_nn#138(::Float64, ::Int64, ::Float64, ::String, ::String, ::String, ::Array{Float64,1}, ::String, ::Bool, ::String, ::Bool, ::Array{Float64,1}, ::Array{String,1}, ::Array{Float64,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:268
+ [2] (::GeneralNN.#kw##train_nn)(::Array{Any,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[0.8]);
+WARNING: Method definition train_nn(String, Int64, Array{Int64, 1}) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:152 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:152.
+WARNING: Method definition #train_nn(Array{Any, 1}, typeof(GeneralNN.train_nn), String, Int64, Array{Int64, 1}) in module GeneralNN overwritten.
+WARNING: replacing docs for 'GeneralNN.train_nn :: Tuple{String,Int64,Array{Int64,1}}' in module 'GeneralNN'.
+ERROR: MethodError: no method matching run_training(::String, ::Int64, ::Array{Int64,1}; plots=String["Training", "Test", "Learning"], reg="L2", alpha=1.0, mb_size_in=50, lambda=0.01, opt="adam", opt_params=[0.9, 0.999], classify="softmax", dropout=true, droplim=[0.8], norm_mode="none", do_batch_norm=true, units="relu", learn_decay=[0.8, 2.0])
+Closest candidates are:
+  run_training(::String, ::Int64, ::Array{Int64,1}; plots, reg, alpha, mb_size, lambda, opt, opt_params, dropout, droplim, classify, norm_mode, do_batch_norm, units, learn_decay) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:284 got unsupported keyword argument "mb_size_in"
+Stacktrace:
+ [1] (::GeneralNN.#kw##run_training)(::Array{Any,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+ [2] #train_nn#147(::Float64, ::Int64, ::Float64, ::String, ::String, ::String, ::Array{Float64,1}, ::String, ::Bool, ::String, ::Bool, ::Array{Float64,1}, ::Array{String,1}, ::Array{Float64,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:268
+ [3] (::GeneralNN.#kw##train_nn)(::Array{Any,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[0.8]);
+WARNING: Method definition run_training(String, Int64, Array{Int64, 1}) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:284 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:284.
+WARNING: Method definition #run_training(Array{Any, 1}, typeof(GeneralNN.run_training), String, Int64, Array{Int64, 1}) in module GeneralNN overwritten.
+
+
+ **** at 15 stepping down learning rate to 0.8
+Training time: 14.689632941 seconds
+Fraction correct labels predicted training: 0.9839
+Final cost training: 0.14049402374196715
+Fraction correct labels predicted test: 0.9428
+Final cost test: 0.6089921062232215
+Test data accuracy in final 10 iterations:
+0.948 : 0.949 : 0.937 : 0.945 : 0.939 : 0.942 : 0.942 : 0.937 : 0.949 : 0.943 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.6,2.0],dropout=true, droplim=[0.8]);
+
+
+ **** at 15 stepping down learning rate to 0.6
+Training time: 11.933506335 seconds
+Fraction correct labels predicted training: 0.9822
+Final cost training: 0.13994686089128416
+Fraction correct labels predicted test: 0.9416
+Final cost test: 0.6502962130152965
+Test data accuracy in final 10 iterations:
+0.947 : 0.941 : 0.942 : 0.947 : 0.949 : 0.948 : 0.946 : 0.949 : 0.948 : 0.942 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0],dropout=true, droplim=[0.8]);
+
+
+ **** at 15 stepping down learning rate to 0.5
+Training time: 11.873957115 seconds
+Fraction correct labels predicted training: 0.9869
+Final cost training: 0.10661651839943345
+Fraction correct labels predicted test: 0.9466
+Final cost test: 0.5764472574320199
+Test data accuracy in final 10 iterations:
+0.950 : 0.948 : 0.946 : 0.954 : 0.948 : 0.950 : 0.948 : 0.948 : 0.946 : 0.947 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0],dropout=true, droplim=[0.9]);
+
+
+ **** at 15 stepping down learning rate to 0.5
+Training time: 12.345999754 seconds
+Fraction correct labels predicted training: 0.9946
+Final cost training: 0.056836923050629526
+Fraction correct labels predicted test: 0.95
+Final cost test: 0.487769733085464
+Test data accuracy in final 10 iterations:
+0.950 : 0.947 : 0.949 : 0.952 : 0.947 : 0.951 : 0.949 : 0.951 : 0.952 : 0.950 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0],dropout=true, droplim=[1.0,0.9]);
+
+
+ **** at 15 stepping down learning rate to 0.5
+Training time: 11.991682323 seconds
+Fraction correct labels predicted training: 0.9974
+Final cost training: 0.030716049183195905
+Fraction correct labels predicted test: 0.952
+Final cost test: 0.5286710794213014
+Test data accuracy in final 10 iterations:
+0.952 : 0.956 : 0.952 : 0.952 : 0.948 : 0.950 : 0.952 : 0.955 : 0.953 : 0.952 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0],dropout=true, droplim=[1.0,0.5]);
+
+
+ **** at 15 stepping down learning rate to 0.5
+Training time: 11.709562652 seconds
+Fraction correct labels predicted training: 0.9867
+Final cost training: 12.813636696558497
+Fraction correct labels predicted test: 0.9442
+Final cost test: 32.35082186465961
+Test data accuracy in final 10 iterations:
+0.940 : 0.944 : 0.947 : 0.945 : 0.944 : 0.943 : 0.948 : 0.946 : 0.938 : 0.944 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0],dropout=true, droplim=[1.0]);
+
+
+ **** at 15 stepping down learning rate to 0.5
+Training time: 11.882585602 seconds
+Fraction correct labels predicted training: 1.0
+Final cost training: 0.012106374611103013
+Fraction correct labels predicted test: 0.9592
+Final cost test: 0.3292564458398717
+Test data accuracy in final 10 iterations:
+0.959 : 0.959 : 0.959 : 0.959 : 0.959 : 0.959 : 0.959 : 0.958 : 0.959 : 0.959 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
+
+
+ **** at 15 stepping down learning rate to 0.8
+Training time: 11.765618916 seconds
+Fraction correct labels predicted training: 1.0
+Final cost training: 0.009920478964668324
+Fraction correct labels predicted test: 0.9588
+Final cost test: 0.3258241571523848
+Test data accuracy in final 10 iterations:
+0.960 : 0.960 : 0.960 : 0.960 : 0.959 : 0.959 : 0.959 : 0.959 : 0.959 : 0.959 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0,0.8]);
+
+
+ **** at 15 stepping down learning rate to 0.8
+Training time: 11.97397912 seconds
+Fraction correct labels predicted training: 0.9881
+Final cost training: 0.14428595998769925
+Fraction correct labels predicted test: 0.9474
+Final cost test: 0.9923509535724757
+Test data accuracy in final 10 iterations:
+0.947 : 0.947 : 0.947 : 0.950 : 0.942 : 0.945 : 0.946 : 0.940 : 0.953 : 0.947 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=45,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
+ERROR: DimensionMismatch("arrays could not be broadcast to a common size")
+Stacktrace:
+ [1] _bcs1(::Base.OneTo{Int64}, ::Base.OneTo{Int64}) at ./broadcast.jl:70
+ [2] _bcs at ./broadcast.jl:63 [inlined]
+ [3] _bcs at ./broadcast.jl:64 [inlined]
+ [4] broadcast_shape at ./broadcast.jl:57 [inlined] (repeats 2 times)
+ [5] broadcast_indices at ./broadcast.jl:53 [inlined]
+ [6] broadcast_c at ./broadcast.jl:313 [inlined]
+ [7] broadcast at ./broadcast.jl:455 [inlined]
+ [8] dropout!(::GeneralNN.Training_view, ::GeneralNN.Hyper_parameters, ::Int64) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/layer_functions.jl:81
+ [9] #feedfwd!#112(::Bool, ::Function, ::GeneralNN.Training_view, ::GeneralNN.NN_parameters, ::GeneralNN.Batch_norm_params, ::GeneralNN.Hyper_parameters) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:483
+ [10] #run_training#156(::Array{String,1}, ::String, ::Float64, ::Int64, ::Float64, ::String, ::Array{Float64,1}, ::Bool, ::Array{Float64,1}, ::String, ::String, ::Bool, ::String, ::Array{Float64,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:370
+ [11] (::GeneralNN.#kw##run_training)(::Array{Any,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+ [12] #train_nn#147(::Float64, ::Int64, ::Float64, ::String, ::String, ::String, ::Array{Float64,1}, ::String, ::Bool, ::String, ::Bool, ::Array{Float64,1}, ::Array{String,1}, ::Array{Float64,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:268
+ [13] (::GeneralNN.#kw##train_nn)(::Array{Any,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+
+julia> 10000/45
+222.22222222222223
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=45,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
+WARNING: Method definition dropout!(Any, Any, Any) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/layer_functions.jl:79 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/layer_functions.jl:86.
+ERROR: DimensionMismatch("arrays could not be broadcast to a common size")
+Stacktrace:
+ [1] _bcs1(::Base.OneTo{Int64}, ::Base.OneTo{Int64}) at ./broadcast.jl:70
+ [2] _bcs at ./broadcast.jl:63 [inlined]
+ [3] broadcast_shape at ./broadcast.jl:57 [inlined] (repeats 2 times)
+ [4] broadcast_indices at ./broadcast.jl:53 [inlined]
+ [5] broadcast_c at ./broadcast.jl:313 [inlined]
+ [6] broadcast at ./broadcast.jl:455 [inlined]
+ [7] dropout!(::GeneralNN.Training_view, ::GeneralNN.Hyper_parameters, ::Int64) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/layer_functions.jl:88
+ [8] #feedfwd!#112(::Bool, ::Function, ::GeneralNN.Training_view, ::GeneralNN.NN_parameters, ::GeneralNN.Batch_norm_params, ::GeneralNN.Hyper_parameters) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:483
+ [9] #run_training#156(::Array{String,1}, ::String, ::Float64, ::Int64, ::Float64, ::String, ::Array{Float64,1}, ::Bool, ::Array{Float64,1}, ::String, ::String, ::Bool, ::String, ::Array{Float64,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:370
+ [10] (::GeneralNN.#kw##run_training)(::Array{Any,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+ [11] #train_nn#147(::Float64, ::Int64, ::Float64, ::String, ::String, ::String, ::Array{Float64,1}, ::String, ::Bool, ::String, ::Bool, ::Array{Float64,1}, ::Array{String,1}, ::Array{Float64,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:268
+ [12] (::GeneralNN.#kw##train_nn)(::Array{Any,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=45,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
+WARNING: Method definition dropout!(Any, Any, Any) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/layer_functions.jl:86 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/layer_functions.jl:86.
+ERROR: MethodError: no method matching getindex(::Float64, ::Colon, ::UnitRange{Int64})
+Stacktrace:
+ [1] dropout!(::GeneralNN.Training_view, ::GeneralNN.Hyper_parameters, ::Int64) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/layer_functions.jl:89
+ [2] #feedfwd!#112(::Bool, ::Function, ::GeneralNN.Training_view, ::GeneralNN.NN_parameters, ::GeneralNN.Batch_norm_params, ::GeneralNN.Hyper_parameters) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:483
+ [3] #run_training#156(::Array{String,1}, ::String, ::Float64, ::Int64, ::Float64, ::String, ::Array{Float64,1}, ::Bool, ::Array{Float64,1}, ::String, ::String, ::Bool, ::String, ::Array{Float64,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:370
+ [4] (::GeneralNN.#kw##run_training)(::Array{Any,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+ [5] #train_nn#147(::Float64, ::Int64, ::Float64, ::String, ::String, ::String, ::Array{Float64,1}, ::String, ::Bool, ::String, ::Bool, ::Array{Float64,1}, ::Array{String,1}, ::Array{Float64,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:268
+ [6] (::GeneralNN.#kw##train_nn)(::Array{Any,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=45,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
+WARNING: Method definition dropout!(Any, Any, Any) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/layer_functions.jl:86 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/layer_functions.jl:86.
+ERROR: DimensionMismatch("tried to assign 100 elements to 450 destinations")
+Stacktrace:
+ [1] throw_setindex_mismatch(::Array{Float64,2}, ::Tuple{Int64}) at ./indices.jl:92
+ [2] setindex_shape_check(::Array{Float64,2}, ::Int64) at ./indices.jl:140
+ [3] setindex! at ./array.jl:622 [inlined]
+ [4] backprop!(::GeneralNN.NN_parameters, ::GeneralNN.Batch_norm_params, ::GeneralNN.Training_view, ::GeneralNN.Hyper_parameters, ::Int64) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:506
+ [5] #run_training#156(::Array{String,1}, ::String, ::Float64, ::Int64, ::Float64, ::String, ::Array{Float64,1}, ::Bool, ::Array{Float64,1}, ::String, ::String, ::Bool, ::String, ::Array{Float64,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:372
+ [6] (::GeneralNN.#kw##run_training)(::Array{Any,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+ [7] #train_nn#147(::Float64, ::Int64, ::Float64, ::String, ::String, ::String, ::Array{Float64,1}, ::String, ::Bool, ::String, ::Bool, ::Array{Float64,1}, ::Array{String,1}, ::Array{Float64,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:268
+ [8] (::GeneralNN.#kw##train_nn)(::Array{Any,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=45,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
+WARNING: Method definition backprop!(Any, Any, Any, Any, Any) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:506 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:506.
+WARNING: replacing docs for 'GeneralNN.backprop! :: NTuple{5,Any}' in module 'GeneralNN'.
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 45), size targets: (10, 45)
+size a: (10, 10), size targets: (10, 10)
+ERROR: DimensionMismatch("tried to assign 100 elements to 450 destinations")
+Stacktrace:
+ [1] throw_setindex_mismatch(::Array{Float64,2}, ::Tuple{Int64}) at ./indices.jl:92
+ [2] setindex_shape_check(::Array{Float64,2}, ::Int64) at ./indices.jl:140
+ [3] setindex! at ./array.jl:622 [inlined]
+ [4] backprop!(::GeneralNN.NN_parameters, ::GeneralNN.Batch_norm_params, ::GeneralNN.Training_view, ::GeneralNN.Hyper_parameters, ::Int64) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:507
+ [5] #run_training#156(::Array{String,1}, ::String, ::Float64, ::Int64, ::Float64, ::String, ::Array{Float64,1}, ::Bool, ::Array{Float64,1}, ::String, ::String, ::Bool, ::String, ::Array{Float64,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:372
+ [6] (::GeneralNN.#kw##run_training)(::Array{Any,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+ [7] #train_nn#147(::Float64, ::Int64, ::Float64, ::String, ::String, ::String, ::Array{Float64,1}, ::String, ::Bool, ::String, ::Bool, ::Array{Float64,1}, ::Array{String,1}, ::Array{Float64,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:268
+ [8] (::GeneralNN.#kw##train_nn)(::Array{Any,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=45,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
+WARNING: Method definition backprop!(Any, Any, Any, Any, Any) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:506 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:508.
+WARNING: replacing docs for 'GeneralNN.backprop! :: NTuple{5,Any}' in module 'GeneralNN'.
+ERROR: DimensionMismatch("A has dimensions (10,45) but B has dimensions (10,50)")
+Stacktrace:
+ [1] gemm_wrapper!(::Array{Float64,2}, ::Char, ::Char, ::Array{Float64,2}, ::Array{Float64,2}) at ./linalg/matmul.jl:345
+ [2] mul_fast(::Array{Float64,2}, ::Array{Float64,2}) at ./fastmath.jl:227
+ [3] backprop!(::GeneralNN.NN_parameters, ::GeneralNN.Batch_norm_params, ::GeneralNN.Training_view, ::GeneralNN.Hyper_parameters, ::Int64) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:509
+ [4] #run_training#156(::Array{String,1}, ::String, ::Float64, ::Int64, ::Float64, ::String, ::Array{Float64,1}, ::Bool, ::Array{Float64,1}, ::String, ::String, ::Bool, ::String, ::Array{Float64,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:372
+ [5] (::GeneralNN.#kw##run_training)(::Array{Any,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+ [6] #train_nn#147(::Float64, ::Int64, ::Float64, ::String, ::String, ::String, ::Array{Float64,1}, ::String, ::Bool, ::String, ::Bool, ::Array{Float64,1}, ::Array{String,1}, ::Array{Float64,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:268
+ [7] (::GeneralNN.#kw##train_nn)(::Array{Any,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=45,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
+WARNING: Method definition backprop!(Any, Any, Any, Any, Any) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:508 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:508.
+WARNING: replacing docs for 'GeneralNN.backprop! :: NTuple{5,Any}' in module 'GeneralNN'.
+ERROR: DimensionMismatch("tried to assign 500 elements to 2250 destinations")
+Stacktrace:
+ [1] throw_setindex_mismatch(::Array{Float64,2}, ::Tuple{Int64}) at ./indices.jl:92
+ [2] setindex_shape_check(::Array{Float64,2}, ::Int64) at ./indices.jl:140
+ [3] setindex! at ./array.jl:622 [inlined]
+ [4] relu_gradient!(::SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true}, ::Array{Float64,2}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/layer_functions.jl:164
+ [5] backprop!(::GeneralNN.NN_parameters, ::GeneralNN.Batch_norm_params, ::GeneralNN.Training_view, ::GeneralNN.Hyper_parameters, ::Int64) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:514
+ [6] #run_training#156(::Array{String,1}, ::String, ::Float64, ::Int64, ::Float64, ::String, ::Array{Float64,1}, ::Bool, ::Array{Float64,1}, ::String, ::String, ::Bool, ::String, ::Array{Float64,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:372
+ [7] (::GeneralNN.#kw##run_training)(::Array{Any,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+ [8] #train_nn#147(::Float64, ::Int64, ::Float64, ::String, ::String, ::String, ::Array{Float64,1}, ::String, ::Bool, ::String, ::Bool, ::Array{Float64,1}, ::Array{String,1}, ::Array{Float64,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:268
+ [9] (::GeneralNN.#kw##train_nn)(::Array{Any,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+
+help?> true
+WARNING: failure to evaluate changes in GeneralNN
+Core.@doc "Struct Training_view holds views to all model data and all layer outputs-->\npre-allocate to reduce memory allocations and improve speed\n" mutable struct Training_view # /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/nn_data_structs.jl, line 137:
+        a::Array{SubArray{Float64, 2, Array{Float64, 2}, Tuple{Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}}, true}, 1} # /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/nn_data_structs.jl, line 138:
+        targets::SubArray{Float64, 2, Array{Float64, 2}, Tuple{Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}}, true} # /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/nn_data_structs.jl, line 139:
+        z::Array{SubArray{Float64, 2, Array{Float64, 2}, Tuple{Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}}, true}, 1} # /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/nn_data_structs.jl, line 140:
+        z_norm::Array{SubArray{Float64, 2, Array{Float64, 2}, Tuple{Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}}, true}, 1} # /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/nn_data_structs.jl, line 142:
+        delta_z_norm::Array{Array{Float64, 2}, 1} # /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/nn_data_structs.jl, line 143:
+        delta_z::Array{Array{Float64, 2}, 1} # /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/nn_data_structs.jl, line 144:
+        grad::Array{Array{Float64, 2}, 1} # /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/nn_data_structs.jl, line 145:
+        epsilon::Array{Array{Float64, 2}, 1} # /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/nn_data_structs.jl, line 146:
+        drop_ran_w::Array{Array{Float64, 2}, 1} # /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/nn_data_structs.jl, line 147:
+        drop_filt_w::Array{Array{Float64, 2}, 1} # /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/nn_data_structs.jl, line 148:
+        v_delta_z_norm::Array{SubArray{Float64, 2, Array{Float64, 2}, Tuple{Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}}, true}, 1} # /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/nn_data_structs.jl, line 149:
+        v_delta_z::Array{SubArray{Float64, 2, Array{Float64, 2}, Tuple{Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}}, true}, 1} # /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/nn_data_structs.jl, line 150:
+        v_grad::Array{SubArray{Float64, 2, Array{Float64, 2}, Tuple{Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}}, true}, 1} # /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/nn_data_structs.jl, line 151:
+        v_epsilon::Array{SubArray{Float64, 2, Array{Float64, 2}, Tuple{Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}}, true}, 1} # /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/nn_data_structs.jl, line 152:
+        v_drop_ran_w::Array{SubArray{Float64, 2, Array{Float64, 2}, Tuple{Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}}, true}, 1} # /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/nn_data_structs.jl, line 153:
+        v_drop_filt_w::Array{SubArray{Float64, 2, Array{Float64, 2}, Tuple{Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}}, true}, 1} # /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/nn_data_structs.jl, line 155:
+        Training_view() = begin  # /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/nn_data_structs.jl, line 155:
+                new([view(zeros(2, 2), :, 1:2) for i = 1:2], view(zeros(2, 2), :, 1:2), [view(zeros(2, 2), :, 1:2) for i = 1:2], [view(zeros(2, 2), :, 1:2) for i = 1:2], Array{Array{Float64, 2}, 1}(0), Array{Array{Float64, 2}, 1}(0), Array{Array{Float64, 2}, 1}(0), Array{Array{Float64, 2}, 1}(0), Array{Array{Float64, 2}, 1}(0), Array{Array{Bool, 2}, 1}(0), [view(zeros(2, 2), :, 1:2) for i = 1:2], [view(zeros(2, 2), :, 1:2) for i = 1:2], [view(zeros(2, 2), :, 1:2) for i = 1:2], [view(zeros(2, 2), :, 1:2) for i = 1:2], [view(zeros(2, 2), :, 1:2) for i = 1:2], [view(zeros(2, 2), :, 1:2) for i = 1:2])
+            end
+    end
+  Bool <: Integer
+
+  Boolean type.
+
+help?> trues
+search: trues truncate Distributed InterruptException promote_rule
+
+  trues(dims)
+
+  Create a BitArray with all values set to true.
+
+  julia> trues(2,3)
+  2×3 BitArray{2}:
+   true  true  true
+   true  true  true
+
+  trues(A)
+
+  Create a BitArray with all values set to true of the same shape as A.
+
+  julia> A = [1 2; 3 4]
+  2×2 Array{Int64,2}:
+   1  2
+   3  4
+  
+  julia> trues(A)
+  2×2 BitArray{2}:
+   true  true
+   true  true
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=45,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
+WARNING: failure to evaluate changes in GeneralNN
+Core.@doc "Struct Training_view holds views to all model data and all layer outputs-->\npre-allocate to reduce memory allocations and improve speed\n" mutable struct Training_view # /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/nn_data_structs.jl, line 136:
+        a::Array{SubArray{Float64, 2, Array{Float64, 2}, Tuple{Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}}, true}, 1} # /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/nn_data_structs.jl, line 137:
+        targets::SubArray{Float64, 2, Array{Float64, 2}, Tuple{Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}}, true} # /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/nn_data_structs.jl, line 138:
+        z::Array{SubArray{Float64, 2, Array{Float64, 2}, Tuple{Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}}, true}, 1} # /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/nn_data_structs.jl, line 139:
+        z_norm::Array{SubArray{Float64, 2, Array{Float64, 2}, Tuple{Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}}, true}, 1} # /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/nn_data_structs.jl, line 148:
+        delta_z_norm::Array{SubArray{Float64, 2, Array{Float64, 2}, Tuple{Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}}, true}, 1} # /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/nn_data_structs.jl, line 149:
+        delta_z::Array{SubArray{Float64, 2, Array{Float64, 2}, Tuple{Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}}, true}, 1} # /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/nn_data_structs.jl, line 150:
+        grad::Array{SubArray{Float64, 2, Array{Float64, 2}, Tuple{Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}}, true}, 1} # /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/nn_data_structs.jl, line 151:
+        epsilon::Array{SubArray{Float64, 2, Array{Float64, 2}, Tuple{Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}}, true}, 1} # /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/nn_data_structs.jl, line 152:
+        drop_ran_w::Array{SubArray{Float64, 2, Array{Float64, 2}, Tuple{Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}}, true}, 1} # /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/nn_data_structs.jl, line 153:
+        drop_filt_w::Array{SubArray{Float64, 2, Array{Float64, 2}, Tuple{Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}}, true}, 1} # /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/nn_data_structs.jl, line 155:
+        Training_view() = begin  # /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/nn_data_structs.jl, line 155:
+                new([view(zeros(2, 2), :, 1:2) for i = 1:2], view(zeros(2, 2), :, 1:2), [view(zeros(2, 2), :, 1:2) for i = 1:2], [view(zeros(2, 2), :, 1:2) for i = 1:2], [view(zeros(2, 2), :, 1:2) for i = 1:2], [view(zeros(2, 2), :, 1:2) for i = 1:2], [view(zeros(2, 2), :, 1:2) for i = 1:2], [view(zeros(2, 2), :, 1:2) for i = 1:2], [view(zeros(2, 2), :, 1:2) for i = 1:2], [view(trues(2, 2), :, 1:2) for i = 1:2])
+            end
+    end
+WARNING: Method definition setup_model!(Any, Any, Any, Any, Any, Any, Any) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/setup_functions.jl:103 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/setup_functions.jl:103.
+WARNING: Method definition update_training_views!(GeneralNN.Training_view, GeneralNN.Model_data, GeneralNN.NN_parameters, GeneralNN.Hyper_parameters, Base.UnitRange{Int64}) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:448 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:448.
+WARNING: replacing docs for 'GeneralNN.update_training_views! :: Tuple{GeneralNN.Training_view,GeneralNN.Model_data,GeneralNN.NN_parameters,GeneralNN.Hyper_parameters,UnitRange{Int64}}' in module 'GeneralNN'.
+WARNING: Method definition backprop!(Any, Any, Any, Any, Any) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:508 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:518.
+WARNING: replacing docs for 'GeneralNN.backprop! :: NTuple{5,Any}' in module 'GeneralNN'.
+WARNING: Method definition dropout!(Any, Any, Any) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/layer_functions.jl:86 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/layer_functions.jl:79.
+ERROR: UndefVarError: dropout not defined
+Stacktrace:
+ [1] setup_model!(::GeneralNN.Training_view, ::GeneralNN.Hyper_parameters, ::GeneralNN.NN_parameters, ::GeneralNN.Batch_norm_params, ::Bool, ::GeneralNN.Model_data, ::GeneralNN.Model_data) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/setup_functions.jl:177
+ [2] #run_training#156(::Array{String,1}, ::String, ::Float64, ::Int64, ::Float64, ::String, ::Array{Float64,1}, ::Bool, ::Array{Float64,1}, ::String, ::String, ::Bool, ::String, ::Array{Float64,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:334
+ [3] (::GeneralNN.#kw##run_training)(::Array{Any,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+ [4] #train_nn#147(::Float64, ::Int64, ::Float64, ::String, ::String, ::String, ::Array{Float64,1}, ::String, ::Bool, ::String, ::Bool, ::Array{Float64,1}, ::Array{String,1}, ::Array{Float64,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:268
+ [5] (::GeneralNN.#kw##train_nn)(::Array{Any,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=45,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
+WARNING: Method definition setup_model!(Any, Any, Any, Any, Any, Any, Any) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/setup_functions.jl:103 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/setup_functions.jl:103.
+ERROR: InexactError()
+Stacktrace:
+ [1] convert(::Type{Bool}, ::Float64) at ./bool.jl:7
+ [2] copy!(::IndexLinear, ::Array{Bool,2}, ::IndexLinear, ::Array{Float64,2}) at ./abstractarray.jl:656 (repeats 2 times)
+ [3] preallocate_feedfwd!(::GeneralNN.Model_data, ::GeneralNN.NN_parameters, ::Int64, ::Bool, ::Bool) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/setup_functions.jl:231
+ [4] setup_model!(::GeneralNN.Training_view, ::GeneralNN.Hyper_parameters, ::GeneralNN.NN_parameters, ::GeneralNN.Batch_norm_params, ::Bool, ::GeneralNN.Model_data, ::GeneralNN.Model_data) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/setup_functions.jl:177
+ [5] #run_training#156(::Array{String,1}, ::String, ::Float64, ::Int64, ::Float64, ::String, ::Array{Float64,1}, ::Bool, ::Array{Float64,1}, ::String, ::String, ::Bool, ::String, ::Array{Float64,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:334
+ [6] (::GeneralNN.#kw##run_training)(::Array{Any,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+ [7] #train_nn#147(::Float64, ::Int64, ::Float64, ::String, ::String, ::String, ::Array{Float64,1}, ::String, ::Bool, ::String, ::Bool, ::Array{Float64,1}, ::Array{String,1}, ::Array{Float64,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:268
+ [8] (::GeneralNN.#kw##train_nn)(::Array{Any,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+
+help?> similar
+search: similar
+
+  similar(array, [element_type=eltype(array)], [dims=size(array)])
+
+  Create an uninitialized mutable array with the given element type and size,
+  based upon the given source array. The second and third arguments are both
+  optional, defaulting to the given array's eltype and size. The dimensions
+  may be specified either as a single tuple argument or as a series of integer
+  arguments.
+
+  Custom AbstractArray subtypes may choose which specific array type is
+  best-suited to return for the given element type and dimensionality. If they
+  do not specialize this method, the default is an
+  Array{element_type}(dims...).
+
+  For example, similar(1:10, 1, 4) returns an uninitialized Array{Int,2} since
+  ranges are neither mutable nor support 2 dimensions:
+
+  julia> similar(1:10, 1, 4)
+  1×4 Array{Int64,2}:
+   4419743872  4374413872  4419743888  0
+
+  Conversely, similar(trues(10,10), 2) returns an uninitialized BitVector with
+  two elements since BitArrays are both mutable and can support 1-dimensional
+  arrays:
+
+  julia> similar(trues(10,10), 2)
+  2-element BitArray{1}:
+   false
+   false
+
+  Since BitArrays can only store elements of type Bool, however, if you
+  request a different element type it will create a regular Array instead:
+
+  julia> similar(falses(10), Float64, 2, 4)
+  2×4 Array{Float64,2}:
+   2.18425e-314  2.18425e-314  2.18425e-314  2.18425e-314
+   2.18425e-314  2.18425e-314  2.18425e-314  2.18425e-314
+
+  similar(storagetype, indices)
+
+  Create an uninitialized mutable array analogous to that specified by
+  storagetype, but with indices specified by the last argument. storagetype
+  might be a type or a function.
+
+  Examples:
+
+  similar(Array{Int}, indices(A))
+
+  creates an array that "acts like" an Array{Int} (and might indeed be backed
+  by one), but which is indexed identically to A. If A has conventional
+  indexing, this will be identical to Array{Int}(size(A)), but if A has
+  unconventional indexing then the indices of the result will match A.
+
+  similar(BitArray, (indices(A, 2),))
+
+  would create a 1-dimensional logical array whose indices match those of the
+  columns of A.
+
+  similar(dims->zeros(Int, dims), indices(A))
+
+  would create an array of Int, initialized to zero, matching the indices of
+  A.
+
+  similar(sc)
+
+  Returns a new SortedDict, SortedMultiDict, or SortedSet of the same type and
+  with the same ordering as sc but with no entries (i.e., empty). Time: O(1)
+
+  similar(sc)
+
+  Returns a new SortedDict, SortedMultiDict, or SortedSet of the same type and
+  with the same ordering as sc but with no entries (i.e., empty). Time: O(1)
+
+  similar(sc)
+
+  Returns a new SortedDict, SortedMultiDict, or SortedSet of the same type and
+  with the same ordering as sc but with no entries (i.e., empty). Time: O(1)
+
+  similar(static_array)
+  similar(static_array, T)
+  similar(array, ::Size)
+  similar(array, T, ::Size)
+
+  Constructs and returns a mutable but statically-sized array (i.e. a
+  StaticArray). If the input array is not a StaticArray, then the Size is
+  required to determine the output size (or else a dynamically sized array
+  will be returned).
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=45,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
+WARNING: Method definition preallocate_feedfwd!(Any, Any, Any, Any, Any) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/setup_functions.jl:211 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/setup_functions.jl:211.
+ERROR: type Training_view has no field v_delta_z_norm
+Stacktrace:
+ [1] update_training_views!(::GeneralNN.Training_view, ::GeneralNN.Model_data, ::GeneralNN.NN_parameters, ::GeneralNN.Hyper_parameters, ::UnitRange{Int64}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:460
+ [2] #run_training#156(::Array{String,1}, ::String, ::Float64, ::Int64, ::Float64, ::String, ::Array{Float64,1}, ::Bool, ::Array{Float64,1}, ::String, ::String, ::Bool, ::String, ::Array{Float64,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:368
+ [3] (::GeneralNN.#kw##run_training)(::Array{Any,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+ [4] #train_nn#147(::Float64, ::Int64, ::Float64, ::String, ::String, ::String, ::Array{Float64,1}, ::String, ::Bool, ::String, ::Bool, ::Array{Float64,1}, ::Array{String,1}, ::Array{Float64,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:268
+ [5] (::GeneralNN.#kw##train_nn)(::Array{Any,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=45,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
+WARNING: Method definition update_training_views!(GeneralNN.Training_view, GeneralNN.Model_data, GeneralNN.NN_parameters, GeneralNN.Hyper_parameters, Base.UnitRange{Int64}) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:448 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:448.
+WARNING: replacing docs for 'GeneralNN.update_training_views! :: Tuple{GeneralNN.Training_view,GeneralNN.Model_data,GeneralNN.NN_parameters,GeneralNN.Hyper_parameters,UnitRange{Int64}}' in module 'GeneralNN'.
+
+
+ **** at 15 stepping down learning rate to 0.8
+Training time: 11.725037925 seconds
+Fraction correct labels predicted training: 0.9362
+Final cost training: 0.4506090214109492
+Fraction correct labels predicted test: 0.9202
+Final cost test: 0.5603067088571311
+Test data accuracy in final 10 iterations:
+0.924 : 0.923 : 0.924 : 0.922 : 0.922 : 0.922 : 0.922 : 0.920 : 0.921 : 0.920 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
+
+
+ **** at 15 stepping down learning rate to 0.8
+Training time: 19.309030606 seconds
+Fraction correct labels predicted training: 1.0
+Final cost training: 0.009920478964668324
+Fraction correct labels predicted test: 0.9588
+Final cost test: 0.3258241571523848
+Test data accuracy in final 10 iterations:
+0.960 : 0.960 : 0.960 : 0.960 : 0.959 : 0.959 : 0.959 : 0.959 : 0.959 : 0.959 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
+
+
+ **** at 15 stepping down learning rate to 0.8
+Training time: 19.280703567 seconds
+Fraction correct labels predicted training: 1.0
+Final cost training: 0.009920478964668324
+Fraction correct labels predicted test: 0.9588
+Final cost test: 0.3258241571523848
+Test data accuracy in final 10 iterations:
+0.960 : 0.960 : 0.960 : 0.960 : 0.959 : 0.959 : 0.959 : 0.959 : 0.959 : 0.959 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=65,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
+
+
+ **** at 15 stepping down learning rate to 0.8
+Training time: 15.770074284 seconds
+Fraction correct labels predicted training: 0.9956
+Final cost training: 0.0363127052557783
+Fraction correct labels predicted test: 0.9562
+Final cost test: 0.34947264512519977
+Test data accuracy in final 10 iterations:
+0.954 : 0.954 : 0.954 : 0.954 : 0.954 : 0.954 : 0.956 : 0.956 : 0.956 : 0.956 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=40,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
+
+
+ **** at 15 stepping down learning rate to 0.8
+Training time: 20.221157464 seconds
+Fraction correct labels predicted training: 0.9992
+Final cost training: 0.021268559222709312
+Fraction correct labels predicted test: 0.9608
+Final cost test: 0.3189272099555847
+Test data accuracy in final 10 iterations:
+0.929 : 0.944 : 0.952 : 0.956 : 0.956 : 0.961 : 0.961 : 0.960 : 0.960 : 0.961 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=49,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
+
+
+ **** at 15 stepping down learning rate to 0.8
+Training time: 8.381179231 seconds
+Fraction correct labels predicted training: 0.874
+Final cost training: 0.8075145837090091
+Fraction correct labels predicted test: 0.8694
+Final cost test: 0.8573875482856066
+Test data accuracy in final 10 iterations:
+0.865 : 0.866 : 0.865 : 0.867 : 0.864 : 0.806 : 0.833 : 0.852 : 0.860 : 0.869 : 
+Press enter to close plot window...
+
+
+julia> 10000/49
+204.08163265306123
+
+julia> ans-204
+0.08163265306123435
+
+julia> ans*49
+4.000000000000483
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=49,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
+
+
+ **** at 15 stepping down learning rate to 0.8
+Training time: 8.235121171 seconds
+Fraction correct labels predicted training: 0.874
+Final cost training: 0.8075145837090091
+Fraction correct labels predicted test: 0.8694
+Final cost test: 0.8573875482856066
+Test data accuracy in final 10 iterations:
+0.865 : 0.866 : 0.865 : 0.867 : 0.864 : 0.806 : 0.833 : 0.852 : 0.860 : 0.869 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=49,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
+WARNING: Method definition run_training(String, Int64, Array{Int64, 1}) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:284 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:284.
+WARNING: Method definition #run_training(Array{Any, 1}, typeof(GeneralNN.run_training), String, Int64, Array{Int64, 1}) in module GeneralNN overwritten.
+205
+49
+
+
+ **** at 15 stepping down learning rate to 0.8
+Training time: 9.319961357 seconds
+Fraction correct labels predicted training: 0.874
+Final cost training: 0.8075145837090091
+Fraction correct labels predicted test: 0.8694
+Final cost test: 0.8573875482856066
+Test data accuracy in final 10 iterations:
+0.865 : 0.866 : 0.865 : 0.867 : 0.864 : 0.806 : 0.833 : 0.852 : 0.860 : 0.869 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
+200
+50
+
+
+ **** at 15 stepping down learning rate to 0.8
+Training time: 19.592788683 seconds
+Fraction correct labels predicted training: 1.0
+Final cost training: 0.009920478964668324
+Fraction correct labels predicted test: 0.9588
+Final cost test: 0.3258241571523848
+Test data accuracy in final 10 iterations:
+0.960 : 0.960 : 0.960 : 0.960 : 0.959 : 0.959 : 0.959 : 0.959 : 0.959 : 0.959 : 
+Press enter to close plot window...
+
+
+julia> 10000 - 204 * 49
+4
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=49,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
+WARNING: Method definition run_training(String, Int64, Array{Int64, 1}) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:284 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:284.
+WARNING: Method definition #run_training(Array{Any, 1}, typeof(GeneralNN.run_training), String, Int64, Array{Int64, 1}) in module GeneralNN overwritten.
+ERROR: type Hyper_parameters has no field mbsize
+Stacktrace:
+ [1] #run_training#244(::Array{String,1}, ::String, ::Float64, ::Int64, ::Float64, ::String, ::Array{Float64,1}, ::Bool, ::Array{Float64,1}, ::String, ::String, ::Bool, ::String, ::Array{Float64,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:366
+ [2] (::GeneralNN.#kw##run_training)(::Array{Any,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+ [3] #train_nn#147(::Float64, ::Int64, ::Float64, ::String, ::String, ::String, ::Array{Float64,1}, ::String, ::Bool, ::String, ::Bool, ::Array{Float64,1}, ::Array{String,1}, ::Array{Float64,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:268
+ [4] (::GeneralNN.#kw##train_nn)(::Array{Any,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=49,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
+WARNING: Method definition run_training(String, Int64, Array{Int64, 1}) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:284 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:284.
+WARNING: Method definition #run_training(Array{Any, 1}, typeof(GeneralNN.run_training), String, Int64, Array{Int64, 1}) in module GeneralNN overwritten.
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 4
+ERROR: that's all folks...
+Stacktrace:
+ [1] #run_training#251(::Array{String,1}, ::String, ::Float64, ::Int64, ::Float64, ::String, ::Array{Float64,1}, ::Bool, ::Array{Float64,1}, ::String, ::String, ::Bool, ::String, ::Array{Float64,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:357
+ [2] (::GeneralNN.#kw##run_training)(::Array{Any,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+ [3] #train_nn#147(::Float64, ::Int64, ::Float64, ::String, ::String, ::String, ::Array{Float64,1}, ::String, ::Bool, ::String, ::Bool, ::Array{Float64,1}, ::Array{String,1}, ::Array{Float64,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:268
+ [4] (::GeneralNN.#kw##train_nn)(::Array{Any,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=49,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
+WARNING: Method definition run_training(String, Int64, Array{Int64, 1}) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:284 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:284.
+WARNING: Method definition #run_training(Array{Any, 1}, typeof(GeneralNN.run_training), String, Int64, Array{Int64, 1}) in module GeneralNN overwritten.
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+minibatch size: 49
+ERROR: that's all folks...
+Stacktrace:
+ [1] #run_training#258(::Array{String,1}, ::String, ::Float64, ::Int64, ::Float64, ::String, ::Array{Float64,1}, ::Bool, ::Array{Float64,1}, ::String, ::String, ::Bool, ::String, ::Array{Float64,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:357
+ [2] (::GeneralNN.#kw##run_training)(::Array{Any,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+ [3] #train_nn#147(::Float64, ::Int64, ::Float64, ::String, ::String, ::String, ::Array{Float64,1}, ::String, ::Bool, ::String, ::Bool, ::Array{Float64,1}, ::Array{String,1}, ::Array{Float64,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:268
+ [4] (::GeneralNN.#kw##train_nn)(::Array{Any,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=49,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
+WARNING: Method definition run_training(String, Int64, Array{Int64, 1}) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:284 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:284.
+WARNING: Method definition #run_training(Array{Any, 1}, typeof(GeneralNN.run_training), String, Int64, Array{Int64, 1}) in module GeneralNN overwritten.
+
+
+ **** at 15 stepping down learning rate to 0.8
+Training time: 2.509479582 seconds
+Fraction correct labels predicted training: 0.9403
+Final cost training: 0.3472366170710425
+Fraction correct labels predicted test: 0.9234
+Final cost test: 0.43607269843207047
+Test data accuracy in final 10 iterations:
+0.923 : 0.923 : 0.923 : 0.923 : 0.923 : 0.923 : 0.923 : 0.923 : 0.923 : 0.923 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=55,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
+
+
+ **** at 15 stepping down learning rate to 0.8
+Training time: 17.552168115 seconds
+Fraction correct labels predicted training: 0.995
+Final cost training: 0.049768647934879846
+Fraction correct labels predicted test: 0.9584
+Final cost test: 0.3285660941111882
+Test data accuracy in final 10 iterations:
+0.958 : 0.958 : 0.959 : 0.959 : 0.959 : 0.959 : 0.958 : 0.958 : 0.958 : 0.958 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=49,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
+WARNING: Method definition run_training(String, Int64, Array{Int64, 1}) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:284 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:284.
+WARNING: Method definition #run_training(Array{Any, 1}, typeof(GeneralNN.run_training), String, Int64, Array{Int64, 1}) in module GeneralNN overwritten.
+
+
+ **** at 15 stepping down learning rate to 0.8
+Training time: 19.28891572 seconds
+Fraction correct labels predicted training: 0.9992
+Final cost training: 0.011523273835022099
+Fraction correct labels predicted test: 0.9582
+Final cost test: 0.31259250609077166
+Test data accuracy in final 10 iterations:
+0.960 : 0.961 : 0.962 : 0.962 : 0.962 : 0.961 : 0.962 : 0.961 : 0.959 : 0.958 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=0,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
+
+
+ **** at 15 stepping down learning rate to 0.8
+Training time: 1.801078145 seconds
+Fraction correct labels predicted training: 0.1406
+Final cost training: 161.60284135055264
+Fraction correct labels predicted test: 0.1384
+Final cost test: 161.3413254794801
+Test data accuracy in final 10 iterations:
+0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=0,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
+WARNING: Method definition run_training(String, Int64, Array{Int64, 1}) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:284 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:284.
+WARNING: Method definition #run_training(Array{Any, 1}, typeof(GeneralNN.run_training), String, Int64, Array{Int64, 1}) in module GeneralNN overwritten.
+1
+10000
+
+
+ **** at 15 stepping down learning rate to 0.8
+Training time: 1.806841277 seconds
+Fraction correct labels predicted training: 0.1406
+Final cost training: 161.60284135055264
+Fraction correct labels predicted test: 0.1384
+Final cost test: 161.3413254794801
+Test data accuracy in final 10 iterations:
+0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",130,[50,50],alpha=1.0,mb_size_in=0,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
+1
+10000
+
+
+ **** at 65 stepping down learning rate to 0.8
+Training time: 7.126471461 seconds
+Fraction correct labels predicted training: 0.1406
+Final cost training: 161.58318896013094
+Fraction correct labels predicted test: 0.1384
+Final cost test: 161.33720602925507
+Test data accuracy in final 10 iterations:
+0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",130,[50,50],alpha=1.0,mb_size_in=0,opt="adam",units="relu",do_batch_norm=false,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
+WARNING: Better results obtained with relu using input and/or batch normalization. Proceeding...
+1
+10000
+
+
+ **** at 65 stepping down learning rate to 0.8
+Training time: 7.128424237 seconds
+Fraction correct labels predicted training: 0.1406
+Final cost training: 161.58318896013094
+Fraction correct labels predicted test: 0.1384
+Final cost test: 161.33720602925507
+Test data accuracy in final 10 iterations:
+0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",130,[50,50],alpha=1.0,mb_size_in=0,opt="adam",units="relu",do_batch_norm=false,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0],batch_mode="minmax");
+ERROR: MethodError: no method matching train_nn(::String, ::Int64, ::Array{Int64,1}; alpha=1.0, mb_size_in=0, opt="adam", units="relu", do_batch_norm=false, plots=String["Training", "test", "learning"], learn_decay=[0.8, 2.0], dropout=true, droplim=[1.0], batch_mode="minmax")
+Closest candidates are:
+  train_nn(::String, ::Int64, ::Array{Int64,1}; alpha, mb_size_in, lambda, classify, norm_mode, opt, opt_params, units, do_batch_norm, reg, dropout, droplim, plots, learn_decay) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:152 got unsupported keyword argument "batch_mode"
+Stacktrace:
+ [1] (::GeneralNN.#kw##train_nn)(::Array{Any,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",130,[50,50],alpha=1.0,mb_size_in=0,opt="adam",units="relu",do_batch_norm=false,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0],norm_mode="minmax");
+1
+10000
+
+
+ **** at 65 stepping down learning rate to 0.8
+Training time: 7.187626274 seconds
+Fraction correct labels predicted training: 0.1406
+Final cost training: 3.3445003582287423
+Fraction correct labels predicted test: 0.1384
+Final cost test: 3.399062277705342
+Test data accuracy in final 10 iterations:
+0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",130,[50,50],alpha=1.0,mb_size_in=0,opt="adam",units="relu",do_batch_norm=false,plots=["Training", "test", "learning"],learn_decay=[1.0,1.0],dropout=true, droplim=[1.0],norm_mode="minmax");
+1
+10000
+Training time: 7.118283874 seconds
+Fraction correct labels predicted training: 0.1406
+Final cost training: 3.3444875691182587
+Fraction correct labels predicted test: 0.1384
+Final cost test: 3.3990488980514204
+Test data accuracy in final 10 iterations:
+0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",130,[50,50],alpha=0.2,mb_size_in=0,opt="adam",units="relu",do_batch_norm=false,plots=["Training", "test", "learning"],learn_decay=[1.0,1.0],dropout=true, droplim=[1.0],norm_mode="minmax");
+1
+10000
+Training time: 7.143748023 seconds
+Fraction correct labels predicted training: 0.1406
+Final cost training: 3.3445883636109364
+Fraction correct labels predicted test: 0.1384
+Final cost test: 3.3991543463195635
+Test data accuracy in final 10 iterations:
+0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 0.138 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=0.2,mb_size_in=50,opt="adam",units="relu",do_batch_norm=false,plots=["Training", "test", "learning"],learn_decay=[1.0,1.0],dropout=true, droplim=[1.0],norm_mode="minmax");
+200
+50
+Training time: 17.039457947 seconds
+Fraction correct labels predicted training: 0.9972
+Final cost training: 0.020451243528305556
+Fraction correct labels predicted test: 0.9474
+Final cost test: 0.5528898175264993
+Test data accuracy in final 10 iterations:
+0.947 : 0.954 : 0.948 : 0.940 : 0.947 : 0.945 : 0.950 : 0.947 : 0.952 : 0.947 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=0.2,mb_size_in=50,opt="adam",units="relu",do_batch_norm=false,plots=["Training", "test", "learning"],learn_decay=[1.0,1.0],dropout=true, droplim=[1.0],norm_mode="minmax");
+WARNING: Method definition run_training(String, Int64, Array{Int64, 1}) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:284 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:284.
+WARNING: Method definition #run_training(Array{Any, 1}, typeof(GeneralNN.run_training), String, Int64, Array{Int64, 1}) in module GeneralNN overwritten.
+1:50
+51:100
+101:150
+151:200
+201:250
+251:300
+301:350
+351:400
+401:450
+451:500
+501:550
+551:600
+601:650
+651:700
+701:750
+751:800
+801:850
+851:900
+901:950
+951:1000
+1001:1050
+1051:1100
+1101:1150
+1151:1200
+1201:1250
+1251:1300
+1301:1350
+1351:1400
+1401:1450
+1451:1500
+1501:1550
+1551:1600
+1601:1650
+1651:1700
+1701:1750
+1751:1800
+1801:1850
+1851:1900
+1901:1950
+1951:2000
+2001:2050
+2051:2100
+2101:2150
+2151:2200
+2201:2250
+2251:2300
+2301:2350
+2351:2400
+2401:2450
+2451:2500
+2501:2550
+2551:2600
+2601:2650
+2651:2700
+2701:2750
+2751:2800
+2801:2850
+2851:2900
+2901:2950
+2951:3000
+3001:3050
+3051:3100
+3101:3150
+3151:3200
+3201:3250
+3251:3300
+3301:3350
+3351:3400
+3401:3450
+3451:3500
+3501:3550
+3551:3600
+3601:3650
+3651:3700
+3701:3750
+3751:3800
+3801:3850
+3851:3900
+3901:3950
+3951:4000
+4001:4050
+4051:4100
+4101:4150
+4151:4200
+4201:4250
+4251:4300
+4301:4350
+4351:4400
+4401:4450
+4451:4500
+4501:4550
+4551:4600
+4601:4650
+4651:4700
+4701:4750
+4751:4800
+4801:4850
+4851:4900
+4901:4950
+4951:5000
+5001:5050
+5051:5100
+5101:5150
+5151:5200
+5201:5250
+5251:5300
+5301:5350
+5351:5400
+5401:5450
+5451:5500
+5501:5550
+5551:5600
+5601:5650
+5651:5700
+5701:5750
+5751:5800
+5801:5850
+5851:5900
+5901:5950
+5951:6000
+6001:6050
+6051:6100
+6101:6150
+6151:6200
+6201:6250
+6251:6300
+6301:6350
+6351:6400
+6401:6450
+6451:6500
+6501:6550
+6551:6600
+6601:6650
+6651:6700
+6701:6750
+6751:6800
+6801:6850
+6851:6900
+6901:6950
+6951:7000
+7001:7050
+7051:7100
+7101:7150
+7151:7200
+7201:7250
+7251:7300
+7301:7350
+7351:7400
+7401:7450
+7451:7500
+7501:7550
+7551:7600
+7601:7650
+7651:7700
+7701:7750
+7751:7800
+7801:7850
+7851:7900
+7901:7950
+7951:8000
+8001:8050
+8051:8100
+8101:8150
+8151:8200
+8201:8250
+8251:8300
+8301:8350
+8351:8400
+8401:8450
+8451:8500
+8501:8550
+8551:8600
+8601:8650
+8651:8700
+8701:8750
+8751:8800
+8801:8850
+8851:8900
+8901:8950
+8951:9000
+9001:9050
+9051:9100
+9101:9150
+9151:9200
+9201:9250
+9251:9300
+9301:9350
+9351:9400
+9401:9450
+9451:9500
+9501:9550
+9551:9600
+9601:9650
+9651:9700
+9701:9750
+9751:9800
+9801:9850
+9851:9900
+9901:9950
+9951:10000
+ERROR: that's all folks...
+Stacktrace:
+ [1] #run_training#286(::Array{String,1}, ::String, ::Float64, ::Int64, ::Float64, ::String, ::Array{Float64,1}, ::Bool, ::Array{Float64,1}, ::String, ::String, ::Bool, ::String, ::Array{Float64,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:357
+ [2] (::GeneralNN.#kw##run_training)(::Array{Any,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+ [3] #train_nn#147(::Float64, ::Int64, ::Float64, ::String, ::String, ::String, ::Array{Float64,1}, ::String, ::Bool, ::String, ::Bool, ::Array{Float64,1}, ::Array{String,1}, ::Array{Float64,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:268
+ [4] (::GeneralNN.#kw##train_nn)(::Array{Any,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=0.2,mb_size_in=0,opt="adam",units="relu",do_batch_norm=false,plots=["Training", "test", "learning"],learn_decay=[1.0,1.0],dropout=true, droplim=[1.0],norm_mode="minmax");
+1:0
+ERROR: that's all folks...
+Stacktrace:
+ [1] #run_training#286(::Array{String,1}, ::String, ::Float64, ::Int64, ::Float64, ::String, ::Array{Float64,1}, ::Bool, ::Array{Float64,1}, ::String, ::String, ::Bool, ::String, ::Array{Float64,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:357
+ [2] (::GeneralNN.#kw##run_training)(::Array{Any,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+ [3] #train_nn#147(::Float64, ::Int64, ::Float64, ::String, ::String, ::String, ::Array{Float64,1}, ::String, ::Bool, ::String, ::Bool, ::Array{Float64,1}, ::Array{String,1}, ::Array{Float64,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:268
+ [4] (::GeneralNN.#kw##train_nn)(::Array{Any,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=0.2,mb_size_in=0,opt="adam",units="relu",do_batch_norm=false,plots=["Training", "test", "learning"],learn_decay=[1.0,1.0],dropout=true, droplim=[1.0],norm_mode="minmax");
+WARNING: Method definition run_training(String, Int64, Array{Int64, 1}) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:284 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:284.
+WARNING: Method definition #run_training(Array{Any, 1}, typeof(GeneralNN.run_training), String, Int64, Array{Int64, 1}) in module GeneralNN overwritten.
+0
+0
+ERROR: that's all folks...
+Stacktrace:
+ [1] #run_training#293(::Array{String,1}, ::String, ::Float64, ::Int64, ::Float64, ::String, ::Array{Float64,1}, ::Bool, ::Array{Float64,1}, ::String, ::String, ::Bool, ::String, ::Array{Float64,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:357
+ [2] (::GeneralNN.#kw##run_training)(::Array{Any,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+ [3] #train_nn#147(::Float64, ::Int64, ::Float64, ::String, ::String, ::String, ::Array{Float64,1}, ::String, ::Bool, ::String, ::Bool, ::Array{Float64,1}, ::Array{String,1}, ::Array{Float64,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:268
+ [4] (::GeneralNN.#kw##train_nn)(::Array{Any,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=0.2,mb_size_in=0,opt="adam",units="relu",do_batch_norm=false,plots=["Training", "test", "learning"],learn_decay=[1.0,1.0],dropout=true, droplim=[1.0],norm_mode="minmax");
+WARNING: Method definition setup_model!(Any, Any, Any, Any, Any, Any, Any) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/setup_functions.jl:103 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/setup_functions.jl:103.
+WARNING: Method definition run_training(String, Int64, Array{Int64, 1}) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:284 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:284.
+WARNING: Method definition #run_training(Array{Any, 1}, typeof(GeneralNN.run_training), String, Int64, Array{Int64, 1}) in module GeneralNN overwritten.
+ERROR: InexactError()
+Stacktrace:
+ [1] trunc(::Type{Int64}, ::Float64) at ./float.jl:672
+ [2] setup_model!(::GeneralNN.Training_view, ::GeneralNN.Hyper_parameters, ::GeneralNN.NN_parameters, ::GeneralNN.Batch_norm_params, ::Bool, ::GeneralNN.Model_data, ::GeneralNN.Model_data) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/setup_functions.jl:110
+ [3] #run_training#300(::Array{String,1}, ::String, ::Float64, ::Int64, ::Float64, ::String, ::Array{Float64,1}, ::Bool, ::Array{Float64,1}, ::String, ::String, ::Bool, ::String, ::Array{Float64,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:334
+ [4] (::GeneralNN.#kw##run_training)(::Array{Any,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+ [5] #train_nn#147(::Float64, ::Int64, ::Float64, ::String, ::String, ::String, ::Array{Float64,1}, ::String, ::Bool, ::String, ::Bool, ::Array{Float64,1}, ::Array{String,1}, ::Array{Float64,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:268
+ [6] (::GeneralNN.#kw##train_nn)(::Array{Any,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=0.2,mb_size_in=0,opt="adam",units="relu",do_batch_norm=false,plots=["Training", "test", "learning"],learn_decay=[1.0,1.0],dropout=true, droplim=[1.0],norm_mode="minmax");
+WARNING: Method definition setup_model!(Any, Any, Any, Any, Any, Any, Any) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/setup_functions.jl:103 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/setup_functions.jl:103.
+ERROR: that's all folks...
+Stacktrace:
+ [1] #run_training#300(::Array{String,1}, ::String, ::Float64, ::Int64, ::Float64, ::String, ::Array{Float64,1}, ::Bool, ::Array{Float64,1}, ::String, ::String, ::Bool, ::String, ::Array{Float64,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:357
+ [2] (::GeneralNN.#kw##run_training)(::Array{Any,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+ [3] #train_nn#147(::Float64, ::Int64, ::Float64, ::String, ::String, ::String, ::Array{Float64,1}, ::String, ::Bool, ::String, ::Bool, ::Array{Float64,1}, ::Array{String,1}, ::Array{Float64,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:268
+ [4] (::GeneralNN.#kw##train_nn)(::Array{Any,1}, ::GeneralNN.#train_nn, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=0.2,mb_size_in=0,opt="adam",units="relu",do_batch_norm=false,plots=["Training", "test", "learning"],learn_decay=[1.0,1.0],dropout=true, droplim=[1.0],norm_mode="minmax");
+WARNING: Method definition run_training(String, Int64, Array{Int64, 1}) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:284 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:284.
+WARNING: Method definition #run_training(Array{Any, 1}, typeof(GeneralNN.run_training), String, Int64, Array{Int64, 1}) in module GeneralNN overwritten.
+Training time: 24.292305834 seconds
+Fraction correct labels predicted training: 0.3695
+Final cost training: 2.90414746333833
+Fraction correct labels predicted test: 0.3748
+Final cost test: 2.9459699636541465
+Test data accuracy in final 10 iterations:
+0.335 : 0.340 : 0.345 : 0.349 : 0.352 : 0.355 : 0.361 : 0.365 : 0.370 : 0.375 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",130,[50,50],alpha=0.2,mb_size_in=0,opt="adam",units="relu",do_batch_norm=false,plots=["Training", "test", "learning"],learn_decay=[1.0,1.0],dropout=true, droplim=[1.0],norm_mode="minmax");
+Training time: 118.036889739 seconds
+Fraction correct labels predicted training: 0.6306
+Final cost training: 2.081914296870022
+Fraction correct labels predicted test: 0.6292
+Final cost test: 2.1127572458056973
+Test data accuracy in final 10 iterations:
+0.614 : 0.616 : 0.619 : 0.621 : 0.622 : 0.624 : 0.626 : 0.626 : 0.628 : 0.629 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",100,[50,50],alpha=0.4,mb_size_in=0,opt="adam",units="relu",do_batch_norm=false,plots=["Training", "test", "learning"],learn_decay=[1.0,1.0],dropout=true, droplim=[1.0],norm_mode="minmax");
+Training time: 92.193040162 seconds
+Fraction correct labels predicted training: 0.704
+Final cost training: 1.6766992954326978
+Fraction correct labels predicted test: 0.7062
+Final cost test: 1.7052046612635372
+Test data accuracy in final 10 iterations:
+0.686 : 0.688 : 0.689 : 0.692 : 0.696 : 0.698 : 0.700 : 0.702 : 0.703 : 0.706 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",100,[50,50],alpha=0.8,mb_size_in=0,opt="adam",units="relu",do_batch_norm=false,plots=["Training", "test", "learning"],learn_decay=[1.0,1.0],dropout=false, droplim=[1.0],norm_mode="minmax");
+Training time: 60.226562874 seconds
+Fraction correct labels predicted training: 0.8094
+Final cost training: 1.0925291274817441
+Fraction correct labels predicted test: 0.8062
+Final cost test: 1.129910973212266
+Test data accuracy in final 10 iterations:
+0.792 : 0.792 : 0.795 : 0.797 : 0.799 : 0.800 : 0.801 : 0.802 : 0.805 : 0.806 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",20,[50,50],alpha=0.8,mb_size_in=50,opt="adam",units="relu",do_batch_norm=false,plots=["Training", "test", "learning"],learn_decay=[1.0,1.0],dropout=false, droplim=[1.0],norm_mode="minmax");
+Training time: 9.411185304 seconds
+Fraction correct labels predicted training: 0.9621
+Final cost training: 0.25960020044428495
+Fraction correct labels predicted test: 0.9108
+Final cost test: 1.0148507223941272
+Test data accuracy in final 10 iterations:
+0.912 : 0.926 : 0.924 : 0.929 : 0.912 : 0.923 : 0.908 : 0.923 : 0.917 : 0.911 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",20,[50,50],alpha=0.8,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[1.0,1.0],dropout=false, droplim=[1.0],norm_mode="");
+Training time: 11.553702914 seconds
+Fraction correct labels predicted training: 0.9996
+Final cost training: 0.013524181876423444
+Fraction correct labels predicted test: 0.9618
+Final cost test: 0.32198190448421987
+Test data accuracy in final 10 iterations:
+0.952 : 0.956 : 0.947 : 0.941 : 0.948 : 0.952 : 0.958 : 0.958 : 0.961 : 0.962 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=0.8,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.9,2.0],dropout=true, droplim=[0.9],norm_mode="");
+
+
+ **** at 15 stepping down learning rate to 0.7200000000000001
+Training time: 19.387215383 seconds
+Fraction correct labels predicted training: 0.9917
+Final cost training: 0.07601441514188761
+Fraction correct labels predicted test: 0.95
+Final cost test: 0.5348137247654828
+Test data accuracy in final 10 iterations:
+0.943 : 0.944 : 0.949 : 0.951 : 0.946 : 0.943 : 0.947 : 0.943 : 0.947 : 0.950 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.2,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.7,2.0],dropout=true, droplim=[0.7,0.9],norm_mode="");
+
+
+ **** at 15 stepping down learning rate to 0.84
+Training time: 22.226381092 seconds
+Fraction correct labels predicted training: 0.9803
+Final cost training: 0.15543138230642276
+Fraction correct labels predicted test: 0.9396
+Final cost test: 0.4814610501170318
+Test data accuracy in final 10 iterations:
+0.942 : 0.938 : 0.947 : 0.940 : 0.944 : 0.945 : 0.942 : 0.945 : 0.942 : 0.940 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.2,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.7,3.0],dropout=true, droplim=[0.7,0.9],norm_mode="");
+
+
+ **** at 10 stepping down learning rate to 0.84
+
+
+ **** at 20 stepping down learning rate to 0.588
+Training time: 21.120093313 seconds
+Fraction correct labels predicted training: 0.9849
+Final cost training: 0.12672095174364809
+Fraction correct labels predicted test: 0.946
+Final cost test: 0.455663879939216
+Test data accuracy in final 10 iterations:
+0.943 : 0.940 : 0.945 : 0.943 : 0.947 : 0.948 : 0.945 : 0.942 : 0.947 : 0.946 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0],dropout=false, droplim=[0.7,0.9],norm_mode="",lambda=0.001);
+
+
+ **** at 15 stepping down learning rate to 0.5
+Training time: 16.292144014 seconds
+Fraction correct labels predicted training: 0.9994
+Final cost training: 0.005836390620458265
+Fraction correct labels predicted test: 0.9592
+Final cost test: 0.3894672047203984
+Test data accuracy in final 10 iterations:
+0.958 : 0.958 : 0.959 : 0.959 : 0.959 : 0.959 : 0.959 : 0.959 : 0.960 : 0.959 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0],dropout=false, droplim=[0.7,0.9],norm_mode="",lambda=0.001);
+
+
+ **** at 15 stepping down learning rate to 0.5
+Training time: 16.641424719 seconds
+Fraction correct labels predicted training: 0.9994
+Final cost training: 0.005836390620458265
+Fraction correct labels predicted test: 0.9592
+Final cost test: 0.3894672047203984
+Test data accuracy in final 10 iterations:
+0.958 : 0.958 : 0.959 : 0.959 : 0.959 : 0.959 : 0.959 : 0.959 : 0.960 : 0.959 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=0.9,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0],dropout=false, droplim=[0.7,0.9],norm_mode="",lambda=0.0015);
+
+
+ **** at 15 stepping down learning rate to 0.45
+Training time: 16.134673232 seconds
+Fraction correct labels predicted training: 0.9993
+Final cost training: 0.006369818195806969
+Fraction correct labels predicted test: 0.9584
+Final cost test: 0.4020892528216447
+Test data accuracy in final 10 iterations:
+0.957 : 0.958 : 0.958 : 0.958 : 0.958 : 0.959 : 0.958 : 0.959 : 0.958 : 0.958 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0],dropout=false, droplim=[0.7,0.9],norm_mode="",lambda=0.003);
+
+
+ **** at 15 stepping down learning rate to 0.5
+Training time: 16.33086302 seconds
+Fraction correct labels predicted training: 0.9998
+Final cost training: 0.007935242557089576
+Fraction correct labels predicted test: 0.9524
+Final cost test: 0.39320600653466464
+Test data accuracy in final 10 iterations:
+0.954 : 0.953 : 0.953 : 0.953 : 0.953 : 0.953 : 0.953 : 0.953 : 0.952 : 0.952 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0],dropout=false, droplim=[0.7,0.9],norm_mode="",lambda=0.001);
+
+
+ **** at 15 stepping down learning rate to 0.5
+Training time: 16.527763438 seconds
+Fraction correct labels predicted training: 0.9994
+Final cost training: 0.005836390620458265
+Fraction correct labels predicted test: 0.9592
+Final cost test: 0.3894672047203984
+Test data accuracy in final 10 iterations:
+0.958 : 0.958 : 0.959 : 0.959 : 0.959 : 0.959 : 0.959 : 0.959 : 0.960 : 0.959 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0],dropout=false, droplim=[0.7,0.9],norm_mode="",lambda=0.0005);
+
+
+ **** at 15 stepping down learning rate to 0.5
+Training time: 16.240193722 seconds
+Fraction correct labels predicted training: 0.9997
+Final cost training: 0.004556931924207483
+Fraction correct labels predicted test: 0.9608
+Final cost test: 0.3812761226098544
+Test data accuracy in final 10 iterations:
+0.958 : 0.959 : 0.960 : 0.960 : 0.960 : 0.960 : 0.961 : 0.961 : 0.961 : 0.961 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0005);
+
+
+ **** at 15 stepping down learning rate to 0.5
+Training time: 19.893608796 seconds
+Fraction correct labels predicted training: 0.9998
+Final cost training: 0.0059566953465242465
+Fraction correct labels predicted test: 0.9578
+Final cost test: 0.4071815904236704
+Test data accuracy in final 10 iterations:
+0.956 : 0.956 : 0.956 : 0.956 : 0.956 : 0.957 : 0.957 : 0.957 : 0.958 : 0.958 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0002);
+
+
+ **** at 15 stepping down learning rate to 0.5
+tTraining time: 18.554954516 seconds
+Fraction correct labels predicted training: 0.9998
+Final cost training: 0.0036629811718026026
+Fraction correct labels predicted test: 0.9612
+Final cost test: 0.3788767167750984
+Test data accuracy in final 10 iterations:
+0.961 : 0.961 : 0.960 : 0.961 : 0.961 : 0.961 : 0.961 : 0.961 : 0.961 : 0.961 : 
+Press enter to close plot window...
+^R                
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0001);
+
+
+ **** at 15 stepping down learning rate to 0.5
+Training time: 18.397021696 seconds
+Fraction correct labels predicted training: 0.9997
+Final cost training: 0.0033905767234180973
+Fraction correct labels predicted test: 0.9638
+Final cost test: 0.3720602093453879
+Test data accuracy in final 10 iterations:
+0.964 : 0.963 : 0.963 : 0.963 : 0.964 : 0.963 : 0.963 : 0.963 : 0.963 : 0.964 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.00005);
+
+
+ **** at 15 stepping down learning rate to 0.5
+Training time: 18.953162095 seconds
+Fraction correct labels predicted training: 0.9996
+Final cost training: 0.004190009673225674
+Fraction correct labels predicted test: 0.9612
+Final cost test: 0.371031899296687
+Test data accuracy in final 10 iterations:
+0.961 : 0.960 : 0.961 : 0.961 : 0.961 : 0.961 : 0.961 : 0.961 : 0.961 : 0.961 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.00008);
+
+
+ **** at 15 stepping down learning rate to 0.5
+Training time: 17.962397626 seconds
+Fraction correct labels predicted training: 0.9993
+Final cost training: 0.004459656066235518
+Fraction correct labels predicted test: 0.957
+Final cost test: 0.42693478974614363
+Test data accuracy in final 10 iterations:
+0.955 : 0.955 : 0.955 : 0.956 : 0.956 : 0.956 : 0.956 : 0.956 : 0.957 : 0.957 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0001);
+
+
+ **** at 15 stepping down learning rate to 0.5
+Training time: 18.202544079 seconds
+Fraction correct labels predicted training: 0.9997
+Final cost training: 0.0033905767234180973
+Fraction correct labels predicted test: 0.9638
+Final cost test: 0.3720602093453879
+Test data accuracy in final 10 iterations:
+0.964 : 0.963 : 0.963 : 0.963 : 0.964 : 0.963 : 0.963 : 0.963 : 0.963 : 0.964 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.00012);
+
+
+ **** at 15 stepping down learning rate to 0.5
+Training time: 18.897710383 seconds
+Fraction correct labels predicted training: 0.9991
+Final cost training: 0.00569255252026893
+Fraction correct labels predicted test: 0.9616
+Final cost test: 0.39371858310167157
+Test data accuracy in final 10 iterations:
+0.962 : 0.961 : 0.961 : 0.962 : 0.962 : 0.962 : 0.962 : 0.962 : 0.962 : 0.962 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.1,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0001);
+
+
+ **** at 15 stepping down learning rate to 0.55
+Training time: 17.783120079 seconds
+Fraction correct labels predicted training: 0.9995
+Final cost training: 0.00489437990945317
+Fraction correct labels predicted test: 0.96
+Final cost test: 0.4073824293819818
+Test data accuracy in final 10 iterations:
+0.959 : 0.960 : 0.960 : 0.960 : 0.960 : 0.960 : 0.960 : 0.960 : 0.960 : 0.960 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=0.9,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0001);
+
+
+ **** at 15 stepping down learning rate to 0.45
+Training time: 18.412565631 seconds
+Fraction correct labels predicted training: 0.9993
+Final cost training: 0.004903939401109189
+Fraction correct labels predicted test: 0.9584
+Final cost test: 0.37757722618162187
+Test data accuracy in final 10 iterations:
+0.958 : 0.958 : 0.958 : 0.958 : 0.958 : 0.958 : 0.958 : 0.958 : 0.958 : 0.958 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=0.8,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.6,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0001);
+
+
+ **** at 15 stepping down learning rate to 0.48
+Training time: 18.110478322 seconds
+Fraction correct labels predicted training: 0.9995
+Final cost training: 0.004092284513831165
+Fraction correct labels predicted test: 0.9614
+Final cost test: 0.3595452921261301
+Test data accuracy in final 10 iterations:
+0.962 : 0.962 : 0.962 : 0.962 : 0.962 : 0.962 : 0.962 : 0.962 : 0.961 : 0.961 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=0.8,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.7,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0001);
+
+
+ **** at 15 stepping down learning rate to 0.5599999999999999
+Training time: 18.246777554 seconds
+Fraction correct labels predicted training: 0.9994
+Final cost training: 0.003952895154749059
+Fraction correct labels predicted test: 0.963
+Final cost test: 0.3572115228333688
+Test data accuracy in final 10 iterations:
+0.963 : 0.963 : 0.963 : 0.963 : 0.962 : 0.963 : 0.963 : 0.963 : 0.963 : 0.963 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=0.75,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.75,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0001);
+
+
+ **** at 15 stepping down learning rate to 0.5625
+Training time: 18.317372813 seconds
+Fraction correct labels predicted training: 0.9996
+Final cost training: 0.003355301265490937
+Fraction correct labels predicted test: 0.959
+Final cost test: 0.3954240056661123
+Test data accuracy in final 10 iterations:
+0.958 : 0.958 : 0.958 : 0.958 : 0.958 : 0.958 : 0.958 : 0.958 : 0.959 : 0.959 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=0.8,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0001);
+
+
+ **** at 15 stepping down learning rate to 0.6400000000000001
+Training time: 18.433182155 seconds
+Fraction correct labels predicted training: 0.9996
+Final cost training: 0.003943461428354169
+Fraction correct labels predicted test: 0.9626
+Final cost test: 0.3660598889863926
+Test data accuracy in final 10 iterations:
+0.962 : 0.963 : 0.963 : 0.962 : 0.962 : 0.962 : 0.962 : 0.962 : 0.963 : 0.963 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=0.8,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.9,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0001);
+
+
+ **** at 15 stepping down learning rate to 0.7200000000000001
+Training time: 18.214505252 seconds
+Fraction correct labels predicted training: 0.9995
+Final cost training: 0.0035930911938488633
+Fraction correct labels predicted test: 0.9592
+Final cost test: 0.37949286353576517
+Test data accuracy in final 10 iterations:
+0.956 : 0.958 : 0.958 : 0.958 : 0.958 : 0.958 : 0.958 : 0.958 : 0.959 : 0.959 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=0.78,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0001);
+
+
+ **** at 15 stepping down learning rate to 0.6240000000000001
+Training time: 18.808814354 seconds
+Fraction correct labels predicted training: 0.9996
+Final cost training: 0.0028687126173376773
+Fraction correct labels predicted test: 0.9588
+Final cost test: 0.39618609145383304
+Test data accuracy in final 10 iterations:
+0.959 : 0.958 : 0.959 : 0.958 : 0.958 : 0.959 : 0.959 : 0.958 : 0.958 : 0.959 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.6,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0001);
+
+
+ **** at 15 stepping down learning rate to 0.6
+Training time: 18.398539715 seconds
+Fraction correct labels predicted training: 0.9995
+Final cost training: 0.003351382605288494
+Fraction correct labels predicted test: 0.963
+Final cost test: 0.3760542724891831
+Test data accuracy in final 10 iterations:
+0.962 : 0.962 : 0.962 : 0.963 : 0.963 : 0.963 : 0.963 : 0.963 : 0.963 : 0.963 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",33,[50,50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.6,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0001);
+
+
+ **** at 16 stepping down learning rate to 0.6
+Training time: 20.650889218 seconds
+Fraction correct labels predicted training: 0.9996
+Final cost training: 0.0031449138216088847
+Fraction correct labels predicted test: 0.9638
+Final cost test: 0.37608590443978407
+Test data accuracy in final 10 iterations:
+0.964 : 0.964 : 0.964 : 0.963 : 0.963 : 0.963 : 0.963 : 0.964 : 0.964 : 0.964 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",36,[50,50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.6,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0001);
+
+
+ **** at 18 stepping down learning rate to 0.6
+Training time: 22.85489236 seconds
+Fraction correct labels predicted training: 0.9996
+Final cost training: 0.0036341330430195522
+Fraction correct labels predicted test: 0.9626
+Final cost test: 0.40017053431298555
+Test data accuracy in final 10 iterations:
+0.961 : 0.961 : 0.961 : 0.961 : 0.961 : 0.961 : 0.961 : 0.961 : 0.963 : 0.963 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=40,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.6,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0001);
+
+
+ **** at 15 stepping down learning rate to 0.6
+Training time: 21.56290873 seconds
+Fraction correct labels predicted training: 0.9988
+Final cost training: 0.007169347907621505
+Fraction correct labels predicted test: 0.959
+Final cost test: 0.43066366907178144
+Test data accuracy in final 10 iterations:
+0.958 : 0.958 : 0.959 : 0.959 : 0.959 : 0.960 : 0.960 : 0.960 : 0.960 : 0.959 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=0.9,mb_size_in=40,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.6,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0001);
+
+
+ **** at 15 stepping down learning rate to 0.54
+Training time: 20.205970172 seconds
+Fraction correct labels predicted training: 0.999
+Final cost training: 0.006620058156339438
+Fraction correct labels predicted test: 0.9576
+Final cost test: 0.42538177155177714
+Test data accuracy in final 10 iterations:
+0.958 : 0.958 : 0.958 : 0.958 : 0.959 : 0.959 : 0.958 : 0.958 : 0.958 : 0.958 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=25,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.6,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0001);
+
+
+ **** at 15 stepping down learning rate to 0.6
+Training time: 29.072944662 seconds
+Fraction correct labels predicted training: 0.9969
+Final cost training: 0.0247639438376902
+Fraction correct labels predicted test: 0.9572
+Final cost test: 0.5665137863313094
+Test data accuracy in final 10 iterations:
+0.956 : 0.956 : 0.957 : 0.956 : 0.956 : 0.957 : 0.957 : 0.957 : 0.957 : 0.957 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=25,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.6,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.00005);
+
+
+ **** at 15 stepping down learning rate to 0.6
+Training time: 27.526772584 seconds
+Fraction correct labels predicted training: 0.9966
+Final cost training: 0.026299455240620117
+Fraction correct labels predicted test: 0.9552
+Final cost test: 0.5451087920374018
+Test data accuracy in final 10 iterations:
+0.956 : 0.956 : 0.955 : 0.955 : 0.955 : 0.955 : 0.955 : 0.955 : 0.955 : 0.955 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=100,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.6,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0001);
+
+
+ **** at 15 stepping down learning rate to 0.6
+Training time: 14.380735052 seconds
+Fraction correct labels predicted training: 0.9999
+Final cost training: 0.0014712717915159026
+Fraction correct labels predicted test: 0.9594
+Final cost test: 0.3685259293783063
+Test data accuracy in final 10 iterations:
+0.958 : 0.958 : 0.959 : 0.959 : 0.959 : 0.959 : 0.959 : 0.959 : 0.959 : 0.959 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=150,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.6,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0001);
+
+
+ **** at 15 stepping down learning rate to 0.6
+Training time: 11.997619028 seconds
+Fraction correct labels predicted training: 0.9996
+Final cost training: 0.003373897643367151
+Fraction correct labels predicted test: 0.9558
+Final cost test: 0.3531268874351284
+Test data accuracy in final 10 iterations:
+0.955 : 0.955 : 0.955 : 0.955 : 0.955 : 0.955 : 0.955 : 0.956 : 0.956 : 0.956 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=80,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.6,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0001);
+
+
+ **** at 15 stepping down learning rate to 0.6
+Training time: 15.991604358 seconds
+Fraction correct labels predicted training: 0.9999
+Final cost training: 0.001540708264050791
+Fraction correct labels predicted test: 0.9562
+Final cost test: 0.37336120019348795
+Test data accuracy in final 10 iterations:
+0.957 : 0.957 : 0.956 : 0.956 : 0.956 : 0.956 : 0.956 : 0.957 : 0.956 : 0.956 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=80,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.6,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.00008);
+
+
+ **** at 15 stepping down learning rate to 0.6
+Training time: 15.859445005 seconds
+Fraction correct labels predicted training: 0.9998
+Final cost training: 0.002463769844868551
+Fraction correct labels predicted test: 0.962
+Final cost test: 0.35710700077930635
+Test data accuracy in final 10 iterations:
+0.959 : 0.960 : 0.960 : 0.961 : 0.961 : 0.961 : 0.961 : 0.962 : 0.962 : 0.962 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=60,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.6,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.00008);
+
+
+ **** at 15 stepping down learning rate to 0.6
+Training time: 19.998897011 seconds
+Fraction correct labels predicted training: 0.9997
+Final cost training: 0.003857615455672298
+Fraction correct labels predicted test: 0.9554
+Final cost test: 0.4093420797468856
+Test data accuracy in final 10 iterations:
+0.955 : 0.955 : 0.955 : 0.955 : 0.955 : 0.955 : 0.955 : 0.955 : 0.955 : 0.955 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.6,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.00008);
+WARNING: Method definition update_training_views!(GeneralNN.Training_view, GeneralNN.Model_data, GeneralNN.NN_parameters, GeneralNN.Hyper_parameters, Base.UnitRange{Int64}) in module GeneralNN at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:448 overwritten at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:462.
+WARNING: replacing docs for 'GeneralNN.update_training_views! :: Tuple{GeneralNN.Training_view,GeneralNN.Model_data,GeneralNN.NN_parameters,GeneralNN.Hyper_parameters,UnitRange{Int64}}' in module 'GeneralNN'.
+
+
+ **** at 15 stepping down learning rate to 0.6
+Training time: 18.81251067 seconds
+Fraction correct labels predicted training: 0.9996
+Final cost training: 0.0040070295636059836
+Fraction correct labels predicted test: 0.9566
+Final cost test: 0.4320614256542815
+Test data accuracy in final 10 iterations:
+0.955 : 0.956 : 0.956 : 0.956 : 0.956 : 0.957 : 0.957 : 0.957 : 0.957 : 0.957 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.6,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0001);
+
+
+ **** at 15 stepping down learning rate to 0.6
+Training time: 19.277305019 seconds
+Fraction correct labels predicted training: 0.9995
+Final cost training: 0.003351382605288494
+Fraction correct labels predicted test: 0.963
+Final cost test: 0.3760542724891831
+Test data accuracy in final 10 iterations:
+0.962 : 0.962 : 0.962 : 0.963 : 0.963 : 0.963 : 0.963 : 0.963 : 0.963 : 0.963 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.6,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.00011);
+
+
+ **** at 15 stepping down learning rate to 0.6
+Training time: 19.116302194 seconds
+Fraction correct labels predicted training: 0.9997
+Final cost training: 0.0031916788386177914
+Fraction correct labels predicted test: 0.9614
+Final cost test: 0.40341034967578693
+Test data accuracy in final 10 iterations:
+0.959 : 0.959 : 0.959 : 0.959 : 0.960 : 0.960 : 0.961 : 0.961 : 0.961 : 0.961 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.6,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.000105);
+
+
+ **** at 15 stepping down learning rate to 0.6
+Training time: 19.321335021 seconds
+Fraction correct labels predicted training: 0.9996
+Final cost training: 0.003843499259466296
+Fraction correct labels predicted test: 0.9578
+Final cost test: 0.41536084442232285
+Test data accuracy in final 10 iterations:
+0.958 : 0.958 : 0.959 : 0.959 : 0.958 : 0.958 : 0.958 : 0.958 : 0.958 : 0.958 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.6,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0001);
+
+
+ **** at 15 stepping down learning rate to 0.6
+Training time: 18.326036299 seconds
+Fraction correct labels predicted training: 0.9995
+Final cost training: 0.003351382605288494
+Fraction correct labels predicted test: 0.963
+Final cost test: 0.3760542724891831
+Test data accuracy in final 10 iterations:
+0.962 : 0.962 : 0.962 : 0.963 : 0.963 : 0.963 : 0.963 : 0.963 : 0.963 : 0.963 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.6,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.000095);
+
+
+ **** at 15 stepping down learning rate to 0.6
+Training time: 18.910755413 seconds
+Fraction correct labels predicted training: 0.9991
+Final cost training: 0.004895123705787471
+Fraction correct labels predicted test: 0.9588
+Final cost test: 0.4104699320790556
+Test data accuracy in final 10 iterations:
+0.958 : 0.958 : 0.958 : 0.958 : 0.958 : 0.958 : 0.959 : 0.959 : 0.959 : 0.959 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.6,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.000098);
+
+
+ **** at 15 stepping down learning rate to 0.6
+Training time: 19.670910026 seconds
+Fraction correct labels predicted training: 0.9996
+Final cost training: 0.0036692485547284125
+Fraction correct labels predicted test: 0.9592
+Final cost test: 0.4132152982680028
+Test data accuracy in final 10 iterations:
+0.958 : 0.958 : 0.958 : 0.958 : 0.958 : 0.959 : 0.959 : 0.959 : 0.959 : 0.959 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.6,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0000101);
+
+
+ **** at 15 stepping down learning rate to 0.6
+Training time: 19.985040833 seconds
+Fraction correct labels predicted training: 0.9995
+Final cost training: 0.002880118069563237
+Fraction correct labels predicted test: 0.958
+Final cost test: 0.42310855651737617
+Test data accuracy in final 10 iterations:
+0.957 : 0.957 : 0.957 : 0.958 : 0.958 : 0.958 : 0.958 : 0.958 : 0.958 : 0.958 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.6,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.00001);
+
+
+ **** at 15 stepping down learning rate to 0.6
+Training time: 19.457754924 seconds
+Fraction correct labels predicted training: 0.9997
+Final cost training: 0.0024557816482345617
+Fraction correct labels predicted test: 0.9598
+Final cost test: 0.40513813357978384
+Test data accuracy in final 10 iterations:
+0.958 : 0.958 : 0.958 : 0.959 : 0.959 : 0.959 : 0.959 : 0.960 : 0.960 : 0.960 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.00001);
+
+
+ **** at 15 stepping down learning rate to 0.5
+Training time: 18.170366177 seconds
+Fraction correct labels predicted training: 0.9997
+Final cost training: 0.002649660596463001
+Fraction correct labels predicted test: 0.9602
+Final cost test: 0.40032136051995854
+Test data accuracy in final 10 iterations:
+0.960 : 0.959 : 0.959 : 0.959 : 0.959 : 0.960 : 0.960 : 0.960 : 0.960 : 0.960 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=0.9,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.55,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.00001);
+
+
+ **** at 15 stepping down learning rate to 0.49500000000000005
+Training time: 19.811970924 seconds
+Fraction correct labels predicted training: 0.9994
+Final cost training: 0.003976154058454544
+Fraction correct labels predicted test: 0.9616
+Final cost test: 0.3928100246915265
+Test data accuracy in final 10 iterations:
+0.962 : 0.962 : 0.962 : 0.961 : 0.961 : 0.961 : 0.961 : 0.961 : 0.961 : 0.962 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=0.8,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.6,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.00001);
+
+
+ **** at 15 stepping down learning rate to 0.48
+Training time: 18.946760405 seconds
+Fraction correct labels predicted training: 0.9996
+Final cost training: 0.003144198382604352
+Fraction correct labels predicted test: 0.961
+Final cost test: 0.3640834078617637
+Test data accuracy in final 10 iterations:
+0.959 : 0.959 : 0.959 : 0.959 : 0.960 : 0.960 : 0.960 : 0.961 : 0.961 : 0.961 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=0.85,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.6,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.00001);
+
+
+ **** at 15 stepping down learning rate to 0.51
+Training time: 18.766130217 seconds
+Fraction correct labels predicted training: 0.9995
+Final cost training: 0.003396205374969138
+Fraction correct labels predicted test: 0.9574
+Final cost test: 0.39333883392986874
+Test data accuracy in final 10 iterations:
+0.957 : 0.957 : 0.957 : 0.957 : 0.957 : 0.957 : 0.957 : 0.957 : 0.957 : 0.957 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=0.9,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.58,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.00001);
+
+
+ **** at 15 stepping down learning rate to 0.522
+Training time: 19.397896023 seconds
+Fraction correct labels predicted training: 0.9994
+Final cost training: 0.004007251100165159
+Fraction correct labels predicted test: 0.9612
+Final cost test: 0.3933028220037113
+Test data accuracy in final 10 iterations:
+0.961 : 0.962 : 0.961 : 0.962 : 0.962 : 0.961 : 0.962 : 0.961 : 0.961 : 0.961 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=0.9,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.65,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.00001);
+
+
+ **** at 15 stepping down learning rate to 0.5850000000000001
+Training time: 18.361726338 seconds
+Fraction correct labels predicted training: 0.9992
+Final cost training: 0.003962045786159572
+Fraction correct labels predicted test: 0.9612
+Final cost test: 0.39551546321246567
+Test data accuracy in final 10 iterations:
+0.961 : 0.961 : 0.961 : 0.961 : 0.961 : 0.961 : 0.961 : 0.961 : 0.961 : 0.961 : 
+Press enter to close plot window...
+
+
+julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[100,50,50],alpha=0.9,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.6,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.00001);
+ **** at 15 stepping down learning rate to 0.54
+Training time: 28.783124837 seconds
+Fraction correct labels predicted training: 0.9999
+Final cost training: 0.0019695853159848124
+Fraction correct labels predicted test: 0.965
+Final cost test: 0.3202224480501849
+Test data accuracy in final 10 iterations:
+0.964 : 0.964 : 0.965 : 0.965 : 0.965 : 0.965 : 0.965 : 0.965 : 0.965 : 0.965 : 
+
+
+train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[100,100,50],alpha=0.9,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.6,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.00001);
+ **** at 15 stepping down learning rate to 0.54
+Training time: 27.408388904 seconds
+Fraction correct labels predicted training: 0.9999
+Final cost training: 0.0019394359528863497
+Fraction correct labels predicted test: 0.9666
+Final cost test: 0.30258277964538755
+Test data accuracy in final 10 iterations:
+0.965 : 0.966 : 0.966 : 0.966 : 0.966 : 0.967 : 0.967 : 0.967 : 0.967 : 0.967 :

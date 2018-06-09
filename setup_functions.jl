@@ -100,14 +100,16 @@ end
 function setup_model!(mb, hp, tp, bn, dotest, train, test)
 
 #setup mini-batch
-    if hp.mb_size < 1
-        hp.mb_size = train.n  # use 1 (mini-)batch with all of the examples
-    elseif hp.mb_size > train.n
+    if hp.mb_size_in < 1
+        hp.mb_size_in = train.n  # use 1 (mini-)batch with all of the examples
         hp.mb_size = train.n
-    elseif mod(train.n, hp.mb_size) != 0
-        error("Mini-batch size $(hp.mb_size) does not divide evenly into samples $n.")
+    elseif hp.mb_size_in >= train.n
+        hp.mb_size_in = train.n
+        hp.mb_size = train_n
+    else 
+        hp.mb_size = hp.mb_size_in
     end
-    hp.n_mb = Int(train.n / hp.mb_size)  # number of mini-batches
+    hp.n_mb = ceil(Int, train.n / hp.mb_size)  # number of mini-batches
     hp.alphaovermb = hp.alpha / hp.mb_size  # calc once, use in hot loop
     hp.do_batch_norm = hp.n_mb == 1 ? false : hp.do_batch_norm  # no batch normalization for 1 batch
 
@@ -174,12 +176,12 @@ function setup_model!(mb, hp, tp, bn, dotest, train, test)
 
     preallocate_nn_params!(tp, hp, hp.n_hid, train.in_k, train.n, train.out_k)
 
-    preallocate_feedfwd!(train, tp, train.n, hp.do_batch_norm)
+    preallocate_feedfwd!(train, tp, train.n, hp.do_batch_norm, hp.dropout)
 
     # feedfwd test data--if test input found
     if dotest
         test.n = size(test.inputs,2)
-        preallocate_feedfwd!(test, tp, test.n, hp.do_batch_norm)
+        preallocate_feedfwd!(test, tp, test.n, hp.do_batch_norm, hp.dropout)
     else
         test.n = 0
     end
@@ -207,21 +209,33 @@ end
 ####################################################################
 
 # use for test and training data
-function preallocate_feedfwd!(dat, tp, n, do_batch_norm)
+function preallocate_feedfwd!(dat, nnp, n, do_batch_norm, dropout)
     dat.a = [dat.inputs]
     dat.z = [zeros(size(dat.inputs))] # not used for input layer  TODO--this permeates the code but not needed
-    for i = 2:tp.output_layer-1  # hidden layers
-        push!(dat.z, zeros(tp.layer_units[i], n))
+    for i = 2:nnp.output_layer-1  # hidden layers
+        push!(dat.z, zeros(nnp.layer_units[i], n))
         push!(dat.a, zeros(size(dat.z[i])))  #  and up...  ...output layer set after loop
     end
-    push!(dat.z, zeros(size(tp.theta[tp.output_layer],1),n))
-    push!(dat.a, zeros(size(tp.theta[tp.output_layer],1),n))
+    push!(dat.z, zeros(size(nnp.theta[nnp.output_layer],1),n))
+    push!(dat.a, zeros(size(nnp.theta[nnp.output_layer],1),n))
+
+    dat.epsilon = deepcopy(dat.a)
+    dat.grad = deepcopy(dat.a)
+    dat.delta_z = deepcopy(dat.a)
 
     if do_batch_norm  # required for full pass performance stats
         dat.z_norm = deepcopy(dat.z)
-        # dat.z_scale = deepcopy(dat.z)  # same size as z, often called "y"
+        dat.delta_z_norm = deepcopy(dat.z)
+    end
+
+    if dropout
+        dat.drop_ran_w = deepcopy(dat.a)
+        dat.drop_filt_w = [similar(i, Bool) for i in dat.a]
     end
 end
+
+
+
 
 
 function preallocate_nn_params!(tp, hp, n_hid, in_k, n, out_k)
