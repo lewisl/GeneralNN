@@ -176,18 +176,18 @@ function setup_model!(mb, hp, tp, bn, dotest, train, test)
 
     preallocate_nn_params!(tp, hp, hp.n_hid, train.in_k, train.n, train.out_k)
 
-    preallocate_feedfwd!(train, tp, train.n, hp.do_batch_norm, hp.dropout)
+    preallocate_data!(train, tp, train.n, hp)
 
     # feedfwd test data--if test input found
     if dotest
         test.n = size(test.inputs,2)
-        preallocate_feedfwd!(test, tp, test.n, hp.do_batch_norm, hp.dropout)
+        preallocate_data!(test, tp, test.n, hp)
     else
         test.n = 0
     end
 
     # pre-allocate feedfwd mini-batch training data
-    preallocate_minibatch!(mb, tp, hp)  
+    # preallocate_minibatch!(mb, tp, hp)  
     
     # batch normalization parameters
     if hp.do_batch_norm
@@ -209,7 +209,8 @@ end
 ####################################################################
 
 # use for test and training data
-function preallocate_feedfwd!(dat, nnp, n, do_batch_norm, dropout)
+function preallocate_data!(dat, nnp, n, hp)
+    # feedforward
     dat.a = [dat.inputs]
     dat.z = [zeros(size(dat.inputs))] # not used for input layer  TODO--this permeates the code but not needed
     for i = 2:nnp.output_layer-1  # hidden layers
@@ -219,21 +220,25 @@ function preallocate_feedfwd!(dat, nnp, n, do_batch_norm, dropout)
     push!(dat.z, zeros(size(nnp.theta[nnp.output_layer],1),n))
     push!(dat.a, zeros(size(nnp.theta[nnp.output_layer],1),n))
 
-    dat.epsilon = deepcopy(dat.a)
-    dat.grad = deepcopy(dat.a)
-    dat.delta_z = deepcopy(dat.a)
+    # training / backprop  -- pre-allocate only minibatch size (except last one, which could be smaller)
+    dat.epsilon = [i[:,1:hp.mb_size_in] for i in dat.a]
+    dat.grad = [i[:,1:hp.mb_size_in] for i in dat.a]
+    dat.delta_z = [i[:,1:hp.mb_size_in] for i in dat.a]
 
-    if do_batch_norm  # required for full pass performance stats
+    if hp.do_batch_norm  # required for full pass performance stats
+        # feedforward
         dat.z_norm = deepcopy(dat.z)
-        dat.delta_z_norm = deepcopy(dat.z)
+        # backprop
+        dat.delta_z_norm = [i[:,1:hp.mb_size_in] for i in dat.a]
     end
 
-    if dropout
-        dat.drop_ran_w = deepcopy(dat.a)
-        dat.drop_filt_w = [similar(i, Bool) for i in dat.a]
+    # backprop / training
+    if hp.dropout
+        dat.drop_ran_w = [i[:,1:hp.mb_size_in] for i in dat.a]
+        dat.drop_filt_w = [BitArray(ones(size(i,1),hp.mb_size_in)) for i in dat.a]
     end
+
 end
-
 
 
 
@@ -292,6 +297,10 @@ end
 """
     Pre-allocate these arrays for the training batch--either minibatches or one big batch
     Arrays: epsilon, grad, delta_z_norm, delta_z, drop_ran_w, drop_filt_w
+
+
+    NOT USED  -- PROBABLY WON'T WORK AS IS WHEN GOING BACK TO SLICE APPROACH INSTEAD OF VIEW APPROACH
+
 """
 function preallocate_minibatch!(mb, tp, hp)
 

@@ -449,7 +449,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     plot_output(plotdef)
 
     return train.a[nnp.output_layer], test.a[nnp.output_layer], nnp, bn, hp;  
-    # training predictions, test predictions, trained params, batch_norm parameters, hyper parameters
+     # training predictions, test predictions, parameters: trained, batch_norm, hyper
 end  # function run_training
 
 
@@ -459,28 +459,39 @@ end  # function run_training
 """
 function update_training_views!(mb::Training_view, train::Model_data, nnp::NN_parameters, 
     hp::Hyper_parameters, colrng::UnitRange{Int64})
+    # colrng refers to the set of training examples included in the minibatch
     n_layers = nnp.output_layer
+    mb_cols = 1:hp.mb_size  # only reason for this is that the last minibatch might be smaller
 
+    # feedforward:   minibatch views update the underlying data
     mb.a = [view(train.a[i],:,colrng) for i = 1:n_layers]
     mb.z = [view(train.z[i],:,colrng) for i = 1:n_layers]
     mb.targets = view(train.targets,:,colrng)  # only at the output layer
 
-    mb.epsilon = [view(train.epsilon[i], :, colrng) for i = 1:n_layers]
-    mb.grad = [view(train.grad[i], :, colrng) for i = 1:n_layers]
-    mb.delta_z = [view(train.delta_z[i], :, colrng) for i = 1:n_layers]
+    # training / backprop:  don't need this data and only use minibatch size
+    mb.epsilon = [view(train.epsilon[i], :, mb_cols) for i = 1:n_layers]
+    mb.grad = [view(train.grad[i], :, mb_cols) for i = 1:n_layers]
+    mb.delta_z = [view(train.delta_z[i], :, mb_cols) for i = 1:n_layers]
 
     if hp.do_batch_norm
+        # feedforward
         mb.z_norm = [view(train.z_norm[i],:, colrng) for i = 1:n_layers]
-        mb.delta_z_norm = [view(train.delta_z_norm[i], :, colrng) for i = 1:n_layers]
+        # backprop
+        mb.delta_z_norm = [view(train.delta_z_norm[i], :, mb_cols) for i = 1:n_layers]
     end
 
     if hp.dropout
-        mb.drop_ran_w = [view(train.drop_ran_w[i], :, colrng) for i = 1:n_layers]
-        mb.drop_filt_w = [view(train.drop_filt_w[i], :, colrng) for i = 1:n_layers]
+        # training:  applied to feedforward, but only for training
+        mb.drop_ran_w = [view(train.drop_ran_w[i], :, mb_cols) for i = 1:n_layers]
+        mb.drop_filt_w = [view(train.drop_filt_w[i], :, mb_cols) for i = 1:n_layers]
     end
 
 end
 
+
+# ERROR: MethodError: Cannot `convert` an object of 
+# type SubArray{BitArray,2,Array{BitArray,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true} to an object of 
+# type SubArray{Bool,2,BitArray{2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true}
 
 """
 function feedfwd!(dat, nnp, bn, do_batch_norm; istrain)
@@ -526,10 +537,8 @@ function backprop!(nnp, dat, do_batch_norm)
     Intermediate storage of dat.a, dat.z, dat.epsilon, nnp.delta_w, nnp.delta_b reduces memory allocations
 """
 function backprop!(nnp, bn, dat, hp, t)
-    #DEBUG
-    #println("size a: $(size(dat.a[nnp.output_layer])), size targets: $(size(dat.targets))")
 
-    dat.epsilon[nnp.output_layer] = dat.a[nnp.output_layer] .- dat.targets  # @inbounds 
+    dat.epsilon[nnp.output_layer][:] = dat.a[nnp.output_layer] .- dat.targets  # @inbounds 
     @fastmath nnp.delta_w[nnp.output_layer][:] = dat.epsilon[nnp.output_layer] * dat.a[nnp.output_layer-1]' # 2nd term is effectively the grad for mse  @inbounds 
     @fastmath nnp.delta_b[nnp.output_layer][:] = sum(dat.epsilon[nnp.output_layer],2)  # @inbounds 
 
@@ -770,7 +779,7 @@ function nnpredict(inputs, targets, hp, nnp, bn)
         normalize_replay!(dataset.inputs, hp.norm_mode, nnp.norm_factors)
     end
 
-    preallocate_feedfwd!(dataset, nnp, dataset.n, hp.do_batch_norm)
+    preallocate_data!(dataset, nnp, dataset.n, hp)
 
     setup_functions!(hp.units, dataset.out_k, hp.opt, hp.classify)  # for feedforward calculations
 

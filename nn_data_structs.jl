@@ -90,21 +90,24 @@ end
 Struct Model_data hold examples and all layer outputs-->
 pre-allocate to reduce memory allocations and improve speed
 """
-mutable struct Model_data               # we will use train for inputs, test for test data and mb for mini-batches
+mutable struct Model_data               # we will use train for inputs and test for test data
+    # feedforward pass
     inputs::Array{Float64,2}            # in_k features by n examples
     targets::Array{Float64,2}           # labels for each example
     a::Array{Array{Float64,2},1}
     z::Array{Array{Float64,2},1}
-    z_norm::Array{Array{Float64,2},1}   # same size as z--for batch_norm
-    delta_z_norm::Array{Array{Float64,2},1}    # same size as z
-    delta_z::Array{Array{Float64,2},1}         # same size as z
+    z_norm::Array{Array{Float64,2},1}         # same size as z--for batch_norm
+    # backprop (training) pass
+    delta_z_norm::Array{Array{Float64,2},1}   # same size as z
+    delta_z::Array{Array{Float64,2},1}        # same size as z
     grad::Array{Array{Float64,2},1}
     epsilon::Array{Array{Float64,2},1}
-    drop_ran_w::Array{Array{Float64,2},1} # randomization for dropout--dims of a
-    drop_filt_w::Array{Array{Bool,2},1}   # boolean filter for dropout--dims of a
-    n::Int64                             # number of examples
-    in_k::Int64                          # number of input features
-    out_k::Int64                         # number of output features (units)
+    drop_ran_w::Array{Array{Float64,2},1}     # randomization for dropout--dims of a
+    drop_filt_w::Array{BitArray{2}, 1}       # boolean filter for dropout--dims of a
+    # descriptive
+    n::Int64                                  # number of examples
+    in_k::Int64                               # number of input features
+    out_k::Int64                              # number of output features (units)
     
 
     Model_data() = new(                 # empty constructor
@@ -118,7 +121,7 @@ mutable struct Model_data               # we will use train for inputs, test for
         Array{Array{Float64,2},1}(0),   # grad
         Array{Array{Float64,2},1}(0),   # epsilon
         Array{Array{Float64,2},1}(0),   # drop_ran_w
-        Array{Array{Bool,2},1}(0),      # drop_filt_w
+        Array{BitArray{2},1}(0),      # drop_filt_w   Array{Array{Bool,2},1}
         0,                              # n
         0,                              # in_k
         0                               # out_k
@@ -136,40 +139,26 @@ mutable struct Training_view               # we will use mb for mini-batch train
     targets::SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true}
     z::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     z_norm::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    # arrays as big as the minibatch size
-    # delta_z_norm::Array{Array{Float64,2},1} 
-    # delta_z::Array{Array{Float64,2},1} 
-    # grad::Array{Array{Float64,2},1} 
-    # epsilon::Array{Array{Float64,2},1} 
-    # drop_ran_w::Array{Array{Float64,2},1} 
-    # drop_filt_w::Array{Array{Float64,2},1} 
-    # views on the minibatch arrays to accommodate varying size minibatches
     delta_z_norm::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     delta_z::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     grad::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     epsilon::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     drop_ran_w::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    drop_filt_w::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    drop_filt_w::Array{SubArray{Bool,2,BitArray{2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+
+        # Array{SubArray{Bool,2,Array{BitArray,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
 
     Training_view() = new(
         [view(zeros(2,2),:,1:2) for i in 1:2],  # a
         view(zeros(2,2),:,1:2),                 # targets
         [view(zeros(2,2),:,1:2) for i in 1:2],  # z
         [view(zeros(2,2),:,1:2) for i in 1:2],  # z_norm
-    
-        # Array{Array{Float64,2},1}(0),           # delta_z_norm
-        # Array{Array{Float64,2},1}(0),           # delta_z
-        # Array{Array{Float64,2},1}(0),           # grad
-        # Array{Array{Float64,2},1}(0),           # epsilon
-        # Array{Array{Float64,2},1}(0),           # drop_ran_w
-        # Array{Array{Bool,2},1}(0),              # drop_filt_w       
-        
-        [view(zeros(2,2),:,1:2) for i in 1:2],           # delta_z_norm
-        [view(zeros(2,2),:,1:2) for i in 1:2],           # delta_z
-        [view(zeros(2,2),:,1:2) for i in 1:2],           # grad
-        [view(zeros(2,2),:,1:2) for i in 1:2],           # epsilon
-        [view(zeros(2,2),:,1:2) for i in 1:2],           # drop_ran_w
-        [view(trues(2,2),:,1:2) for i in 1:2]            # drop_filt_w     
+        [view(zeros(2,2),:,1:2) for i in 1:2],  # delta_z_norm
+        [view(zeros(2,2),:,1:2) for i in 1:2],  # delta_z
+        [view(zeros(2,2),:,1:2) for i in 1:2],  # grad
+        [view(zeros(2,2),:,1:2) for i in 1:2],  # epsilon
+        [view(zeros(2,2),:,1:2) for i in 1:2],  # drop_ran_w
+        [view(BitArray([1 1; 1 1]),:,1:2) for i in 1:2]   # drop_filt_w     
     )
 
 end
@@ -202,3 +191,14 @@ mutable struct Batch_norm_params               # we will use bn as the struct va
     )
 end
 
+
+
+# 
+# ERROR: MethodError: Cannot `convert` an object of type Array{Float64,2} 
+# to an object of type SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true}
+# This may have arisen from a call to the constructor SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true}(...),
+# since type constructors fall back to convert methods.
+
+# ERROR: MethodError: Cannot `convert` 
+# an object of type SubArray{Bool,2,Array{Bool,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true} to an
+#    object of type SubArray{Bool,2,BitArray{2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true}

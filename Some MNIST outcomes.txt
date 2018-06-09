@@ -1259,7 +1259,7 @@ ERROR: InexactError()
 Stacktrace:
  [1] convert(::Type{Bool}, ::Float64) at ./bool.jl:7
  [2] copy!(::IndexLinear, ::Array{Bool,2}, ::IndexLinear, ::Array{Float64,2}) at ./abstractarray.jl:656 (repeats 2 times)
- [3] preallocate_feedfwd!(::GeneralNN.Model_data, ::GeneralNN.NN_parameters, ::Int64, ::Bool, ::Bool) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/setup_functions.jl:231
+ [3] preallocate_data!(::GeneralNN.Model_data, ::GeneralNN.NN_parameters, ::Int64, ::Bool, ::Bool) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/setup_functions.jl:231
  [4] setup_model!(::GeneralNN.Training_view, ::GeneralNN.Hyper_parameters, ::GeneralNN.NN_parameters, ::GeneralNN.Batch_norm_params, ::Bool, ::GeneralNN.Model_data, ::GeneralNN.Model_data) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/setup_functions.jl:177
  [5] #run_training#156(::Array{String,1}, ::String, ::Float64, ::Int64, ::Float64, ::String, ::Array{Float64,1}, ::Bool, ::Array{Float64,1}, ::String, ::String, ::Bool, ::String, ::Array{Float64,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at /Users/lewis/Dropbox/Online Coursework/ML Independent explorations/nn by hand/GeneralNN.jl:334
  [6] (::GeneralNN.#kw##run_training)(::Array{Any,1}, ::GeneralNN.#run_training, ::String, ::Int64, ::Array{Int64,1}) at ./<missing>:0
