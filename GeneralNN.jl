@@ -126,7 +126,7 @@ This is a front-end function that verifies all inputs and calls run_training().
         plots           ::= determines training results collected and plotted
                             any choice of ["Learning", "Cost", "Training", "Test"];
                             for no plots use [""] or ["none"]
-        reg             ::= type of regularization, must be one of "L2","Dropout", ""
+        reg             ::= type of regularization, must be one of "L2", ""
         dropout         ::= true to use dropout network or false
         droplim         ::= array of values between 0.5 and 1.0 determines how much dropout for
                             hidden layers and output layer (ex: [0.8] or [0.8,0.9, 1.0]).  A single
@@ -168,6 +168,7 @@ function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha:
         error("Number of hidden units in a layer must be an integer value between 1 and 4096.")
     end
 
+    
     if alpha < 0.000001
         warn("Alpha learning rate set too small. Setting to default 0.35")
         alpha = 0.35
@@ -186,14 +187,16 @@ function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha:
     end
 
     norm_mode = lowercase(norm_mode)
-    if !in(norm_mode, ["", "none", "standard", "minmax"])
-        warn("Invalid norm mode: $norm_mode, using \"none\".")
-    end
+        if !in(norm_mode, ["", "none", "standard", "minmax"])
+            warn("Invalid norm mode: $norm_mode, using \"none\".")
+            norm_mode = ""
+        end
 
     units = lowercase(units)
-    if !in(units, ["l_relu", "sigmoid", "relu"])
-        warn("units must be \"relu,\" \"l_relu,\" or \"sigmoid\". Setting to default \"sigmoid\".")
-    end
+        if !in(units, ["l_relu", "sigmoid", "relu"])
+            warn("units must be \"relu,\" \"l_relu,\" or \"sigmoid\". Setting to default \"sigmoid\".")
+            units = "sigmoid"
+        end
 
     if in(units, ["l_relu", "relu"])
         if (norm_mode=="" || norm_mode=="none") && !do_batch_norm
@@ -201,19 +204,22 @@ function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha:
         end
     end
 
-    opt = lowercase(opt)  # match title case for string argument
+opt = lowercase(opt)  # match title case for string argument
     if !in(opt, ["momentum", "adam", ""])
         warn("opt must be \"momentum\" or \"adam\" or \"\" (nothing).  Setting to \"\" (nothing).")
         opt = ""
-    elseif in(opt, ["momentum", "adam"])
+    end
+
+
+    if in(opt, ["momentum", "adam"])
         if size(opt_params) == (2,)
             if opt_params[1] > 1.0 || opt_params[1] < 0.5
                 warn("First opt_params for momentum or adam should be between 0.5 and 0.999. Using default")
-                opt_params[1] = 0.9
+                opt_params = [0.9, opt_params[2]]
             end
             if opt_params[2] > 1.0 || opt_params[2] < 0.8
                 warn("second opt_params for adam should be between 0.8 and 0.999. Using default")
-                opt_params[2] = 0.999
+                opt_params = [opt_params[1], 0.999]
             end
         else
             warn("opt_params must be 2 element array with values between 0.9 and 0.999. Using default")
@@ -221,11 +227,12 @@ function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha:
         end
     end
 
+
     reg = titlecase(lowercase(reg))
-    if !in(reg, ["L2", ""])
-        warn("reg must be \"L2\" or \"\" (nothing). Setting to default \"L2\".")
-        reg = "L2"
-    end
+        if !in(reg, ["L2", ""])
+            warn("reg must be \"L2\" or \"\" (nothing). Setting to default \"L2\".")
+            reg = "L2"
+        end
 
     if dropout
         if !all([(c>=.2 && c<=1.0) for c in droplim])
@@ -233,37 +240,42 @@ function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha:
         end
     end
 
+    # lambda
     if reg == "L2"
         if lambda < 0.0  # set reg = "" relu with batch_norm
             warn("Lambda regularization rate must be positive floating point value. Setting to 0.01")
-            lambda = 0.01
+            lamba = 0.01
         elseif lambda > 5.0
             warn("Lambda regularization rate set too large. Setting to max of 5.0")
-            lambda = 5.0
+            lambda == 5.0
         end
     end
 
-    if size(learn_decay) != (2,)
-        warn("learn_decay must be a vector of 2 numbers. Using no learn_decay")
-        learn_decay = [1.0, 1.0]
-    elseif !(learn_decay[1] >= 0.0 && learn_decay[1] <= 1.0)
-        warn("First value of learn_decay must be >= 0.0 and < 1.0. Using no learn_decay")
-        learn_decay = [1.0, 1.0]
-    elseif !(learn_decay[2] >= 1.0 && learn_decay[2] < 10.0)
-        warn("Second value of learn_decay must be >= 1.0 and <= 10.0. Using no learn_decay")
-        learn_decay = [1.0, 1.0]
-    end
+    learn_decay = 
+        if size(learn_decay) != (2,)
+            warn("learn_decay must be a vector of 2 numbers. Using no learn_decay")
+            [1.0, 1.0]
+        elseif !(learn_decay[1] >= 0.0 && learn_decay[1] <= 1.0)
+            warn("First value of learn_decay must be >= 0.0 and < 1.0. Using no learn_decay")
+            [1.0, 1.0]
+        elseif !(learn_decay[2] >= 1.0 && learn_decay[2] < 10.0)
+            warn("Second value of learn_decay must be >= 1.0 and <= 10.0. Using no learn_decay")
+            [1.0, 1.0]
+        else
+            [learn_decay[1], floor(learn_decay[2])]
+        end
 
     valid_plots = ["Training", "Test", "Learning", "Cost", "None", ""]
     plots = titlecase.(lowercase.(plots))  # user input doesn't have use perfect case
     new_plots = [pl for pl in valid_plots if in(pl, plots)] # both valid and input by the user
-    if sort(new_plots) != sort(plots) # the plots list included something not in valid_plots
-        warn("Plots argument can only include \"Training\", \"Test\", \"Learning\" and \"Cost\" or \"None\" or \"\".
-            \nProceeding no plots [\"None\"].")
-        plots = ["None"]
-    else
-        plots = new_plots
-    end
+    plots = 
+        if sort(new_plots) != sort(plots) # the plots list included something not in valid_plots
+            warn("Plots argument can only include \"Training\", \"Test\", \"Learning\" and \"Cost\" or \"None\" or \"\".
+                \nProceeding no plots [\"None\"].")
+            ["None"]
+        else
+            new_plots
+        end
 
     run_training(matfname, epochs, n_hid,
         plots=plots, reg=reg, alpha=alpha, mb_size_in=mb_size_in, lambda=lambda,

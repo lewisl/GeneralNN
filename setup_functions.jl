@@ -145,7 +145,14 @@ function setup_model!(mb, hp, tp, bn, dotest, train, test)
         hp.opt = ""
     end
 
-    hp.do_learn_decay = hp.learn_decay == [1.0, 1.0] ? false :  true
+    hp.do_learn_decay = 
+        if hp.learn_decay == [1.0, 1.0]
+            false
+        elseif hp.learn_decay = []
+            false
+        else
+            true
+        end
 
     # dropout parameters: droplim is in hp (Hyper_parameters),
     #    drop_ran_w and drop_filt_w are in mb or train (Model_data)
@@ -153,7 +160,7 @@ function setup_model!(mb, hp, tp, bn, dotest, train, test)
     if hp.dropout
         # fill droplim to match number of hidden layers
         if length(hp.droplim) > length(hp.n_hid)
-            hp.droplim = hp.droplim[1:hp.n_hid] # truncate
+            hp.droplim = hp.droplim[1:length(hp.n_hid)] # truncate
         elseif length(hp.droplim) < length(hp.n_hid)
             for i = 1:length(hp.n_hid)-length(hp.droplim)
                 push!(hp.droplim,hp.droplim[end]) # pad
@@ -239,8 +246,6 @@ function preallocate_data!(dat, nnp, n, hp)
     end
 
 end
-
-
 
 
 function preallocate_nn_params!(tp, hp, n_hid, in_k, n, out_k)
@@ -347,7 +352,6 @@ function preallocate_batchnorm!(bn, mb, layer_units)
 
 end
 
-###########################################################################
 
 """
 define and choose functions to be used in neural net training
@@ -363,51 +367,59 @@ function setup_functions!(units, out_k, opt, classify)
     global cost_function
     global optimization_function!
 
-    if units == "sigmoid"
-        unit_function! = sigmoid!
-        do_batch_norm = false
-    elseif units == "l_relu"
-        unit_function! = l_relu!
-    elseif units == "relu"
-        unit_function! = relu!
-    end
-
-    if unit_function! == sigmoid!
-        gradient_function! = sigmoid_gradient!
-    elseif unit_function! == l_relu!
-        gradient_function! = l_relu_gradient!
-    elseif unit_function! == relu!
-        gradient_function! = relu_gradient!
-    end
-
-    if out_k > 1  # more than one output (unit)
-        if classify == "sigmoid"
-            classify_function! = sigmoid!
-        elseif classify == "softmax"
-            classify_function! = softmax!
-        else
-            error("Function to classify output labels must be \"sigmoid\" or \"softmax\".")
+    unit_function! =
+        if units == "sigmoid"
+            sigmoid!
+        elseif units == "l_relu"
+            l_relu!
+        elseif units == "relu"
+            relu!
         end
-    else
-        if classify == "sigmoid"
-            classify_function! = sigmoid!  # for one output label
-        elseif classify == "regression"
-            classify_function! = regression!
-        else
-            error("Function to classify output must be \"sigmoid\" or \"regression\".")
-        end
-    end
 
-    if opt == "momentum"
-        optimization_function! = momentum!
-    elseif opt == "adam"
-        optimization_function! = adam!
-    else
-        optimization_function! = no_optimization
-    end
+    gradient_function! =
+        if unit_function! == sigmoid!
+            sigmoid_gradient!
+        elseif unit_function! == l_relu!
+            l_relu_gradient!
+        elseif unit_function! == relu!
+            relu_gradient!
+        end
+
+    classify_function! = 
+        if out_k > 1  # more than one output (unit)
+            if classify == "sigmoid"
+                sigmoid!
+            elseif classify == "softmax"
+                softmax!
+            else
+                error("Function to classify output labels must be \"sigmoid\" or \"softmax\".")
+            end
+        else
+            if classify == "sigmoid"
+                sigmoid!  # for one output label
+            elseif classify == "regression"
+                regression!
+            else
+                error("Function to classify output must be \"sigmoid\" or \"regression\".")
+            end
+        end
+
+    optimization_function! = 
+        if opt == "momentum"
+            momentum!
+        elseif opt == "adam"
+            adam!
+        else
+            no_optimization
+        end
 
     # set cost function
-    cost_function = classify=="regression" ? mse_cost : cross_entropy_cost
+    cost_function = 
+        if classify=="regression" 
+            mse_cost 
+        else
+            cross_entropy_cost
+        end
 
 end
 

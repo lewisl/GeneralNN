@@ -92,7 +92,7 @@ function step_lrn_decay!(hp, ep_i)
     elseif (rem(ep_i,stepsize) == 0.0)
         hp.alpha *= decay_rate
         hp.alphaovermb *= decay_rate
-        println("\n\n **** at $ep_i stepping down learning rate to $(hp.alpha)")
+        println("     **** at $ep_i stepping down learning rate to $(hp.alpha)")
     else
         return
     end
@@ -122,6 +122,7 @@ end
 function l_relu!(z::AbstractArray{Float64,2}, a::AbstractArray{Float64,2}) # leaky relu
     a[:] = map(j -> j >= 0.0 ? j : l_relu_neg * j, z)
 end
+
 
 function relu!(z::AbstractArray{Float64,2}, a::AbstractArray{Float64,2})
     a[:] = max.(z, 0.0)
