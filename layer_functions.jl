@@ -118,6 +118,9 @@ function sigmoid!(z::AbstractArray{Float64,2}, a::AbstractArray{Float64,2})
     a[:] = 1.0 ./ (1.0 .+ exp.(-z))
 end
 
+function tanh_act!(z::AbstractArray{Float64,2}, a::AbstractArray{Float64,2})
+    a[:] = tanh.(z)
+end
 
 function l_relu!(z::AbstractArray{Float64,2}, a::AbstractArray{Float64,2}) # leaky relu
     a[:] = map(j -> j >= 0.0 ? j : l_relu_neg * j, z)
@@ -153,6 +156,11 @@ end
 function sigmoid_gradient!(z::AbstractArray{Float64,2}, grad::AbstractArray{Float64,2})
     sigmoid!(z, grad)
     grad[:] = grad .* (1.0 .- grad)
+end
+
+
+function tanh_act_gradient!(z::AbstractArray{Float64,2}, grad::AbstractArray{Float64,2})
+    grad[:] = 1.0 .- tanh.(z).^2
 end
 
 

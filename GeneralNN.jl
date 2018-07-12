@@ -1,9 +1,9 @@
 #DONE
-
+#   implement tanh activations with gradients
 
 
 #TODO
-#   relax minibatch size being exact factor of training data size
+#   revise initialization and make it depend on type of layer unit
 #   try different versions of ensemble predictions_vector
 #   allow dropout to drop from the input layer
 #   augment data by perturbing the images
@@ -64,9 +64,20 @@ module GeneralNN
 # data structures for neural network
 export NN_parameters, Model_data, Batch_norm_params, Hyper_parameters
 
-# functions to use
-export train_nn, test_score, save_params, load_params, accuracy
-export extract_data, normalize_inputs, normalize_replay!, nnpredict
+# functions you can use
+export 
+    train_nn, 
+    test_score, 
+    save_params, 
+    load_params, 
+    accuracy,
+    extract_data, 
+    normalize_inputs, 
+    normalize_replay!, 
+    nnpredict,
+    display_mnist_digit,
+    wrong_preds,
+    right_preds
 
 using MAT
 using JLD2
@@ -75,7 +86,6 @@ using PyCall
 using Plots
 pyplot()  # initialize the backend used by Plots
 @pyimport seaborn  # prettier charts
-# using ImageView    BIG BUG HERE--SEGFAULT--REPORTED
 
 include("layer_functions.jl")
 include("nn_data_structs.jl")
@@ -122,7 +132,7 @@ This is a front-end function that verifies all inputs and calls run_training().
                            Note that epsilon is ALWAYS set to 1e-8
                            To accept defaults, don't input this parameter or use []
         classify        ::= "softmax", "sigmoid", or "regression" for only the output layer
-        units           ::= "sigmoid", "l_relu", "relu" for non-linear activation of all hidden layers
+        units           ::= "sigmoid", "l_relu", "relu", "tanh" for non-linear activation of all hidden layers
         plots           ::= determines training results collected and plotted
                             any choice of ["Learning", "Cost", "Training", "Test"];
                             for no plots use [""] or ["none"]
@@ -193,8 +203,8 @@ function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha:
         end
 
     units = lowercase(units)
-        if !in(units, ["l_relu", "sigmoid", "relu"])
-            warn("units must be \"relu,\" \"l_relu,\" or \"sigmoid\". Setting to default \"sigmoid\".")
+        if !in(units, ["l_relu", "sigmoid", "relu", "tanh"])
+            warn("units must be \"relu,\" \"l_relu,\" \"tanh\" or \"sigmoid\". Setting to default \"sigmoid\".")
             units = "sigmoid"
         end
 
@@ -460,8 +470,9 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     # plot the progress of cost and/or learning accuracy
     plot_output(plotdef)
 
-    return train.a[nnp.output_layer], test.a[nnp.output_layer], nnp, bn, hp;  
-     # training predictions, test predictions, parameters: trained, batch_norm, hyper
+    # train inputs, train targets, train predictions, test predictions, trained parameters, batch_norm parms., hyper parms.
+    return train.inputs, train.targets, train.a[nnp.output_layer], test.a[nnp.output_layer], nnp, bn, hp;  
+     
 end  # function run_training
 
 
@@ -709,6 +720,24 @@ function accuracy(targets, preds, i)
     return fracright
 end
 
+
+function wrong_preds(targets, preds, cf = !isequal)
+    if size(targets,1) > 1
+        targetmax = ind2sub(size(targets),vec(findmax(targets,1)[2]))[1]
+        predmax = ind2sub(size(preds),vec(findmax(preds,1)[2]))[1]
+        wrongs = find(cf.(targetmax, predmax))
+    else
+        # works because single output unit is sigmoid--well, what do we do about regression? we use r_squared
+        choices = [j >= 0.5 ? 1.0 : 0.0 for j in preds]
+        wrongs = find(cf.(choices, targets))
+    end
+    return wrongs
+end
+
+
+function right_preds(targets, preds)
+    return wrong_preds(targets, preds, isequal)
+end
 
 function r_squared(targets, preds)
     ybar = mean(targets)

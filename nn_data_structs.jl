@@ -36,7 +36,7 @@ end
 struct Hyper_parameters holds hyper_parameters used to control training
 """
 mutable struct Hyper_parameters          # we will use hp as the struct variable
-    units::String
+    units::String               # type of units in all hidden layers -- some day relax this requirement
     alpha::Float64              # learning 
     lambda::Float64             # L2 regularization
     n_hid::Array{Int64,1}       # number of units in each hidden layer

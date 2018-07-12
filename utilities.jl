@@ -1,4 +1,5 @@
 
+import PyPlot  # avoid namespace confusion with using Plots -- requires qualifying all names from PyPlot
 
 
 """
@@ -69,10 +70,22 @@ end
 
 """Print the sizes of matrices you pass in as Dict("name"=>var,...)"""
 function printdims(indict)
-    n = length(indict)
     println("\nSizes of matrices\n")
     for (n, item) in indict
         println(n,": ",size(item))
     end
     println("")
+end
+
+
+"""
+Pass a dim1 x dim2 by 1 column vector holding the image data to display it.
+Also pass the dimensions as 2 element vector (default is [28,28]).
+"""
+function display_mnist_digit(digit_data, digit_dims=[28,28])
+    PyPlot.ion()
+    PyPlot.matshow(reshape(digit_data, digit_dims...)'); # transpose because inputs were transposed
+    PyPlot.axis("off")
+    println("Press enter to close image window..."); readline()
+    PyPlot.close()
 end

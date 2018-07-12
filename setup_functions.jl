@@ -21,7 +21,7 @@ Multiple Returns:
 .....................note that the factors may be vectors for multiple rows of x
 
 """
-function extract_data(matfname::String, norm_mode::String="none")
+function extract_data(matfname::String)
     # read the data
     df = matread(matfname)
 
@@ -99,7 +99,7 @@ end
 
 function setup_model!(mb, hp, tp, bn, dotest, train, test)
 
-#setup mini-batch
+    #setup mini-batch
     if hp.mb_size_in < 1
         hp.mb_size_in = train.n  # use 1 (mini-)batch with all of the examples
         hp.mb_size = train.n
@@ -113,10 +113,10 @@ function setup_model!(mb, hp, tp, bn, dotest, train, test)
     hp.alphaovermb = hp.alpha / hp.mb_size  # calc once, use in hot loop
     hp.do_batch_norm = hp.n_mb == 1 ? false : hp.do_batch_norm  # no batch normalization for 1 batch
 
+    # randomize order of all training samples:
+        # labels in training data often in a block, which will make
+        # mini-batch train badly because a batch will not contain mix of target labels
     if hp.mb_size < train.n
-        # randomize order of all training samples:
-            # labels in training data often in a block, which will make
-            # mini-batch train badly because a batch will not contain mix of target labels
         select_index = randperm(train.n)
         train.inputs[:] = train.inputs[:, select_index]
         train.targets[:] = train.targets[:, select_index]
@@ -148,7 +148,7 @@ function setup_model!(mb, hp, tp, bn, dotest, train, test)
     hp.do_learn_decay = 
         if hp.learn_decay == [1.0, 1.0]
             false
-        elseif hp.learn_decay = []
+        elseif hp.learn_decay == []
             false
         else
             true
@@ -374,6 +374,8 @@ function setup_functions!(units, out_k, opt, classify)
             l_relu!
         elseif units == "relu"
             relu!
+        elseif units == "tanh"
+            tanh_act!
         end
 
     gradient_function! =
@@ -383,6 +385,8 @@ function setup_functions!(units, out_k, opt, classify)
             l_relu_gradient!
         elseif unit_function! == relu!
             relu_gradient!
+        elseif unit_function! == tanh_act!
+            tanh_act_gradient!
         end
 
     classify_function! = 
