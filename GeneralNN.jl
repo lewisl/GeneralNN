@@ -1,8 +1,8 @@
 #DONE
-#   implement tanh activations with gradients
-
+#   capture output metrics in a little file
 
 #TODO
+#   save the plotdef and don't plot it
 #   revise initialization and make it depend on type of layer unit
 #   try different versions of ensemble predictions_vector
 #   allow dropout to drop from the input layer
@@ -24,14 +24,13 @@
 #   fix predictions
 #   make affine units a separate layer with functions for feedfwd, gradient and test--do we need to?
 #   try "flatscale" x = x / max(x)
-#   performance improvements for batch_norm calculations
 #   implement a gradient checking function with option to run it
 #   convolutional layers
 #   pooling layers
 #   implement early stopping
 #   separate plots data structure from stats data structure?
 
-
+#  __precompile__()  # not obvious this does anything at all as no persistent cache is created
 
 """
 Module GeneralNN:
@@ -40,7 +39,8 @@ Includes the following functions to run directly:
 
 - train_nn() -- train sigmoid/softmax neural networks for up to 9 hidden layers
 - test_score() -- cost and accuracy given test data and saved theta
-- save_theta() -- save theta, which is returned by train_nn
+- save_params() -- save all model parameters
+- load_params() -- load all model parameters
 - predictions_vector() -- predictions given x and saved theta
 - accuracy() -- calculates accuracy of predictions compared to actual labels
 - extract_data() -- extracts data for MNIST from matlab files
@@ -77,7 +77,8 @@ export
     nnpredict,
     display_mnist_digit,
     wrong_preds,
-    right_preds
+    right_preds,
+    plot_output
 
 using MAT
 using JLD2
@@ -146,6 +147,8 @@ This is a front-end function that verifies all inputs and calls run_training().
                             learning rate; second is >= 1.0 and <= 10.0 for number of times to 
                             reduce learning decay_rate
                             [1.0, 1.0] signals don't do learning decay
+        save_stats      ::Bool.  If true, save the plotdef that contains stats gathered while running 
+                            the training.  You can plot the file separately.
 
 
 """
@@ -153,7 +156,7 @@ function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha:
     mb_size_in::Int64=0, lambda::Float64=0.01, classify::String="softmax", norm_mode::String="none",
     opt::String="", opt_params::Array{Float64,1}=[0.9,0.999], units::String="sigmoid", do_batch_norm::Bool=false,
     reg::String="L2", dropout::Bool=false, droplim::Array{Float64,1}=[0.5], plots::Array{String,1}=["Training", "Learning"],
-    learn_decay::Array{Float64,1}=[1.0, 1.0])
+    learn_decay::Array{Float64,1}=[1.0, 1.0], save_stats::Bool=false)
 
     ################################################################################
     #   This is a front-end function that verifies all inputs and calls run_training
@@ -290,7 +293,8 @@ opt = lowercase(opt)  # match title case for string argument
     run_training(matfname, epochs, n_hid,
         plots=plots, reg=reg, alpha=alpha, mb_size_in=mb_size_in, lambda=lambda,
         opt=opt, opt_params=opt_params, classify=classify, dropout=dropout, droplim=droplim,
-        norm_mode=norm_mode, do_batch_norm=do_batch_norm, units=units, learn_decay=learn_decay);
+        norm_mode=norm_mode, do_batch_norm=do_batch_norm, units=units, learn_decay=learn_decay,
+        save_stats=save_stats);
 end
 
 
@@ -298,7 +302,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     plots::Array{String,1}=["Training", "Learning"], reg="L2", alpha=0.35,
     mb_size_in=0, lambda=0.01, opt="", opt_params=[], dropout=false, droplim=[0.5],
     classify="softmax", norm_mode="none", do_batch_norm=false, units="sigmoid",
-    learn_decay::Array{Float64,1}=[1.0, 1.0])
+    learn_decay::Array{Float64,1}=[1.0, 1.0], save_stats=false)
 
 
     # seed random number generator.  For runs of identical models the same weight initialization
@@ -401,7 +405,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
 
             t += 1  # update counter
 
-            update_training_views!(mb, train, nnp, hp, colrng)  # next minibatch
+            update_training_views!(mb, train, nnp, hp, colrng)  # next minibatch                
 
             feedfwd!(mb, nnp, bn,  hp)  # for all layers
 
@@ -436,39 +440,51 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     # print and plot training statistics after all epochs
     #####################################################################
 
-    println("Training time: ",toq()," seconds")  # cpu time since tic() =>  toq() returns secs without printing
+    # file for simple training stats
+    fname = repr(Dates.now())
+    fname = "nnstats-" * replace(fname, r"[.:]", "-") * ".txt"
+    stats = open(fname, "w")
+    println(stats, "Training time: ",toq()," seconds")  # cpu time since tic() =>  toq() returns secs without printing
 
     feedfwd!(train, nnp, bn, hp, istrain=false)  # output for entire training set
-    println("Fraction correct labels predicted training: ",
+    println(stats, "Fraction correct labels predicted training: ",
             hp.classify == "regression" ? r_squared(train.targets, train.a[nnp.output_layer])
                 : accuracy(train.targets, train.a[nnp.output_layer],epochs))
-    println("Final cost training: ", cost_function(train.targets, train.a[nnp.output_layer], train.n,
+    println(stats, "Final cost training: ", cost_function(train.targets, train.a[nnp.output_layer], train.n,
                     nnp.theta, hp, nnp.output_layer))
 
     # output test statistics
     if dotest
         feedfwd!(test, nnp, bn,  hp, istrain=false)
-        println("Fraction correct labels predicted test: ",
+        println(stats, "Fraction correct labels predicted test: ",
                 hp.classify == "regression" ? r_squared(test.targets, test.a[nnp.output_layer])
                     : accuracy(test.targets, test.a[nnp.output_layer],epochs))
-        println("Final cost test: ", cost_function(test.targets, test.a[nnp.output_layer], test.n,
+        println(stats, "Final cost test: ", cost_function(test.targets, test.a[nnp.output_layer], test.n,
             nnp.theta, hp, nnp.output_layer))
     end
 
     # output improvement of last 10 iterations for test data
     if plotdef["plot_switch"]["Test"]
         if plotdef["plot_switch"]["Learning"]
-            println("Test data accuracy in final 10 iterations:")
+            println(stats, "Test data accuracy in final 10 iterations:")
             printdata = plotdef["fracright_history"][end-10+1:end, plotdef["col_test"]]
             for i=1:10
-                @printf("%0.3f : ", printdata[i])
+                @printf(stats, "%0.3f : ", printdata[i])
             end
             print("\n")
         end
     end
 
-    # plot the progress of cost and/or learning accuracy
-    plot_output(plotdef)
+    # print the stats
+    close(stats)
+    println(read(fname, String))
+
+    # plot or save the progress of cost and/or learning accuracy
+    if save_stats
+        save_plotdef_jld2(plotdef)
+    else
+        plot_output(plotdef)
+    end
 
     # train inputs, train targets, train predictions, test predictions, trained parameters, batch_norm parms., hyper parms.
     return train.inputs, train.targets, train.a[nnp.output_layer], test.a[nnp.output_layer], nnp, bn, hp;  
@@ -633,7 +649,21 @@ function batch_norm_back!(nnp, dat, bn, hl)
 end
 
 
-function plot_output(plotdef)
+"""
+    Two methods    
+
+    method plot_output(plotdef::Dict)
+
+    Plots the plotdef and creates 1 or 2 PyPlot plot windows of the learning (accuracy)
+    and/or cost from each training epoch.
+
+    method plot_output(fname::String)
+
+    Accepts a string name for the file containing a previously saved plotdef
+    and plots it, per the other method.
+
+"""
+function plot_output(plotdef::Dict)
     # plot the progress of training cost and/or learning
     if (plotdef["plot_switch"]["Training"] || plotdef["plot_switch"]["Test"])
 
@@ -658,6 +688,16 @@ function plot_output(plotdef)
 end
 
 
+function plot_output(fname::String)
+    f = jldopen(fname, "r")
+    println(typeof(f))
+    plotdef = f["plotdef"]
+    close(f)
+    f = []
+    plot_output(plotdef)
+end
+
+
 function gather_stats!(i, plotdef, train, test, nnp, bn, cost_function, train_n, test_n, hp)
 
     if plotdef["plot_switch"]["Training"]
@@ -676,6 +716,7 @@ function gather_stats!(i, plotdef, train, test, nnp, bn, cost_function, train_n,
 
     if plotdef["plot_switch"]["Test"]
         feedfwd!(test, nnp, bn, hp, istrain=false)
+
         if plotdef["plot_switch"]["Cost"]
             cost = cost_function(test.targets,
                 test.a[nnp.output_layer], test.n, nnp.theta, hp, nnp.output_layer)

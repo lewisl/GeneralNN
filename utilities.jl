@@ -32,8 +32,12 @@ function save_params(jld_fname, nnp, bn, hp; train_y=[], test_y=[])
         f["nnp"] = nnp
         f["hp"] = hp
         f["bn"] = bn
-        if size(train_y) != (0, ) ;  f["train_y"] = train_y ; end
-        if size(test_y) != (0, ) ;  f["test_y"] = test_y ; end
+        if size(train_y) != (0, ) 
+              f["train_y"] = train_y 
+        end
+        if size(test_y) != (0, )
+            f["test_y"] = test_y 
+        end
     end
 
 end
@@ -58,6 +62,15 @@ function load_params(jld_fname)
     close(f)
     f = []   # flush it before gc gets to it
     return ret
+end
+
+
+function save_plotdef_jld2(plotdef)
+    fname = repr(Dates.now())
+    fname = "plotdef-" * replace(fname, r"[.:]", "-") * ".jld2"
+    jldopen(fname, "w") do f
+        f["plotdef"] = plotdef
+    end
 end
 
 

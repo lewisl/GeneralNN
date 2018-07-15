@@ -91,13 +91,13 @@ Struct Model_data hold examples and all layer outputs-->
 pre-allocate to reduce memory allocations and improve speed
 """
 mutable struct Model_data               # we will use train for inputs and test for test data
-    # feedforward pass
+    # used in feedforward pass
     inputs::Array{Float64,2}            # in_k features by n examples
     targets::Array{Float64,2}           # labels for each example
     a::Array{Array{Float64,2},1}
     z::Array{Array{Float64,2},1}
     z_norm::Array{Array{Float64,2},1}         # same size as z--for batch_norm
-    # backprop (training) pass
+    # used in backprop (training) pass
     delta_z_norm::Array{Array{Float64,2},1}   # same size as z
     delta_z::Array{Array{Float64,2},1}        # same size as z
     grad::Array{Array{Float64,2},1}
@@ -107,7 +107,7 @@ mutable struct Model_data               # we will use train for inputs and test 
     # descriptive
     n::Int64                                  # number of examples
     in_k::Int64                               # number of input features
-    out_k::Int64                              # number of output features (units)
+    out_k::Int64                              # number of output features
     
 
     Model_data() = new(                 # empty constructor
@@ -130,10 +130,9 @@ end
 
 
 """
-Struct Training_view holds views to all model data and all layer outputs-->
-pre-allocate to reduce memory allocations and improve speed
+Struct Training_view holds views to all model data that will be broken into minibatches
 """
-mutable struct Training_view               # we will use mb for mini-batch training
+mutable struct Training_view               # we will use mb for as the variable for minibatches
     # array of views
     a::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     targets::SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true}
@@ -176,8 +175,8 @@ mutable struct Batch_norm_params               # we will use bn as the struct va
 
     mu::Array{Array{Float64,1},1}              # same size as bias = no. of layer units
     stddev::Array{Array{Float64,1},1}          #    ditto
-    mu_run::Array{Array{Float64,1},1}
-    std_run::Array{Array{Float64,1},1}
+    mu_run::Array{Array{Float64,1},1}          # running average of mu
+    std_run::Array{Array{Float64,1},1}         # running average of mu
 
     Batch_norm_params() = new(           # empty constructor
         Array{Array{Float64,1},1}(0),    # gam::Array{Array{Float64,1}}
