@@ -147,8 +147,8 @@ This is a front-end function that verifies all inputs and calls run_training().
                             learning rate; second is >= 1.0 and <= 10.0 for number of times to 
                             reduce learning decay_rate
                             [1.0, 1.0] signals don't do learning decay
-        save_stats      ::Bool.  If true, save the plotdef that contains stats gathered while running 
-                            the training.  You can plot the file separately.
+        plot_now        ::Bool.  If true, plot training stats and save the plotdef that contains stats 
+                            gathered while running the training.  You can plot the file separately, later.
 
 
 """
@@ -156,7 +156,7 @@ function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha:
     mb_size_in::Int64=0, lambda::Float64=0.01, classify::String="softmax", norm_mode::String="none",
     opt::String="", opt_params::Array{Float64,1}=[0.9,0.999], units::String="sigmoid", do_batch_norm::Bool=false,
     reg::String="L2", dropout::Bool=false, droplim::Array{Float64,1}=[0.5], plots::Array{String,1}=["Training", "Learning"],
-    learn_decay::Array{Float64,1}=[1.0, 1.0], save_stats::Bool=false)
+    learn_decay::Array{Float64,1}=[1.0, 1.0], plot_now::Bool=true)
 
     ################################################################################
     #   This is a front-end function that verifies all inputs and calls run_training
@@ -294,7 +294,7 @@ opt = lowercase(opt)  # match title case for string argument
         plots=plots, reg=reg, alpha=alpha, mb_size_in=mb_size_in, lambda=lambda,
         opt=opt, opt_params=opt_params, classify=classify, dropout=dropout, droplim=droplim,
         norm_mode=norm_mode, do_batch_norm=do_batch_norm, units=units, learn_decay=learn_decay,
-        save_stats=save_stats);
+        plot_now=plot_now);
 end
 
 
@@ -302,7 +302,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     plots::Array{String,1}=["Training", "Learning"], reg="L2", alpha=0.35,
     mb_size_in=0, lambda=0.01, opt="", opt_params=[], dropout=false, droplim=[0.5],
     classify="softmax", norm_mode="none", do_batch_norm=false, units="sigmoid",
-    learn_decay::Array{Float64,1}=[1.0, 1.0], save_stats=false)
+    learn_decay::Array{Float64,1}=[1.0, 1.0], plot_now=true)
 
 
     # seed random number generator.  For runs of identical models the same weight initialization
@@ -479,12 +479,11 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     close(stats)
     println(read(fname, String))
 
-    # plot or save the progress of cost and/or learning accuracy
-    if save_stats
-        save_plotdef_jld2(plotdef)
-    else
-        plot_output(plotdef)
-    end
+    # save cost and accuracy from training
+    save_plotdef_jld2(plotdef)
+    
+    # plot now
+    plot_now && plot_output(plotdef)
 
     # train inputs, train targets, train predictions, test predictions, trained parameters, batch_norm parms., hyper parms.
     return train.inputs, train.targets, train.a[nnp.output_layer], test.a[nnp.output_layer], nnp, bn, hp;  
