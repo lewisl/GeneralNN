@@ -1,8 +1,8 @@
 #DONE
-#   capture output metrics in a little file
+
+
 
 #TODO
-#   save the plotdef and don't plot it
 #   revise initialization and make it depend on type of layer unit
 #   try different versions of ensemble predictions_vector
 #   allow dropout to drop from the input layer
