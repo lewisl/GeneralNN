@@ -37,8 +37,8 @@ struct Hyper_parameters holds hyper_parameters used to control training
 """
 mutable struct Hyper_parameters          # we will use hp as the struct variable
     units::String               # type of units in all hidden layers -- some day relax this requirement
-    alpha::Float64              # learning 
-    lambda::Float64             # L2 regularization
+    alpha::Float64              # learning rate
+    lambda::Float64             # L2 regularization rate
     n_hid::Array{Int64,1}       # number of units in each hidden layer
     b1::Float64                 # 1st optimization for momentum or Adam
     b2::Float64                 # 2nd optimization parameter for Adam
@@ -121,7 +121,7 @@ mutable struct Model_data               # we will use train for inputs and test 
         Array{Array{Float64,2},1}(0),   # grad
         Array{Array{Float64,2},1}(0),   # epsilon
         Array{Array{Float64,2},1}(0),   # drop_ran_w
-        Array{BitArray{2},1}(0),      # drop_filt_w   Array{Array{Bool,2},1}
+        Array{BitArray{2},1}(0),        # drop_filt_w   Array{Array{Bool,2},1}
         0,                              # n
         0,                              # in_k
         0                               # out_k
@@ -144,8 +144,6 @@ mutable struct Training_view               # we will use mb for as the variable 
     epsilon::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     drop_ran_w::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     drop_filt_w::Array{SubArray{Bool,2,BitArray{2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-
-        # Array{SubArray{Bool,2,Array{BitArray,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
 
     Training_view() = new(
         [view(zeros(2,2),:,1:2) for i in 1:2],  # a

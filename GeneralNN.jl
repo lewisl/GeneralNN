@@ -86,6 +86,7 @@ using FileIO
 using PyCall
 using Plots
 pyplot()  # initialize the backend used by Plots
+import PyPlot
 @pyimport seaborn  # prettier charts
 
 include("layer_functions.jl")
@@ -673,10 +674,26 @@ function plot_output(plotdef::Dict)
         end
 
         if plotdef["plot_switch"]["Learning"]
-            plt_learning = plot(plotdef["fracright_history"], title="Learning Progress",
-                labels=plotdef["plot_labels"], ylims=(0.0, 1.0), reuse=false)
-                # reuse=false  open a new plot window
-            display(plt_learning)
+            # this way uses package Plots (and PyPlot under the hood)
+            # plt_learning = plot(plotdef["fracright_history"], title="Learning Progress",
+                # labels=plotdef["plot_labels"], ylims=(0.0, 1.0), reuse=false)
+
+            # this way uses package PyPlot--what a mess
+            PyPlot.ion()  # interactive--plot immediately
+            PyPlot.figure(2)
+            
+            PyPlot.plot(plotdef["fracright_history"])
+            PyPlot.legend(tuple(plotdef["plot_labels"]...), loc="best")  # Python is inflexible about arguments
+
+            # this is one extra line but a little better: explicitly match data series with label
+            # PyPlot.plot(plotdef["fracright_history"][:,1], label=plotdef["plot_labels"][1])
+            # PyPlot.plot(plotdef["fracright_history"][:,2], label=plotdef["plot_labels"][2])
+            # PyPlot.legend(loc="best")
+
+            PyPlot.axis([1,size(plotdef["fracright_history"],1),0.0, 1.1])
+            PyPlot.xticks([1; collect(5:5:size(plotdef["fracright_history"],1))]) # 1,5,10,15, etc.
+            PyPlot.title("Learning Progress")
+            PyPlot.grid(true)
         end
 
         if (plotdef["plot_switch"]["Cost"] || plotdef["plot_switch"]["Learning"])

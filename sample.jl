@@ -8,21 +8,25 @@ println(
 
 println("........ Compiling the program ........")
 
+using Revise
 include("GeneralNN.jl")
+Revise.track("GeneralNN.jl")
 using GeneralNN
 dfname = "digits10000by784.mat"
 
-println("........ Beginning training the neural network ........")
-train_inputs, train_targets, train_preds, test_preds, nnp, bn, hp = train_nn(dfname, 15, [80]; 
-    alpha = 1.10,
-    lambda = 0.001,
-    learn_decay = [0.5,2.0],
-    mb_size_in = 25, 
+println("........ Training the neural network ........")
+train_inputs, train_targets, train_preds, test_preds, nnp, bn, hp = train_nn(
+    dfname, 
+    20,  # epochs
+    [80,80];  # hidden units
+    alpha = 1.0,
+    lambda = 0.0008,
+    learn_decay = [0.55,3.0],
+    mb_size_in = 50, 
     do_batch_norm=true, 
     opt="adam", 
     units="relu", 
-    plots=["Training", "Learning", "Test"],
-    save_stats=true
+    plots=["Training", "Learning", "Test"]
     );
 
     # Convert columns of 0,1 predictions to array single value outcomes
