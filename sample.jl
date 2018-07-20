@@ -12,7 +12,7 @@ using Revise
 include("GeneralNN.jl")
 Revise.track("GeneralNN.jl")
 using GeneralNN
-dfname = "digits10000by784.mat"
+dfname = "digits5000by784.mat"
 
 println("........ Training the neural network ........")
 train_inputs, train_targets, train_preds, test_preds, nnp, bn, hp = train_nn(

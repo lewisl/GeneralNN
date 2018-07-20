@@ -83,11 +83,13 @@ export
 using MAT
 using JLD2
 using FileIO
-using PyCall
+
+# new plotting approach
 using Plots
-pyplot()  # initialize the backend used by Plots
-import PyPlot
-@pyimport seaborn  # prettier charts
+plotlyjs()  # PlotlyJS backend to local electron window
+
+import Measures: Length, AbsoluteLength, Measure, BoundingBox, mm, cm, inch, pt, width, height, w, h
+
 
 include("layer_functions.jl")
 include("nn_data_structs.jl")
@@ -668,32 +670,17 @@ function plot_output(plotdef::Dict)
     if (plotdef["plot_switch"]["Training"] || plotdef["plot_switch"]["Test"])
 
         if plotdef["plot_switch"]["Cost"]
+            plotlyjs(size=(600,400))
             plt_cost = plot(plotdef["cost_history"], title="Cost Function",
-                labels=plotdef["plot_labels"], ylims=(0.0, Inf))
+                labels=plotdef["plot_labels"], ylims=(0.0, Inf), bottom_margin=7mm)
             display(plt_cost)  # or can use gui()
         end
 
         if plotdef["plot_switch"]["Learning"]
-            # this way uses package Plots (and PyPlot under the hood)
-            # plt_learning = plot(plotdef["fracright_history"], title="Learning Progress",
-                # labels=plotdef["plot_labels"], ylims=(0.0, 1.0), reuse=false)
-
-            # this way uses package PyPlot--what a mess
-            PyPlot.ion()  # interactive--plot immediately
-            PyPlot.figure(2)
-            
-            PyPlot.plot(plotdef["fracright_history"])
-            PyPlot.legend(tuple(plotdef["plot_labels"]...), loc="best")  # Python is inflexible about arguments
-
-            # this is one extra line but a little better: explicitly match data series with label
-            # PyPlot.plot(plotdef["fracright_history"][:,1], label=plotdef["plot_labels"][1])
-            # PyPlot.plot(plotdef["fracright_history"][:,2], label=plotdef["plot_labels"][2])
-            # PyPlot.legend(loc="best")
-
-            PyPlot.axis([1,size(plotdef["fracright_history"],1),0.0, 1.1])
-            PyPlot.xticks([1; collect(5:5:size(plotdef["fracright_history"],1))]) # 1,5,10,15, etc.
-            PyPlot.title("Learning Progress")
-            PyPlot.grid(true)
+            plotlyjs(size=(600,400))
+            plt_learning = plot(plotdef["fracright_history"], title="Learning Progress",
+                labels=plotdef["plot_labels"], ylims=(0.0, 1.05), bottom_margin=7mm) 
+            display(plt_learning)
         end
 
         if (plotdef["plot_switch"]["Cost"] || plotdef["plot_switch"]["Learning"])
@@ -706,7 +693,6 @@ end
 
 function plot_output(fname::String)
     f = jldopen(fname, "r")
-    println(typeof(f))
     plotdef = f["plotdef"]
     close(f)
     f = []
