@@ -63,12 +63,20 @@ function load_params(jld_fname)
 end
 
 
-function save_plotdef_jld2(plotdef)
+function save_plotdef(plotdef)
     fname = repr(Dates.now())
     fname = "plotdef-" * replace(fname, r"[.:]", "-") * ".jld2"
     jldopen(fname, "w") do f
         f["plotdef"] = plotdef
     end
+end
+
+
+function load_plotdef(fname::String)
+    f = jldopen(fname, "r")
+    plotdef = f["plotdef"]
+    close(f)
+    return plotdef
 end
 
 
@@ -98,7 +106,7 @@ function display_mnist_digit(digit_data, digit_dims=[28,28])
     clibrary(:misc)  # collection of color palettes
     img = reshape(digit_data, digit_dims...)'
     pldigit = plot(img, seriestype=:heatmap, color=:grays,  
-        showaxis=false, legend=false, yflip=true)
+        showaxis=false, legend=false, yflip=true, right_margin=6mm, bottom_margin=6mm)
     display(pldigit)
     println("Press enter to close image window..."); readline()
     closeall()

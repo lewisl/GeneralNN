@@ -440,50 +440,51 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     end # epoch loop
 
     #####################################################################
-    # print and plot training statistics after all epochs
+    # save, print and plot training statistics after all epochs
     #####################################################################
+
 
     # file for simple training stats
     fname = repr(Dates.now())
     fname = "nnstats-" * replace(fname, r"[.:]", "-") * ".txt"
-    stats = open(fname, "w")
-    println(stats, "Training time: ",toq()," seconds")  # cpu time since tic() =>  toq() returns secs without printing
+    open(fname, "w") do stats
+        println(stats, "Training time: ",toq()," seconds")  # cpu time since tic() =>  toq() returns secs without printing
 
-    feedfwd!(train, nnp, bn, hp, istrain=false)  # output for entire training set
-    println(stats, "Fraction correct labels predicted training: ",
-            hp.classify == "regression" ? r_squared(train.targets, train.a[nnp.output_layer])
-                : accuracy(train.targets, train.a[nnp.output_layer],epochs))
-    println(stats, "Final cost training: ", cost_function(train.targets, train.a[nnp.output_layer], train.n,
-                    nnp.theta, hp, nnp.output_layer))
+        feedfwd!(train, nnp, bn, hp, istrain=false)  # output for entire training set
+        println(stats, "Fraction correct labels predicted training: ",
+                hp.classify == "regression" ? r_squared(train.targets, train.a[nnp.output_layer])
+                    : accuracy(train.targets, train.a[nnp.output_layer],epochs))
+        println(stats, "Final cost training: ", cost_function(train.targets, train.a[nnp.output_layer], train.n,
+                        nnp.theta, hp, nnp.output_layer))
 
-    # output test statistics
-    if dotest
-        feedfwd!(test, nnp, bn,  hp, istrain=false)
-        println(stats, "Fraction correct labels predicted test: ",
-                hp.classify == "regression" ? r_squared(test.targets, test.a[nnp.output_layer])
-                    : accuracy(test.targets, test.a[nnp.output_layer],epochs))
-        println(stats, "Final cost test: ", cost_function(test.targets, test.a[nnp.output_layer], test.n,
-            nnp.theta, hp, nnp.output_layer))
-    end
-
-    # output improvement of last 10 iterations for test data
-    if plotdef["plot_switch"]["Test"]
-        if plotdef["plot_switch"]["Learning"]
-            println(stats, "Test data accuracy in final 10 iterations:")
-            printdata = plotdef["fracright_history"][end-10+1:end, plotdef["col_test"]]
-            for i=1:10
-                @printf(stats, "%0.3f : ", printdata[i])
-            end
-            print("\n")
+        # output test statistics
+        if dotest
+            feedfwd!(test, nnp, bn,  hp, istrain=false)
+            println(stats, "Fraction correct labels predicted test: ",
+                    hp.classify == "regression" ? r_squared(test.targets, test.a[nnp.output_layer])
+                        : accuracy(test.targets, test.a[nnp.output_layer],epochs))
+            println(stats, "Final cost test: ", cost_function(test.targets, test.a[nnp.output_layer], test.n,
+                nnp.theta, hp, nnp.output_layer))
         end
-    end
+
+        # output improvement of last 10 iterations for test data
+        if plotdef["plot_switch"]["Test"]
+            if plotdef["plot_switch"]["Learning"]
+                println(stats, "Test data accuracy in final 10 iterations:")
+                printdata = plotdef["fracright_history"][end-10+1:end, plotdef["col_test"]]
+                for i=1:10
+                    @printf(stats, "%0.3f : ", printdata[i])
+                end
+                print("\n")
+            end
+        end
+    end  # done with stats stream
 
     # print the stats
-    close(stats)
     println(read(fname, String))
 
     # save cost and accuracy from training
-    save_plotdef_jld2(plotdef)
+    save_plotdef(plotdef)
     
     # plot now
     plot_now && plot_output(plotdef)
@@ -652,32 +653,24 @@ end
 
 
 """
-    Two methods    
-
-    method plot_output(plotdef::Dict)
+    plot_output(plotdef::Dict)
 
     Plots the plotdef and creates 1 or 2 PyPlot plot windows of the learning (accuracy)
     and/or cost from each training epoch.
-
-    method plot_output(fname::String)
-
-    Accepts a string name for the file containing a previously saved plotdef
-    and plots it, per the other method.
 
 """
 function plot_output(plotdef::Dict)
     # plot the progress of training cost and/or learning
     if (plotdef["plot_switch"]["Training"] || plotdef["plot_switch"]["Test"])
+        plotlyjs(size=(600,400)) # set chart size defaults
 
         if plotdef["plot_switch"]["Cost"]
-            plotlyjs(size=(600,400))
             plt_cost = plot(plotdef["cost_history"], title="Cost Function",
                 labels=plotdef["plot_labels"], ylims=(0.0, Inf), bottom_margin=7mm)
             display(plt_cost)  # or can use gui()
         end
 
         if plotdef["plot_switch"]["Learning"]
-            plotlyjs(size=(600,400))
             plt_learning = plot(plotdef["fracright_history"], title="Learning Progress",
                 labels=plotdef["plot_labels"], ylims=(0.0, 1.05), bottom_margin=7mm) 
             display(plt_learning)
@@ -688,15 +681,6 @@ function plot_output(plotdef::Dict)
             closeall()
         end
     end
-end
-
-
-function plot_output(fname::String)
-    f = jldopen(fname, "r")
-    plotdef = f["plotdef"]
-    close(f)
-    f = []
-    plot_output(plotdef)
 end
 
 

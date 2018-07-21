@@ -130,7 +130,7 @@ end
 
 
 """
-Struct Training_view holds views to all model data that will be broken into minibatches
+Struct Training_view holds views on all model data that will be broken into minibatches
 """
 mutable struct Training_view               # we will use mb for as the variable for minibatches
     # array of views

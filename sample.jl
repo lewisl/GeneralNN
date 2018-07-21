@@ -76,7 +76,7 @@ while true
         else
             example = test_wrongs[n]
             digit_data = test_inputs[:, example]
-            correct = find(test_targets[:,example])[1]  # get the row with the one
+            correct = find(test_targets[:,example])[1]  # get the row in the column that contains value 1
             correct = correct == 10 ? 0 : correct
             predicted = predmax[example]
             predicted = predicted == 10 ? 0 : predicted
