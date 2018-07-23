@@ -3,6 +3,10 @@
 
 
 #TODO
+#   eliminate size() in loops
+#   there is no reason for views on backprop data--always the size of minibatch
+#   everything working now:  try @inbounds to see what effect it has
+#   run checks for type stability
 #   revise initialization and make it depend on type of layer unit
 #   try different versions of ensemble predictions_vector
 #   allow dropout to drop from the input layer
@@ -62,7 +66,11 @@ module GeneralNN
 # ----------------------------------------------------------------------------------------
 
 # data structures for neural network
-export NN_parameters, Model_data, Batch_norm_params, Hyper_parameters
+export 
+    NN_parameters, 
+    Model_data, 
+    Batch_norm_params, 
+    Hyper_parameters
 
 # functions you can use
 export 
@@ -318,8 +326,8 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     #################################################################################
 
     # instantiate data containers
-    train = Model_data()  # train holds all the data and layer inputs/outputs
-    test = Model_data()
+    train = Model_data()  # train holds all the training data and layer inputs/outputs
+    test = Model_data()   # for test--but there is no training, just prediction
     mb = Training_view()  # layer data for mini-batches: as views on training data or arrays
     nnp = NN_parameters()  # trained parameters
     bn = Batch_norm_params()  # do we always need the data structure to run?  yes--TODO fix this
