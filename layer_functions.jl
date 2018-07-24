@@ -43,12 +43,12 @@ end
 
 function momentum!(tp, hp, t)
     @fastmath for hl = (tp.output_layer - 1):-1:2  # loop over hidden layers
-        tp.delta_v_w[hl] .= hp.b1 .* tp.delta_v_w[hl] .+ (1.0 - hp.b1) .* tp.delta_w[hl]  # @inbounds 
-        tp.delta_w[hl] .= tp.delta_v_w[hl]
+        @inbounds tp.delta_v_w[hl] .= hp.b1 .* tp.delta_v_w[hl] .+ (1.0 - hp.b1) .* tp.delta_w[hl]  # @inbounds 
+        @inbounds tp.delta_w[hl] .= tp.delta_v_w[hl]
 
         if !hp.do_batch_norm  # then we need to do bias term
-            tp.delta_v_b[hl] .= hp.b1 .* tp.delta_v_b[hl] .+ (1.0 - hp.b1) .* tp.delta_b[hl]  # @inbounds 
-            tp.delta_b[hl] .= tp.delta_v_b[hl]
+            @inbounds tp.delta_v_b[hl] .= hp.b1 .* tp.delta_v_b[hl] .+ (1.0 - hp.b1) .* tp.delta_b[hl]  # @inbounds 
+            @inbounds tp.delta_b[hl] .= tp.delta_v_b[hl]
         end
     end
 end
@@ -56,15 +56,15 @@ end
 
 function adam!(tp, hp, t)
     @fastmath for hl = (tp.output_layer - 1):-1:2  # loop over hidden layers
-        tp.delta_v_w[hl] .= hp.b1 .* tp.delta_v_w[hl] .+ (1.0 - hp.b1) .* tp.delta_w[hl]  # @inbounds 
-        tp.delta_s_w[hl] .= hp.b2 .* tp.delta_s_w[hl] .+ (1.0 - hp.b2) .* tp.delta_w[hl].^2  # @inbounds 
-        tp.delta_w[hl] .= (  (tp.delta_v_w[hl] ./ (1.0 - hp.b1^t)) ./  # @inbounds 
+        @inbounds tp.delta_v_w[hl] .= hp.b1 .* tp.delta_v_w[hl] .+ (1.0 - hp.b1) .* tp.delta_w[hl]  # @inbounds 
+        @inbounds tp.delta_s_w[hl] .= hp.b2 .* tp.delta_s_w[hl] .+ (1.0 - hp.b2) .* tp.delta_w[hl].^2  # @inbounds 
+        @inbounds tp.delta_w[hl] .= (  (tp.delta_v_w[hl] ./ (1.0 - hp.b1^t)) ./  # @inbounds 
                               (sqrt.(tp.delta_s_w[hl] ./ (1.0 - hp.b2^t)) + hp.ltl_eps)  )
 
         if !hp.do_batch_norm  # then we need to do bias term
-            tp.delta_v_b[hl] .= hp.b1 .* tp.delta_v_b[hl] .+ (1.0 - hp.b1) .* tp.delta_b[hl]  # @inbounds 
-            tp.delta_s_b[hl] .= hp.b2 .* tp.delta_s_b[hl] .+ (1.0 - hp.b2) .* tp.delta_b[hl].^2  # @inbounds 
-            tp.delta_b[hl] .= (  (tp.delta_v_b[hl] ./ (1.0 - hp.b1^t)) ./  # @inbounds 
+            @inbounds tp.delta_v_b[hl] .= hp.b1 .* tp.delta_v_b[hl] .+ (1.0 - hp.b1) .* tp.delta_b[hl]  # @inbounds 
+            @inbounds tp.delta_s_b[hl] .= hp.b2 .* tp.delta_s_b[hl] .+ (1.0 - hp.b2) .* tp.delta_b[hl].^2  # @inbounds 
+            @inbounds tp.delta_b[hl] .= (  (tp.delta_v_b[hl] ./ (1.0 - hp.b1^t)) ./  # @inbounds 
                               (sqrt.(tp.delta_s_b[hl] ./ (1.0 - hp.b2^t)) + hp.ltl_eps)  )
         end
     end
@@ -76,10 +76,10 @@ end
 
 
 function dropout!(dat,hp,hl)
-    dat.drop_ran_w[hl][:] = rand(size(dat.drop_ran_w[hl]))
-    dat.drop_filt_w[hl][:] = dat.drop_ran_w[hl] .< hp.droplim[hl]
-    dat.a[hl][:] = dat.a[hl] .* dat.drop_filt_w[hl]
-    dat.a[hl][:] = dat.a[hl] ./ hp.droplim[hl]
+    @inbounds dat.drop_ran_w[hl][:] = rand(size(dat.drop_ran_w[hl]))
+    @inbounds dat.drop_filt_w[hl][:] = dat.drop_ran_w[hl] .< hp.droplim[hl]
+    @inbounds dat.a[hl][:] = dat.a[hl] .* dat.drop_filt_w[hl]
+    @inbounds dat.a[hl][:] = dat.a[hl] ./ hp.droplim[hl]
 end
 
 
@@ -114,25 +114,25 @@ function affine(weights, data)  # no bias
 end
 
 
-function sigmoid!(z::AbstractArray{Float64,2}, a::AbstractArray{Float64,2})
-    a[:] = 1.0 ./ (1.0 .+ exp.(-z))
+function sigmoid!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
+    @inbounds a[:] = 1.0 ./ (1.0 .+ exp.(-z))
 end
 
-function tanh_act!(z::AbstractArray{Float64,2}, a::AbstractArray{Float64,2})
+function tanh_act!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
     a[:] = tanh.(z)
 end
 
-function l_relu!(z::AbstractArray{Float64,2}, a::AbstractArray{Float64,2}) # leaky relu
+function l_relu!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2}) # leaky relu
     a[:] = map(j -> j >= 0.0 ? j : l_relu_neg * j, z)
 end
 
 
-function relu!(z::AbstractArray{Float64,2}, a::AbstractArray{Float64,2})
+function relu!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
     a[:] = max.(z, 0.0)
 end
 
 
-function softmax!(z::AbstractArray{Float64,2}, a::AbstractArray{Float64,2})
+function softmax!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
 
     expf = similar(a)
     expf[:] = exp.(z .- maximum(z,1))
@@ -141,7 +141,7 @@ function softmax!(z::AbstractArray{Float64,2}, a::AbstractArray{Float64,2})
 end
 
 
-function regression!(z::AbstractArray{Float64,2}, a::AbstractArray{Float64,2})
+function regression!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
     a[:] = z[:]
 end
 
@@ -153,23 +153,23 @@ function affine_gradient(data, layer)  # no bias
 end
 
 
-function sigmoid_gradient!(z::AbstractArray{Float64,2}, grad::AbstractArray{Float64,2})
+function sigmoid_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
     sigmoid!(z, grad)
     grad[:] = grad .* (1.0 .- grad)
 end
 
 
-function tanh_act_gradient!(z::AbstractArray{Float64,2}, grad::AbstractArray{Float64,2})
+function tanh_act_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
     grad[:] = 1.0 .- tanh.(z).^2
 end
 
 
-function l_relu_gradient!(z::AbstractArray{Float64,2}, grad::AbstractArray{Float64,2})
+function l_relu_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
     grad[:] = map(j -> j > 0.0 ? 1.0 : l_relu_neg, z);
 end
 
 
-function relu_gradient!(z::AbstractArray{Float64,2}, grad::AbstractArray{Float64,2})
+function relu_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
     grad[:] = map(j -> j > 0.0 ? 1.0 : 0.0, z);
 end
 

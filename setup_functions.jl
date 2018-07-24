@@ -97,7 +97,16 @@ function normalize_replay!(inputs, norm_mode, norm_factors)
 end
 
 
-function setup_model!(mb, hp, tp, bn, dotest, train, test)
+function setup_model!(mb, hp, nnp, bn, dotest, train, test)
+
+    # normalize input data
+    if !(hp.norm_mode == "" || lowercase(hp.norm_mode) == "none")
+        train.inputs, test.inputs, norm_factors = normalize_inputs(train.inputs, test.inputs, norm_mode)
+        nnp.norm_factors = norm_factors   
+    end
+    # debug
+    # println("norm_factors ", typeof(norm_factors))
+    # println(norm_factors)
 
     #setup mini-batch
     if hp.mb_size_in < 1
@@ -181,14 +190,14 @@ function setup_model!(mb, hp, tp, bn, dotest, train, test)
     #  pre-allocate data storage
     ##########################################################################
 
-    preallocate_nn_params!(tp, hp, hp.n_hid, train.in_k, train.n, train.out_k)
+    preallocate_nn_params!(nnp, hp, train.in_k, train.n, train.out_k)
 
-    preallocate_data!(train, tp, train.n, hp)
+    preallocate_data!(train, nnp, train.n, hp)
 
     # feedfwd test data--if test input found
     if dotest
         test.n = size(test.inputs,2)
-        preallocate_data!(test, tp, test.n, hp)
+        preallocate_data!(test, nnp, test.n, hp)
     else
         test.n = 0
     end
@@ -198,7 +207,7 @@ function setup_model!(mb, hp, tp, bn, dotest, train, test)
     
     # batch normalization parameters
     if hp.do_batch_norm
-        preallocate_batchnorm!(bn, mb, tp.layer_units)
+        preallocate_batchnorm!(bn, mb, nnp.layer_units)
     end
 
     # debug
@@ -248,7 +257,7 @@ function preallocate_data!(dat, nnp, n, hp)
 end
 
 
-function preallocate_nn_params!(tp, hp, n_hid, in_k, n, out_k)
+function preallocate_nn_params!(nnp, hp, in_k, n, out_k)
     # initialize and pre-allocate data structures to hold neural net training data
     # theta = weight matrices for all calculated layers (e.g., not the input layer)
     # bias = bias term used for every layer but input
@@ -261,39 +270,39 @@ function preallocate_nn_params!(tp, hp, n_hid, in_k, n, out_k)
     #    and columns are the inputs from the layer below
 
     # layers
-    tp.output_layer = 2 + size(n_hid, 1) # input layer is 1, output layer is highest value
-    tp.layer_units = [in_k, n_hid..., out_k]
+    nnp.output_layer = 2 + size(hp.n_hid, 1) # input layer is 1, output layer is highest value
+    nnp.layer_units = [in_k, hp.n_hid..., out_k]
 
     # set dimensions of the linear weights for each layer
-    push!(tp.theta_dims, (in_k, 1)) # weight dimensions for the input layer -- if using array, must splat as arg
-    for l = 2:tp.output_layer-1  # l refers to nn layer so this includes only hidden layers
-        push!(tp.theta_dims, (tp.layer_units[l], tp.layer_units[l-1]))
+    push!(nnp.theta_dims, (in_k, 1)) # weight dimensions for the input layer -- if using array, must splat as arg
+    for l = 2:nnp.output_layer-1  # l refers to nn layer so this includes only hidden layers
+        push!(nnp.theta_dims, (nnp.layer_units[l], nnp.layer_units[l-1]))
     end
-    push!(tp.theta_dims, (out_k, tp.layer_units[tp.output_layer - 1]))  # weight dims for output layer: rows = output classes
+    push!(nnp.theta_dims, (out_k, nnp.layer_units[nnp.output_layer - 1]))  # weight dims for output layer: rows = output classes
 
     # initialize the linear weights
-    tp.theta = [zeros(2,2)] # layer 1 not used
+    nnp.theta = [zeros(2,2)] # layer 1 not used
 
     # Xavier initialization--current best practice for relu
-    for l = 2:tp.output_layer
-        push!(tp.theta, randn(tp.theta_dims[l]) .* sqrt(2.0/tp.theta_dims[l][2])) # sqrt of no. of input units
+    for l = 2:nnp.output_layer
+        push!(nnp.theta, randn(nnp.theta_dims[l]) .* sqrt(2.0/nnp.theta_dims[l][2])) # sqrt of no. of input units
     end
 
     # bias initialization: random non-zero initialization performs worse
-    tp.bias = [zeros(size(th, 1)) for th in tp.theta]  # initialize biases to zero
+    nnp.bias = [zeros(size(th, 1)) for th in nnp.theta]  # initialize biases to zero
 
     # structure of gradient matches theta
-    tp.delta_w = deepcopy(tp.theta)
-    tp.delta_b = deepcopy(tp.bias)
+    nnp.delta_w = deepcopy(nnp.theta)
+    nnp.delta_b = deepcopy(nnp.bias)
 
     # initialize gradient, 2nd order gradient for Momentum or Adam
     if hp.opt == "momentum" || hp.opt == "adam"
-        tp.delta_v_w = [zeros(size(a)) for a in tp.delta_w]
-        tp.delta_v_b = [zeros(size(a)) for a in tp.delta_b]
+        nnp.delta_v_w = [zeros(size(a)) for a in nnp.delta_w]
+        nnp.delta_v_b = [zeros(size(a)) for a in nnp.delta_b]
     end
     if hp.opt == "adam"
-        tp.delta_s_w = [zeros(size(a)) for a in tp.delta_w]
-        tp.delta_s_b = [zeros(size(a)) for a in tp.delta_b]
+        nnp.delta_s_w = [zeros(size(a)) for a in nnp.delta_w]
+        nnp.delta_s_b = [zeros(size(a)) for a in nnp.delta_b]
     end
 
 end
@@ -307,9 +316,9 @@ end
     NOT USED  -- PROBABLY WON'T WORK AS IS WHEN GOING BACK TO SLICE APPROACH INSTEAD OF VIEW APPROACH
 
 """
-function preallocate_minibatch!(mb, tp, hp)
+function preallocate_minibatch!(mb, nnp, hp)
 
-    mb.epsilon = [zeros(tp.layer_units[l], hp.mb_size) for l in 1:tp.output_layer]
+    mb.epsilon = [zeros(nnp.layer_units[l], hp.mb_size) for l in 1:nnp.output_layer]
     mb.grad = deepcopy(mb.epsilon)   
 
     if hp.do_batch_norm
@@ -356,9 +365,12 @@ end
 """
 define and choose functions to be used in neural net training
 """
-function setup_functions!(units, out_k, opt, classify)
+function setup_functions!(hp, train)
 
-    # all the other functions are module level, e.g. global--make these function variables module level, too
+    # make these function variables module level 
+        # the layer functions they point to are all module level (in file layer_functions.jl)
+        # these are just substitute names or aliases
+        # don't freak out about the word global
     global unit_function!
     global gradient_function!
     global classify_function!
@@ -368,13 +380,13 @@ function setup_functions!(units, out_k, opt, classify)
     global optimization_function!
 
     unit_function! =
-        if units == "sigmoid"
+        if hp.units == "sigmoid"
             sigmoid!
-        elseif units == "l_relu"
+        elseif hp.units == "l_relu"
             l_relu!
-        elseif units == "relu"
+        elseif hp.units == "relu"
             relu!
-        elseif units == "tanh"
+        elseif hp.units == "tanh"
             tanh_act!
         end
 
@@ -390,18 +402,18 @@ function setup_functions!(units, out_k, opt, classify)
         end
 
     classify_function! = 
-        if out_k > 1  # more than one output (unit)
-            if classify == "sigmoid"
+        if train.out_k > 1  # more than one output (unit)
+            if hp.classify == "sigmoid"
                 sigmoid!
-            elseif classify == "softmax"
+            elseif hp.classify == "softmax"
                 softmax!
             else
                 error("Function to classify output labels must be \"sigmoid\" or \"softmax\".")
             end
         else
-            if classify == "sigmoid"
+            if hp.classify == "sigmoid"
                 sigmoid!  # for one output label
-            elseif classify == "regression"
+            elseif hp.classify == "regression"
                 regression!
             else
                 error("Function to classify output must be \"sigmoid\" or \"regression\".")
@@ -409,9 +421,9 @@ function setup_functions!(units, out_k, opt, classify)
         end
 
     optimization_function! = 
-        if opt == "momentum"
+        if hp.opt == "momentum"
             momentum!
-        elseif opt == "adam"
+        elseif hp.opt == "adam"
             adam!
         else
             no_optimization
@@ -419,7 +431,7 @@ function setup_functions!(units, out_k, opt, classify)
 
     # set cost function
     cost_function = 
-        if classify=="regression" 
+        if hp.classify=="regression" 
             mse_cost 
         else
             cross_entropy_cost

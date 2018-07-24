@@ -145,7 +145,7 @@ mutable struct Training_view               # we will use mb for as the variable 
     drop_ran_w::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     drop_filt_w::Array{SubArray{Bool,2,BitArray{2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
 
-    Training_view() = new(
+    Training_view() = new(                      # empty constructor
         [view(zeros(2,2),:,1:2) for i in 1:2],  # a
         view(zeros(2,2),:,1:2),                 # targets
         [view(zeros(2,2),:,1:2) for i in 1:2],  # z
