@@ -101,7 +101,7 @@ function setup_model!(mb, hp, nnp, bn, dotest, train, test)
 
     # normalize input data
     if !(hp.norm_mode == "" || lowercase(hp.norm_mode) == "none")
-        train.inputs, test.inputs, norm_factors = normalize_inputs(train.inputs, test.inputs, norm_mode)
+        train.inputs, test.inputs, norm_factors = normalize_inputs(train.inputs, test.inputs, hp.norm_mode)
         nnp.norm_factors = norm_factors   
     end
     # debug

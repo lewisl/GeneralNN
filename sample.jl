@@ -12,17 +12,19 @@ using Revise
 include("GeneralNN.jl")
 Revise.track("GeneralNN.jl")
 using GeneralNN
-dfname = "digits5000by784.mat"
+dfname = "digits60000by784.mat"
 
 println("........ Training the neural network ........")
 train_inputs, train_targets, train_preds, test_preds, nnp, bn, hp = train_nn(
     dfname, 
     20,  # epochs
-    [80,80];  # hidden units
-    alpha = 1.0,
-    lambda = 0.0008,
-    learn_decay = [0.55,3.0],
-    mb_size_in = 50, 
+    [300,200,100];  # hidden units
+    alpha = 1.18,
+    reg = "L1",  # L1, L2, or ""
+    lambda = 0.00094,
+    learn_decay = [0.52,3.0],
+    mb_size_in = 80, 
+    norm_mode = "none",    # or "none" or "standard"
     do_batch_norm=true, 
     opt="adam", 
     units="relu", 

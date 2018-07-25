@@ -712,3 +712,40 @@ Fraction correct labels predicted test: 0.959
 Final cost test: 0.32089236599335774
 Test data accuracy in final 10 iterations:
 0.957 : 0.957 : 0.958 : 0.959 : 0.958 : 0.959 : 0.959 : 0.956 : 0.957 : 0.959 :
+
+digits60000by784.mat, 20,  # epochs
+    [300,200,100];  # hidden units
+    alpha = 1.18,
+    lambda = 0.00094,
+    learn_decay = [0.52,3.0],
+    mb_size_in = 80, 
+    norm_mode = "none",    # or "none" or "standard"
+    do_batch_norm=true, 
+    opt="adam", 
+    units="relu", 
+Training time: 257.798663901 seconds
+Fraction correct labels predicted training: 0.9998166666666667
+Final cost training: 0.005353123038994963
+Fraction correct labels predicted test: 0.9863
+Final cost test: 0.15104482330993765
+Test data accuracy in final 10 iterations:
+0.985 : 0.986 : 0.986 : 0.987 : 0.986 : 0.986 : 0.986 : 0.986 : 0.986 : 0.986 : 
+
+digits10000by784.mat
+    20,  # epochs
+    [300,200,100];  # hidden units
+    alpha = 1.18,
+    lambda = 0.00094,
+    learn_decay = [0.52,3.0],
+    mb_size_in = 80, 
+    norm_mode = "none",    #minmax or "none" or "standard"
+    do_batch_norm=true, 
+    opt="adam", 
+    units="relu", 
+Training time: 40.619145599 seconds
+Fraction correct labels predicted training: 0.9999
+Final cost training: 0.004022602191266631
+Fraction correct labels predicted test: 0.9674
+Final cost test: 0.24388669292027862
+Test data accuracy in final 10 iterations:
+0.967 : 0.967 : 0.967 : 0.967 : 0.967 : 0.967 : 0.967 : 0.968 : 0.968 : 0.967 : 

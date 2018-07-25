@@ -2,6 +2,7 @@
 
 
 #TODO
+#   is dropout dropping the same units on backprop as feedfwd?
 #   set a directory for training stats (keep out of code project directory)
 #   there is no reason for views on backprop data--always the size of minibatch
 #   revise initialization and make it depend on type of layer unit
@@ -53,8 +54,12 @@ These data structures are used to hold parameters and data:
 
 - NN_parameters holds theta, bias, delta_w, delta_b, theta_dims, output_layer, layer_units
 - Model_data holds inputs, targets, a, z, z_norm, epsilon, gradient_function
-- Batch_norm_params holds gam (gamma), bet (beta) for batch normalization and Intermediate
-data used for training: delta_gam, delta_bet, delta_z_norm, delta_z, mu, stddev, mu_run, std_run
+- Batch_norm_params holds gam (gamma), bet (beta) for batch normalization and intermediate
+    data used for backprop with batch normalization: delta_gam, delta_bet, 
+    delta_z_norm, delta_z, mu, stddev, mu_run, std_run
+- Hyper_parameters holds user input hyper_parameters and some derived parameters.
+- Training_view holds views on model data to hold the subset of data used in minibatches. 
+  (This is not exported as there is no way to use it outside of the backprop loop.)
 
 """
 module GeneralNN
@@ -143,7 +148,7 @@ This is a front-end function that verifies all inputs and calls run_training().
         plots           ::= determines training results collected and plotted
                             any choice of ["Learning", "Cost", "Training", "Test"];
                             for no plots use [""] or ["none"]
-        reg             ::= type of regularization, must be one of "L2", ""
+        reg             ::= type of regularization, must be one of "L1", "L2", ""
         dropout         ::= true to use dropout network or false
         droplim         ::= array of values between 0.5 and 1.0 determines how much dropout for
                             hidden layers and output layer (ex: [0.8] or [0.8,0.9, 1.0]).  A single
@@ -244,8 +249,8 @@ opt = lowercase(opt)  # match title case for string argument
     end
 
     reg = titlecase(lowercase(reg))
-        if !in(reg, ["L2", ""])
-            warn("reg must be \"L2\" or \"\" (nothing). Setting to default \"L2\".")
+        if !in(reg, ["L1", "L2", ""])
+            warn("reg must be \"L1\", \"L2\" or \"\" (nothing). Setting to default \"L2\".")
             reg = "L2"
         end
 
@@ -256,7 +261,7 @@ opt = lowercase(opt)  # match title case for string argument
     end
 
     # lambda
-    if reg == "L2"
+    if reg == "L2"  || reg == "L1"
         if lambda < 0.0  # set reg = "" relu with batch_norm
             warn("Lambda regularization rate must be positive floating point value. Setting to 0.01")
             lamba = 0.01
@@ -396,6 +401,9 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
                 if hp.reg == "L2"  # subtract regularization term
                     @inbounds nnp.theta[hl] .= nnp.theta[hl] .- (hp.alphaovermb .* (hp.lambda .* nnp.theta[hl]))
                 end
+                if hp.reg == "L1"
+                    @inbounds nnp.theta[hl] .= nnp.theta[hl] .- (hp.alphaovermb .* (hp.lambda .* sign.(nnp.theta[hl])))
+                end
                 
                 if hp.do_batch_norm  # update batch normalization parameters
                     @inbounds bn.gam[hl][:] -= hp.alphaovermb .* bn.delta_gam[hl]
@@ -522,7 +530,7 @@ function feedfwd!(dat::Union{Model_data, Training_view}, nnp, bn,  hp; istrain=t
         @inbounds dat.z[hl][:] = nnp.theta[hl] * dat.a[hl-1]
 
         if hp.do_batch_norm 
-            batch_norm_fwd!(bn, dat, hl, istrain)
+            batch_norm_fwd!(hp, bn, dat, hl, istrain)
             unit_function!(dat.a[hl], dat.z[hl])
         else
             @inbounds dat.z[hl][:] =  dat.z[hl] .+ nnp.bias[hl]
@@ -553,9 +561,11 @@ function backprop!(nnp, dat, do_batch_norm)
 """
 function backprop!(nnp, bn, dat, hp, t)
 
-    dat.epsilon[nnp.output_layer][:] = dat.a[nnp.output_layer] .- dat.targets  # @inbounds 
-    @fastmath nnp.delta_w[nnp.output_layer][:] = dat.epsilon[nnp.output_layer] * dat.a[nnp.output_layer-1]' # 2nd term is effectively the grad for mse  @inbounds 
+    # for output layer
+    dat.epsilon[nnp.output_layer][:] = dat.a[nnp.output_layer] .- dat.targets  
+    @fastmath nnp.delta_w[nnp.output_layer][:] = dat.epsilon[nnp.output_layer] * dat.a[nnp.output_layer-1]' # 2nd term is effectively the grad for error   
     @fastmath nnp.delta_b[nnp.output_layer][:] = sum(dat.epsilon[nnp.output_layer],2)  # @inbounds 
+
 
     @fastmath for hl = (nnp.output_layer - 1):-1:2  # loop over hidden layers
         if hp.do_batch_norm
@@ -577,19 +587,19 @@ function backprop!(nnp, bn, dat, hp, t)
 end
 
 
-function batch_norm_fwd!(bn, dat, hl, istrain=true)
+function batch_norm_fwd!(hp, bn, dat, hl, istrain=true)
     # in_k,mb = size(dat.z[hl])
     if istrain
         @inbounds bn.mu[hl][:] = mean(dat.z[hl], 2)          # use in backprop
         @inbounds bn.stddev[hl][:] = std(dat.z[hl], 2)
-        @inbounds dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu[hl]) ./ bn.stddev[hl]  # normalized: 'aka' xhat or zhat  @inbounds 
+        @inbounds dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu[hl]) ./ (bn.stddev[hl] + hp.ltl_eps) # normalized: 'aka' xhat or zhat  @inbounds 
         @inbounds dat.z[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y  @inbounds 
         @inbounds bn.mu_run[hl][:] = (  bn.mu_run[hl][1] == 0.0 ? bn.mu[hl] :  # @inbounds 
             0.9 .* bn.mu_run[hl] .+ 0.1 .* bn.mu[hl]  )
         @inbounds bn.std_run[hl][:] = (  bn.std_run[hl][1] == 0.0 ? bn.stddev[hl] :  # @inbounds 
             0.9 .* bn.std_run[hl] + 0.1 .* bn.stddev[hl]  )
     else  # predictions with existing parameters
-        @inbounds dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu_run[hl]) ./ bn.std_run[hl]  # normalized: 'aka' xhat or zhat  @inbounds 
+        @inbounds dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu_run[hl]) ./ (bn.std_run[hl] + hp.ltl_eps) # normalized: 'aka' xhat or zhat  @inbounds 
         @inbounds dat.z[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y  @inbounds 
     end
 end
