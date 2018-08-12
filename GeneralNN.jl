@@ -52,7 +52,7 @@ To use, include() the file.  Then enter using GeneralNN to use the module.
 
 These data structures are used to hold parameters and data:
 
-- NN_parameters holds theta, bias, delta_w, delta_b, theta_dims, output_layer, layer_units
+- NN_weights holds theta, bias, delta_w, delta_b, theta_dims, output_layer, layer_units
 - Model_data holds inputs, targets, a, z, z_norm, epsilon, gradient_function
 - Batch_norm_params holds gam (gamma), bet (beta) for batch normalization and intermediate
     data used for backprop with batch normalization: delta_gam, delta_bet, 
@@ -69,7 +69,7 @@ module GeneralNN
 
 # data structures for neural network
 export 
-    NN_parameters, 
+    NN_weights, 
     Model_data, 
     Batch_norm_params, 
     Hyper_parameters
@@ -93,10 +93,15 @@ export
 using MAT
 using JLD2
 using FileIO
+using Statistics
+using Random
+using Printf
+using Dates
 
 # new plotting approach
 using Plots
-plotlyjs()  # PlotlyJS backend to local electron window
+# plotlyjs()  # PlotlyJS backend to local electron window
+pyplot()
 import Measures: mm # for some plot dimensioning
 
 include("layer_functions.jl")
@@ -124,7 +129,7 @@ and cost outcomes by iteration for training and test data.
 This is a front-end function that verifies all inputs and calls run_training().
 
     returns:
-        NN_parameters  ::= struct that holds all trainable parameters (except...)
+        NN_weights  ::= struct that holds all trainable parameters (except...)
         Batch_norm_params ::= struct that holds all batch_norm parameters
 
     key inputs:
@@ -341,7 +346,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     train = Model_data()  # train holds all the training data and layer inputs/outputs
     test = Model_data()   # for test--but there is no training, just prediction
     mb = Training_view()  # layer data for mini-batches: as views on training data or arrays
-    nnp = NN_parameters()  # neural network trained parameters
+    nnp = NN_weights()  # neural network trained parameters
     bn = Batch_norm_params()  # do we always need the data structure to run?  yes--TODO fix this
 
     # load training data and test data (if any)
@@ -459,7 +464,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
                 print("\n")
             end
         end
-    end  # done with stats stream
+    end  # done with stats stream->closed
 
     # print the stats
     println(read(fname, String))
@@ -480,33 +485,33 @@ end  # function run_training
     Create or update views for the training data in minibatches or one big batch
         Arrays: a, z, z_norm, targets  are all fields of struct mb
 """
-function update_training_views!(mb::Training_view, train::Model_data, nnp::NN_parameters, 
+function update_training_views!(mb::Training_view, train::Model_data, nnp::NN_weights, 
     hp::Hyper_parameters, colrng::UnitRange{Int64})
     # colrng refers to the set of training examples included in the minibatch
     n_layers = nnp.output_layer
     mb_cols = 1:hp.mb_size  # only reason for this is that the last minibatch might be smaller
 
     # feedforward:   minibatch views update the underlying data
-    mb.a = [view(train.a[i],:,colrng) for i = 1:n_layers]
-    mb.z = [view(train.z[i],:,colrng) for i = 1:n_layers]
-    mb.targets = view(train.targets,:,colrng)  # only at the output layer
+    @inbounds mb.a = [view(train.a[i],:,colrng) for i = 1:n_layers]
+    @inbounds mb.z = [view(train.z[i],:,colrng) for i = 1:n_layers]
+    @inbounds mb.targets = view(train.targets,:,colrng)  # only at the output layer
 
     # training / backprop:  don't need this data and only use minibatch size
-    mb.epsilon = [view(train.epsilon[i], :, mb_cols) for i = 1:n_layers]
-    mb.grad = [view(train.grad[i], :, mb_cols) for i = 1:n_layers]
-    mb.delta_z = [view(train.delta_z[i], :, mb_cols) for i = 1:n_layers]
+    @inbounds mb.epsilon = [view(train.epsilon[i], :, mb_cols) for i = 1:n_layers]
+    @inbounds mb.grad = [view(train.grad[i], :, mb_cols) for i = 1:n_layers]
+    @inbounds mb.delta_z = [view(train.delta_z[i], :, mb_cols) for i = 1:n_layers]
 
     if hp.do_batch_norm
         # feedforward
-        mb.z_norm = [view(train.z_norm[i],:, colrng) for i = 1:n_layers]
+        @inbounds mb.z_norm = [view(train.z_norm[i],:, colrng) for i = 1:n_layers]
         # backprop
-        mb.delta_z_norm = [view(train.delta_z_norm[i], :, mb_cols) for i = 1:n_layers]
+        @inbounds mb.delta_z_norm = [view(train.delta_z_norm[i], :, mb_cols) for i = 1:n_layers]
     end
 
     if hp.dropout
         # training:  applied to feedforward, but only for training
-        mb.drop_ran_w = [view(train.drop_ran_w[i], :, mb_cols) for i = 1:n_layers]
-        mb.drop_filt_w = [view(train.drop_filt_w[i], :, mb_cols) for i = 1:n_layers]
+        @inbounds mb.drop_ran_w = [view(train.drop_ran_w[i], :, mb_cols) for i = 1:n_layers]
+        @inbounds mb.drop_filt_w = [view(train.drop_filt_w[i], :, mb_cols) for i = 1:n_layers]
     end
 
 end
@@ -526,16 +531,33 @@ function feedfwd!(dat, nnp, bn, do_batch_norm; istrain)
 function feedfwd!(dat::Union{Model_data, Training_view}, nnp, bn,  hp; istrain=true)
 
     # hidden layers
-    @fastmath for hl = 2:nnp.output_layer-1  
-        @inbounds dat.z[hl][:] = nnp.theta[hl] * dat.a[hl-1]
+    # @fastmath for hl = 2:nnp.output_layer-1  
+        # @inbounds dat.z[hl][:] = nnp.theta[hl] * dat.a[hl-1]
+        # affine!(dat.z[hl], dat.a[hl-1], nnp.theta[hl])
 
+        # if hp.do_batch_norm 
+        #     batch_norm_fwd!(hp, bn, dat, hl, istrain)
+        #     unit_function!(dat.a[hl], dat.z[hl])
+        # else
+        #     @inbounds dat.z[hl][:] =  dat.z[hl] .+ nnp.bias[hl]
+        #     unit_function!(dat.a[hl], dat.z[hl])
+        # end
+
+        # if istrain && hp.dropout  
+        #     dropout!(dat,hp,hl)
+        # end
+    # end
+
+    # separate affine calculation, clarify batch_norm
+    @fastmath for hl = 2:nnp.output_layer-1  
         if hp.do_batch_norm 
+            affine!(dat.z[hl], dat.a[hl-1], nnp.theta[hl])
             batch_norm_fwd!(hp, bn, dat, hl, istrain)
-            unit_function!(dat.a[hl], dat.z[hl])
         else
-            @inbounds dat.z[hl][:] =  dat.z[hl] .+ nnp.bias[hl]
-            unit_function!(dat.a[hl], dat.z[hl])
+            affine!(dat.z[hl], dat.a[hl-1], nnp.theta[hl], nnp.bias[hl])
         end
+
+        unit_function!(dat.a[hl], dat.z[hl])
 
         if istrain && hp.dropout  
             dropout!(dat,hp,hl)
@@ -645,11 +667,12 @@ end
 function plot_output(plotdef::Dict)
     # plot the progress of training cost and/or learning
     if (plotdef["plot_switch"]["Training"] || plotdef["plot_switch"]["Test"])
-        plotlyjs(size=(600,400)) # set chart size defaults
+        # plotlyjs(size=(600,400)) # set chart size defaults
+        pyplot()
 
         if plotdef["plot_switch"]["Cost"]
             plt_cost = plot(plotdef["cost_history"], title="Cost Function",
-                labels=plotdef["plot_labels"], ylims=(0.0, Inf), bottom_margin=7mm)
+                labels=plotdef["plot_labels"], ylims=(0.0, Inf), bottom_margin=7mm, size=(400,400))
             display(plt_cost)  # or can use gui()
         end
 

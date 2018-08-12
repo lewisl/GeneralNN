@@ -1,8 +1,8 @@
 
 """
-struct NN_parameters holds model parameters learned by training and model metadata
+struct NN_weights holds model parameters learned by training and model metadata
 """
-mutable struct NN_parameters              # we will use nnp as the struct variable
+mutable struct NN_weights              # we will use nnp as the struct variable
     theta::Array{Array{Float64,2},1}
     bias::Array{Array{Float64,1},1}
     delta_w::Array{Array{Float64,2},1}
@@ -16,7 +16,7 @@ mutable struct NN_parameters              # we will use nnp as the struct variab
     layer_units::Array{Int64,1}
     norm_factors::Tuple{Any, Any}
 
-    NN_parameters() = new(               # empty constructor
+    NN_weights() = new(               # empty constructor
         Array{Array{Float64,2},1}(0),    # theta::Array{Array{Float64,2}}
         Array{Array{Float64,2},1}(0),    # bias::Array{Array{Float64,1}}
         Array{Array{Float64,2},1}(0),    # delta_w
@@ -91,13 +91,14 @@ Struct Model_data hold examples and all layer outputs-->
 pre-allocate to reduce memory allocations and improve speed
 """
 mutable struct Model_data               # we will use train for inputs and test for test data
-    # used in feedforward pass
+    # read from training, test, or production data
     inputs::Array{Float64,2}            # in_k features by n examples
     targets::Array{Float64,2}           # labels for each example
+    # calculated in feedforward pass
     a::Array{Array{Float64,2},1}
     z::Array{Array{Float64,2},1}
     z_norm::Array{Array{Float64,2},1}         # same size as z--for batch_norm
-    # used in backprop (training) pass
+    # calculated in backprop (training) pass
     delta_z_norm::Array{Array{Float64,2},1}   # same size as z
     delta_z::Array{Array{Float64,2},1}        # same size as z
     grad::Array{Array{Float64,2},1}
@@ -166,11 +167,12 @@ struct Batch_norm_params holds batch normalization parameters for
 feedfwd calculations and backprop training.
 """
 mutable struct Batch_norm_params               # we will use bn as the struct variable
+    # learned batch parameters to center and scale data
     gam::Array{Array{Float64,1},1}
     bet::Array{Array{Float64,1},1}
     delta_gam::Array{Array{Float64,1},1}
     delta_bet::Array{Array{Float64,1},1}
-
+    # for standardizing batch values
     mu::Array{Array{Float64,1},1}              # same size as bias = no. of layer units
     stddev::Array{Array{Float64,1},1}          #    ditto
     mu_run::Array{Array{Float64,1},1}          # running average of mu

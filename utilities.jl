@@ -102,11 +102,12 @@ Pass a dim1 x dim2 by 1 column vector holding the image data to display it.
 Also pass the dimensions as 2 element vector (default is [28,28]).
 """
 function display_mnist_digit(digit_data, digit_dims=[28,28])
-    plotlyjs(size=(400,400))
+    # plotlyjs(size=(400,400))
+    pyplot()
     clibrary(:misc)  # collection of color palettes
     img = reshape(digit_data, digit_dims...)'
     pldigit = plot(img, seriestype=:heatmap, color=:grays,  
-        showaxis=false, legend=false, yflip=true, right_margin=6mm, bottom_margin=6mm)
+        showaxis=false, legend=false, yflip=true, size=(400,400)) # right_margin=6mm, bottom_margin=6mm
     display(pldigit)
     println("Press enter to close image window..."); readline()
     closeall()

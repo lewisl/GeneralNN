@@ -8,22 +8,23 @@ println(
 
 println("........ Compiling the program ........")
 
+using Printf
 using Revise
 include("GeneralNN.jl")
 Revise.track("GeneralNN.jl")
-using GeneralNN
-dfname = "digits60000by784.mat"
+using .GeneralNN
+dfname = "digits10000by784.mat"
 
 println("........ Training the neural network ........")
 train_inputs, train_targets, train_preds, test_preds, nnp, bn, hp = train_nn(
     dfname, 
     20,  # epochs
-    [300,200,100];  # hidden units
-    alpha = 1.18,
-    reg = "L1",  # L1, L2, or ""
-    lambda = 0.00094,
+    [80];  # hidden units  [300,200,100]
+    alpha = .8,
+    reg = "",  # L1, L2, or ""
+    lambda = 0.00096,
     learn_decay = [0.52,3.0],
-    mb_size_in = 80, 
+    mb_size_in = 50, 
     norm_mode = "none",    # or "none" or "standard"
     do_batch_norm=true, 
     opt="adam", 
@@ -38,7 +39,7 @@ train_inputs, train_targets, train_preds, test_preds, nnp, bn, hp = train_nn(
     # 4. convert the index into the orginal array into subscripts for the case of a 2D or higher order array
 predmax = ind2sub(size(test_preds),vec(findmax(test_preds,1)[2]))[1]
 
-_, _, test_inputs, test_targets = extract_data(dfname);
+_, _, test_inputs, test_targets = GeneralNN.extract_data(dfname);
 
 test_wrongs = wrong_preds(test_targets, test_preds);
 

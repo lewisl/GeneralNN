@@ -104,13 +104,13 @@ end
 ###########################################################################
 
 # two methods for linear layer units, with bias and without
-function affine(weights, data, bias)  # with bias
-    return weights * data .+ bias
+function affine!(z, a, theta, bias)  # with bias
+    z[:] = theta * a .+ bias
 end
 
 
-function affine(weights, data)  # no bias
-    return weights * data
+function affine!(z, a, theta)  # no bias
+    z[:] = theta * a
 end
 
 

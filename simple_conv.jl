@@ -79,7 +79,7 @@ function basic(matfname, norm_mode="minmax", unroll=false)
     elseif unroll  # 2.30 times faster than FFT style (stack)
 
         # unroll all examples in one go
-        unimg = Array{Float64}(x_out, x_out*filx*fily, inch,n)
+        unimg = Array{Float64}(x_out, x_out*filx*fily, inch, n)
         @time for ci = 1:n
             unimg[:,:,:,ci] = unroll_img(imgstack[:,:,:,ci], w1)
         end
