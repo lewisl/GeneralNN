@@ -17,17 +17,17 @@ mutable struct NN_weights              # we will use nnp as the struct variable
     norm_factors::Tuple{Any, Any}
 
     NN_weights() = new(               # empty constructor
-        Array{Array{Float64,2},1}(0),    # theta::Array{Array{Float64,2}}
-        Array{Array{Float64,2},1}(0),    # bias::Array{Array{Float64,1}}
-        Array{Array{Float64,2},1}(0),    # delta_w
-        Array{Array{Float64,1},1}(0),    # delta_b
-        Array{Array{Float64,2},1}(0),    # delta_v_w
-        Array{Array{Float64,1},1}(0),    # delta_v_b
-        Array{Array{Float64,2},1}(0),    # delta_s_w
-        Array{Array{Float64,1},1}(0),    # delta_s_b
-        Array{Tuple{Int, Int},1}(0),     # theta_dims::Array{Array{Int64,2}}
+        Array{Array{Float64,2},1}(undef, 0),    # theta::Array{Array{Float64,2}}
+        Array{Array{Float64,2},1}(undef, 0),    # bias::Array{Array{Float64,1}}
+        Array{Array{Float64,2},1}(undef, 0),    # delta_w
+        Array{Array{Float64,1},1}(undef, 0),    # delta_b
+        Array{Array{Float64,2},1}(undef, 0),    # delta_v_w
+        Array{Array{Float64,1},1}(undef, 0),    # delta_v_b
+        Array{Array{Float64,2},1}(undef, 0),    # delta_s_w
+        Array{Array{Float64,1},1}(undef, 0),    # delta_s_b
+        Array{Tuple{Int, Int},1}(undef, 0),     # theta_dims::Array{Array{Int64,2}}
         3,                               # output_layer
-        Array{Int64,1}(0),               # layer_units
+        Array{Int64,1}(undef, 0),               # layer_units
         ([0.0 0.0], [1.0 0.0])           # norm_factors (mean, std)
     )
 end
@@ -112,17 +112,17 @@ mutable struct Model_data               # we will use train for inputs and test 
     
 
     Model_data() = new(                 # empty constructor
-        Array{Float64,2}(2,2),          # inputs
-        Array{Float64,2}(2,2),          # targets
-        Array{Array{Float64,2},1}(0),   # a
-        Array{Array{Float64,2},1}(0),   # z
-        Array{Array{Float64,2},1}(0),   # z_norm -- only pre-allocate if batch_norm
-        Array{Array{Float64,2},1}(0),   # delta_z_norm
-        Array{Array{Float64,2},1}(0),   # delta_z
-        Array{Array{Float64,2},1}(0),   # grad
-        Array{Array{Float64,2},1}(0),   # epsilon
-        Array{Array{Float64,2},1}(0),   # drop_ran_w
-        Array{BitArray{2},1}(0),        # drop_filt_w   Array{Array{Bool,2},1}
+        Array{Float64,2}(undef, 2,2),          # inputs
+        Array{Float64,2}(undef, 2,2),          # targets
+        Array{Array{Float64,2},1}(undef, 0),   # a
+        Array{Array{Float64,2},1}(undef, 0),   # z
+        Array{Array{Float64,2},1}(undef, 0),   # z_norm -- only pre-allocate if batch_norm
+        Array{Array{Float64,2},1}(undef, 0),   # delta_z_norm
+        Array{Array{Float64,2},1}(undef, 0),   # delta_z
+        Array{Array{Float64,2},1}(undef, 0),   # grad
+        Array{Array{Float64,2},1}(undef, 0),   # epsilon
+        Array{Array{Float64,2},1}(undef, 0),   # drop_ran_w
+        Array{BitArray{2},1}(undef, 0),        # drop_filt_w   Array{Array{Bool,2},1}
         0,                              # n
         0,                              # in_k
         0                               # out_k
@@ -179,14 +179,14 @@ mutable struct Batch_norm_params               # we will use bn as the struct va
     std_run::Array{Array{Float64,1},1}         # running average of mu
 
     Batch_norm_params() = new(           # empty constructor
-        Array{Array{Float64,1},1}(0),    # gam::Array{Array{Float64,1}}
-        Array{Array{Float64,1},1}(0),    # bet::Array{Array{Float64,1}}
-        Array{Array{Float64,2},1}(0),    # delta_gam
-        Array{Array{Float64,2},1}(0),    # delta_bet
-        Array{Array{Float64,1},1}(0),    # mu
-        Array{Array{Float64,1},1}(0),    # stddev
-        Array{Array{Float64,1},1}(0),    # mu_run
-        Array{Array{Float64,1},1}(0)     # std_run
+        Array{Array{Float64,1},1}(undef, 0),    # gam::Array{Array{Float64,1}}
+        Array{Array{Float64,1},1}(undef, 0),    # bet::Array{Array{Float64,1}}
+        Array{Array{Float64,2},1}(undef, 0),    # delta_gam
+        Array{Array{Float64,2},1}(undef, 0),    # delta_bet
+        Array{Array{Float64,1},1}(undef, 0),    # mu
+        Array{Array{Float64,1},1}(undef, 0),    # stddev
+        Array{Array{Float64,1},1}(undef, 0),    # mu_run
+        Array{Array{Float64,1},1}(undef, 0)     # std_run
     )
 end
 

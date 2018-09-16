@@ -135,8 +135,8 @@ end
 function softmax!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
 
     expf = similar(a)
-    expf[:] = exp.(z .- maximum(z,1))
-    a[:] = expf ./ sum(expf, 1)
+    expf[:] = exp.(z .- maximum(z,dims=1))
+    a[:] = expf ./ sum(expf, dims=1)
 
 end
 

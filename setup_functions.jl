@@ -60,8 +60,8 @@ function normalize_inputs(inputs, test_inputs, norm_mode="none")
         norm_factors = (x_mu, x_std) # tuple of Array{Float64,2}
     elseif lowercase(norm_mode) == "minmax"
         # normalize training data
-        x_max = maximum(inputs, 2)
-        x_min = minimum(inputs, 2)
+        x_max = maximum(inputs, dims=2)
+        x_min = minimum(inputs, dims=2)
         inputs = (inputs .- x_min) ./ (x_max .- x_min .+ 1e-08)
         # normalize test data
         if size(test_inputs) != (0,0)

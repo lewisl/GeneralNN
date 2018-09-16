@@ -65,7 +65,7 @@ end
 
 function save_plotdef(plotdef)
     fname = repr(Dates.now())
-    fname = "plotdef-" * replace(fname, r"[.:]", "-") * ".jld2"
+    fname = "plotdef-" * replace(fname, r"[.:]" => "-") * ".jld2"
     jldopen(fname, "w") do f
         f["plotdef"] = plotdef
     end
@@ -111,4 +111,113 @@ function display_mnist_digit(digit_data, digit_dims=[28,28])
     display(pldigit)
     println("Press enter to close image window..."); readline()
     closeall()
+end
+
+
+"""
+    Save, print and plot training statistics after all epochs
+
+"""
+function output_stats(train, test, nnp, bn, hp, training_time, dotest, plotdef, plot_now)
+
+    # file for simple training stats
+    fname = repr(Dates.now())
+    fname = "nnstats-" * replace(fname, r"[.:]", "-") * ".txt"
+    open(fname, "w") do stats
+        println(stats, "Training time: ",training_time, " seconds")  # cpu time since tic() =>  toq() returns secs without printing
+
+        feedfwd!(train, nnp, bn, hp, istrain=false)  # output for entire training set
+        println(stats, "Fraction correct labels predicted training: ",
+                hp.classify == "regression" ? r_squared(train.targets, train.a[nnp.output_layer])
+                    : accuracy(train.targets, train.a[nnp.output_layer],hp.epochs))
+        println(stats, "Final cost training: ", cost_function(train.targets, train.a[nnp.output_layer], train.n,
+                        nnp.theta, hp, nnp.output_layer))
+
+        # output test statistics
+        if dotest
+            feedfwd!(test, nnp, bn,  hp, istrain=false)
+            println(stats, "Fraction correct labels predicted test: ",
+                    hp.classify == "regression" ? r_squared(test.targets, test.a[nnp.output_layer])
+                        : accuracy(test.targets, test.a[nnp.output_layer], hp.epochs))
+            println(stats, "Final cost test: ", cost_function(test.targets, test.a[nnp.output_layer], test.n,
+                nnp.theta, hp, nnp.output_layer))
+        end
+
+        # output improvement of last 10 iterations for test data
+        if plotdef["plot_switch"]["Test"]
+            if plotdef["plot_switch"]["Learning"]
+                println(stats, "Test data accuracy in final 10 iterations:")
+                printdata = plotdef["fracright_history"][end-10+1:end, plotdef["col_test"]]
+                for i=1:10
+                    @printf(stats, "%0.3f : ", printdata[i])
+                end
+                print("\n")
+            end
+        end
+
+        # output hyper hyper_parameters
+        hp.alpha = (   hp.do_learn_decay   # back out alpha to original input
+                        ? round(hp.alpha * (1.0 / hp.learn_decay[1]) ^ (hp.learn_decay[2] - 1.0), digits=5) 
+                        : hp.alpha    )
+        println(stats, "\nHyper-parameters")
+        pretty_print_hp(stats, hp)
+
+    end  # end do stats  --  done with stats stream->closed
+
+    # print the stats
+    println(read(fname, String))
+
+    # save cost and accuracy from training
+    save_plotdef(plotdef)
+    
+    # plot now?
+    plot_now && plot_output(plotdef)
+
+end
+
+
+"""
+    plot_output(plotdef::Dict)
+
+    Plots the plotdef and creates 1 or 2 PyPlot plot windows of the learning (accuracy)
+    and/or cost from each training epoch.
+
+"""
+function plot_output(plotdef::Dict)
+    # plot the progress of training cost and/or learning
+    if (plotdef["plot_switch"]["Training"] || plotdef["plot_switch"]["Test"])
+        # plotlyjs(size=(600,400)) # set chart size defaults
+        pyplot()
+
+        if plotdef["plot_switch"]["Cost"]
+            plt_cost = plot(plotdef["cost_history"], title="Cost Function",
+                labels=plotdef["plot_labels"], ylims=(0.0, Inf), bottom_margin=7mm, size=(400,400))
+            display(plt_cost)  # or can use gui()
+        end
+
+        if plotdef["plot_switch"]["Learning"]
+            plt_learning = plot(plotdef["fracright_history"], title="Learning Progress",
+                labels=plotdef["plot_labels"], ylims=(0.0, 1.05), bottom_margin=7mm) 
+            display(plt_learning)
+        end
+
+        if (plotdef["plot_switch"]["Cost"] || plotdef["plot_switch"]["Learning"])
+            println("Press enter to close plot window..."); readline()
+            closeall()
+        end
+    end
+end
+
+# to file and console
+function pretty_print_hp(io, hp)
+    for item in fieldnames(typeof(hp))
+        @printf(io, "%16s = %s\n", item, getfield(hp,item))
+    end
+end
+
+# to console
+function pretty_print_hp(hp)
+    for item in fieldnames(typeof(hp))
+        @printf("%16s = %s\n",item, getfield(hp,item))
+    end
 end
