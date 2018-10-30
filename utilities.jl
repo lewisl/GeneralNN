@@ -1,4 +1,5 @@
-
+using Plots
+using JLD2
 
 """
 
@@ -103,7 +104,7 @@ Also pass the dimensions as 2 element vector (default is [28,28]).
 """
 function display_mnist_digit(digit_data, digit_dims=[28,28])
     # plotlyjs(size=(400,400))
-    pyplot()
+    gr()
     clibrary(:misc)  # collection of color palettes
     img = reshape(digit_data, digit_dims...)'
     pldigit = plot(img, seriestype=:heatmap, color=:grays,  
@@ -187,7 +188,7 @@ function plot_output(plotdef::Dict)
     # plot the progress of training cost and/or learning
     if (plotdef["plot_switch"]["Training"] || plotdef["plot_switch"]["Test"])
         # plotlyjs(size=(600,400)) # set chart size defaults
-        pyplot()
+        gr()
 
         if plotdef["plot_switch"]["Cost"]
             plt_cost = plot(plotdef["cost_history"], title="Cost Function",

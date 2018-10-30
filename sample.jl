@@ -69,18 +69,22 @@ while true
             println("Oops, try again...")
             continue
         else
-            example = test_wrongs[n]
-            digit_data = test_inputs[:, example]
-            correct = findmax(test_targets[:,example])[2]  # get the row in the column that contains value 1
-            correct = correct == 10 ? 0 : correct
-            predicted = predmax[example]
-            predicted = predicted == 10 ? 0 : predicted
-            println("\n\nThe neural network predicted: $predicted")
-            println("The correct value is: $correct")
-            GeneralNN.display_mnist_digit(digit_data, [28,28])
+            dodigit(n)
             continue
         end # response case: display a wrong prediction
     end  # response cases
 end  # prompt loop
 
 println("\nThat's all folks!.....")
+
+function dodigit(n)
+    example = test_wrongs[n]
+    digit_data = test_inputs[:, example]
+    correct = findmax(test_targets[:,example])[2]  # get the row in the column that contains value 1
+    correct = correct == 10 ? 0 : correct
+    predicted = predmax[example]
+    predicted = predicted == 10 ? 0 : predicted
+    println("\n\nThe neural network predicted: $predicted")
+    println("The correct value is: $correct")
+    GeneralNN.display_mnist_digit(digit_data, [28,28])
+end

@@ -39,7 +39,7 @@ Module GeneralNN:
 
 Includes the following functions to run directly:
 
-- train_nn() -- train sigmoid/softmax neural networks for up to 9 hidden layers
+- train_nn() -- train neural networks for up to 9 hidden layers
 - test_score() -- cost and accuracy given test data and saved theta
 - save_params() -- save all model parameters
 - load_params() -- load all model parameters
@@ -47,6 +47,12 @@ Includes the following functions to run directly:
 - accuracy() -- calculates accuracy of predictions compared to actual labels
 - extract_data() -- extracts data for MNIST from matlab files
 - normalize_inputs() -- normalize via standardization (mean, sd) or minmax
+- normalize_replay!() --
+- nnpredict() --  calculate predictions from previously trained parameters and new data
+- display_mnist_digit() --  show a digit
+- wrong_preds() --  return the indices of wrong predictions against supplied correct labels
+- right_preds() --  return the indices of correct predictions against supplied correct labels
+- plot_output() --  plot learning, cost for training and test for previously saved training runs
 
 To use, include() the file.  Then enter using GeneralNN to use the module.
 
@@ -102,7 +108,8 @@ using LinearAlgebra
 # new plotting approach
 using Plots
 # plotlyjs()  # PlotlyJS backend to local electron window
-pyplot()
+# pyplot()
+gr()  # gr is default backend for Plots
 import Measures: mm # for some plot dimensioning
 
 include("layer_functions.jl")
@@ -429,7 +436,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
             end # mini-batch loop
 
             # stats for all mini-batches of one epoch
-            gather_stats!(plotdef, ep_i train, test, nnp, bn, cost_function, train.n, test.n, hp)  
+            gather_stats!(plotdef, ep_i, train, test, nnp, bn, cost_function, train.n, test.n, hp)  
 
         end # epoch loop
     end  # the training time begin block
