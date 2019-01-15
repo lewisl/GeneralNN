@@ -123,7 +123,8 @@ function output_stats(train, test, nnp, bn, hp, training_time, dotest, plotdef, 
 
     # file for simple training stats
     fname = repr(Dates.now())
-    fname = "nnstats-" * replace(fname, r"[.:]", "-") * ".txt"
+    fname = "nnstats-" * replace(fname, r"[.:]" => "-") * ".txt"
+        println(fname)
     open(fname, "w") do stats
         println(stats, "Training time: ",training_time, " seconds")  # cpu time since tic() =>  toq() returns secs without printing
 
@@ -208,6 +209,24 @@ function plot_output(plotdef::Dict)
         end
     end
 end
+
+"""
+Print and plot a predicted digit and the actual digit.
+"""
+function dodigit(n, test_wrongs, test_inputs, test_targets, predmax)
+    example = test_wrongs[n]
+    digit_data = test_inputs[:, example]
+    correct = findmax(test_targets[:,example])[2]  # get the row in the column that contains value 1
+    correct = correct == 10 ? 0 : correct
+    predicted = predmax[example]
+    predicted = predicted == 10 ? 0 : predicted
+    println("\n\nThe neural network predicted: $predicted")
+    println("The correct value is: $correct")
+    GeneralNN.display_mnist_digit(digit_data, [28,28])
+end
+
+
+
 
 # to file and console
 function pretty_print_hp(io, hp)

@@ -104,6 +104,7 @@ using Random
 using Printf
 using Dates
 using LinearAlgebra
+using JSON
 
 # new plotting approach
 using Plots
@@ -134,7 +135,8 @@ number of output labels from data. Detects number of features from data for outp
 Enables any size mini-batch (last batch will be smaller if minibatch size doesn't divide evenly
 into number of examples).  Plots learning and cost outcomes by epoch for training and test data.
 
-This is a front-end function that verifies all inputs and calls run_training().
+This is a front-end function that verifies all inputs and calls run_training().  A convenience method 
+allows all of the input parameters to be read from a JSON file.
 
     returns:  train.inputs, train.targets, train.a[nnp.output_layer], test.a[nnp.output_layer], nnp, bn, hp  
         train.inputs  ::= after any normalization
@@ -181,11 +183,13 @@ This is a front-end function that verifies all inputs and calls run_training().
                             gathered while running the training.  You can plot the file separately, later.
 
 """
+
 function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha::Float64=0.35,
     mb_size_in::Int64=0, lambda::Float64=0.01, classify::String="softmax", norm_mode::String="none",
     opt::String="", opt_params::Array{Float64,1}=[0.9,0.999], units::String="sigmoid", do_batch_norm::Bool=false,
     reg::String="L2", dropout::Bool=false, droplim::Array{Float64,1}=[0.5], plots::Array{String,1}=["Training", "Learning"],
     learn_decay::Array{Float64,1}=[1.0, 1.0], plot_now::Bool=true)
+
 
     ################################################################################
     #   This is a front-end function that verifies all inputs and calls run_training
@@ -324,6 +328,79 @@ opt = lowercase(opt)  # match title case for string argument
 end
 
 
+function train_nn(argsjsonfile::String, errorcheck::Bool=false)
+
+    ################################################################################
+    #   This method gets input arguments from a JSON file. This method does no
+    #   error checking except, optionally, for valid argnames or missing required args. 
+    #   The front-end method train_nn does error checking on all arg values and types.
+    ################################################################################
+
+    argstxt = read(argsjsonfile, String)
+    argsdict = JSON.parse(argstxt)
+    inputargslist = keys(argsdict)
+    if errorcheck
+        validargnames = [
+                         "matfname", "epochs", "n_hid", "alpha", "mb_size_in", "lambda",
+                         "classify", "norm_mode", "opt", "opt_params", "units", "do_batch_norm",
+                         "reg", "dropout", "droplim", "plots", "learn_decay", "plot_now"
+                         ]
+        requiredargs = ["matfname", "epochs", "n_hid"]
+
+        # check for missing required args
+        errnames = []            
+        for argname in requiredargs
+            if !(argname in inputargslist)
+                push!(errnames, argname)
+            end
+        end
+        if !isempty(errnames)
+            println("Input file missing required arguments:")
+            println(errnames)
+            error("Stopped with invalid inputs")
+        end
+
+        # check for invalid arg names
+        errnames = []
+        for argname in inputargslist
+            if !(argname in validargnames)
+                push!(errnames, argname)
+            end
+        end
+        if !isempty(errnames)
+            println("Input file contained invalid argument names:")
+            println(errnames)
+            println("Valid argument names are:")
+            println(validargnames)
+            error("Stopped with invalid inputs")
+        end
+    end  # errorcheck
+
+    # collect individual required args
+    matfname = pop!(argsdict, "matfname")
+    epochs = pop!(argsdict, "epochs")
+    n_hid = Int64.(pop!(argsdict, "n_hid"))
+
+    # convert  JSON array type Any to appropriate Julia type
+    if "plots" in inputargslist
+        argsdict["plots"] = String.(argsdict["plots"])
+    end
+    if "learn_decay" in inputargslist
+        argsdict["learn_decay"] = Float64.(argsdict["learn_decay"])
+    end
+    if "opt_params" in inputargslist
+        argsdict["opt_params"] = Float64.(argsdict["opt_params"])
+    end
+    if "droplim" in inputargslist
+        argsdict["droplim"] = Float64.(argsdict["droplim"])
+    end
+
+    # return Dict(zip(Symbol.(keys(argsdict)),values(argsdict)))
+
+    train_nn(matfname, epochs, n_hid; Dict(zip(Symbol.(keys(argsdict)),values(argsdict)))...)
+end
+
+
 function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     plots::Array{String,1}=["Training", "Learning"], reg="L2", alpha=0.35,
     mb_size_in=0, lambda=0.01, opt="", opt_params=[], dropout=false, droplim=[0.5],
@@ -445,7 +522,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     output_stats(train, test, nnp, bn, hp, training_time, dotest, plotdef, plot_now)
 
     #  return train inputs, train targets, train predictions, test predictions, trained parameters, batch_norm parms., hyper parms.
-    return train.inputs, train.targets, train.a[nnp.output_layer], test.a[nnp.output_layer], nnp, bn, hp;  
+    return train.inputs, train.targets, train.a[nnp.output_layer], test.inputs, test.targets, test.a[nnp.output_layer], nnp, bn, hp;  
      
 end  # function run_training
 
