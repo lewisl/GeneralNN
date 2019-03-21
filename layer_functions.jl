@@ -115,15 +115,15 @@ end
 
 
 function sigmoid!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
-    @inbounds a[:] = 1.0 ./ (1.0 .+ exp.(-z))
+    @fastmath a[:] = 1.0 ./ (1.0 .+ exp.(-z))  # removed @inbounds
 end
 
 function tanh_act!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
-    a[:] = tanh.(z)
+    @fastmath a[:] = tanh.(z)
 end
 
 function l_relu!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2}) # leaky relu
-    a[:] = map(j -> j >= 0.0 ? j : l_relu_neg * j, z)
+    @fastmath a[:] = map(j -> j >= 0.0 ? j : l_relu_neg * j, z)
 end
 
 
@@ -135,8 +135,8 @@ end
 function softmax!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
 
     expf = similar(a)
-    expf[:] = exp.(z .- maximum(z,dims=1))
-    a[:] = expf ./ sum(expf, dims=1)
+    @fastmath expf[:] = exp.(z .- maximum(z,dims=1))
+    @fastmath a[:] = expf ./ sum(expf, dims=1)
 
 end
 

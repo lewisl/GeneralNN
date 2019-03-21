@@ -7,7 +7,7 @@
 #   there is no reason for views on backprop data--always the size of minibatch
 #   revise initialization and make it depend on type of layer unit
 #   try different versions of ensemble predictions_vector
-#   allow dropout to drop from the input layer
+#   allow dropout to drop from the input layer?
 #   augment data by perturbing the images
 #   don't create plotdef if not plotting
 #   try batch norm with minmax normalization
@@ -135,8 +135,9 @@ number of output labels from data. Detects number of features from data for outp
 Enables any size mini-batch (last batch will be smaller if minibatch size doesn't divide evenly
 into number of examples).  Plots learning and cost outcomes by epoch for training and test data.
 
-This is a front-end function that verifies all inputs and calls run_training().  A convenience method 
-allows all of the input parameters to be read from a JSON file.
+This is a front-end function that verifies all inputs and calls run_training(). A convenience method allows 
+all of the input parameters to be read from a JSON file.  This is further explained below.
+
 
     returns:  train.inputs, train.targets, train.a[nnp.output_layer], test.a[nnp.output_layer], nnp, bn, hp  
         train.inputs  ::= after any normalization
@@ -182,6 +183,37 @@ allows all of the input parameters to be read from a JSON file.
         plot_now        ::Bool.  If true, plot training stats and save the plotdef that contains stats 
                             gathered while running the training.  You can plot the file separately, later.
 
+This method allows all input parameters to be supplied by a JSON file:
+
+    function train_nn(argsjsonfile::String, errorcheck::Bool=false)
+
+    Here is an example of a correct json file:
+
+        {
+            "matfname": "digits60000by784.mat",
+            "epochs":  18,
+            "n_hid": [120,120,120,120],
+            "alpha":   0.74,
+            "reg":  "",
+            "lambda":  0.00026,
+            "learn_decay": [0.52,3.0],
+            "mb_size_in":   50, 
+            "norm_mode":   "none",
+            "do_batch_norm":  true,
+            "opt":   "adam",
+            "opt_params": [0.9, 0.999],
+            "units":  "relu",
+            "classify": "softmax",
+            "dropout": false,
+            "plots": ["Training", "Learning", "Test"],
+            "plot_now": true
+        }
+
+    If errorcheck is set to true the JSON file is checked:
+       1) To make sure all required arguments are present; this is true even
+          though the function that will be called provides valid defaults.
+       2) To make sure that all argument names are valid.
+    If any errors are found, neural network training is not run.
 """
 
 function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha::Float64=0.35,
@@ -397,7 +429,10 @@ function train_nn(argsjsonfile::String, errorcheck::Bool=false)
 
     # return Dict(zip(Symbol.(keys(argsdict)),values(argsdict)))
 
-    train_nn(matfname, epochs, n_hid; Dict(zip(Symbol.(keys(argsdict)),values(argsdict)))...)
+    train_nn(
+             matfname, epochs, n_hid; 
+             Dict(   zip(Symbol.(keys(argsdict)),values(argsdict))    )...
+             )
 end
 
 
