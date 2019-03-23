@@ -8,11 +8,13 @@ function cross_entropy_cost(targets, predictions, n, theta, hp, output_layer)
     cost = (-1.0 / n) * (dot(targets,log.(predictions .+ 1e-50)) +
         dot((1.0 .- targets), log.(1.0 .- predictions .+ 1e-50)))
 
+    # debug cost calc
     # if isnan(cost)
     #    println("predictions <= 0? ",any(predictions .== 0.0))
     #    println("log 1 - predictions? ", any(isinf.(log.(1.0 .- predictions))))
     #    error("problem with cost function")
     # end
+
     @fastmath if hp.reg == "L2"  # set reg="" if not using regularization
         # regterm = hp.lambda/(2.0 * n) .* sum([sum(th .* th) for th in theta[2:output_layer]])
         regterm = hp.lambda/(2.0 * n) .* sum([dot(th, th) for th in theta[2:output_layer]])
@@ -23,7 +25,7 @@ end
 
 
 function mse_cost(targets, predictions, n, theta, hp, output_layer)
-    cost = (1.0 / (2.0 * n)) .* sum((targets .- predictions) .^ 2.0)
+    @fastmath cost = (1.0 / (2.0 * n)) .* sum((targets .- predictions) .^ 2.0)
     @fastmath if hp.reg == "L2"  # set reg="" if not using regularization
         regterm = hp.lambda/(2.0 * n) .* sum([dot(th, th) for th in theta[2:output_layer]])
         cost = cost + regterm
@@ -35,9 +37,7 @@ end
 # not using yet
 function mse_grad!(mb, layer) # only for output layer using mse_cost
     # do we really need this?
-
     mb.grad[layer] = mb.a[layer-1]
-
 end
 
 
@@ -56,15 +56,15 @@ end
 
 function adam!(tp, hp, t)
     @fastmath for hl = (tp.output_layer - 1):-1:2  # loop over hidden layers
-        @inbounds tp.delta_v_w[hl] .= hp.b1 .* tp.delta_v_w[hl] .+ (1.0 - hp.b1) .* tp.delta_w[hl]  # @inbounds 
-        @inbounds tp.delta_s_w[hl] .= hp.b2 .* tp.delta_s_w[hl] .+ (1.0 - hp.b2) .* tp.delta_w[hl].^2  # @inbounds 
-        @inbounds tp.delta_w[hl] .= (  (tp.delta_v_w[hl] ./ (1.0 - hp.b1^t)) ./  # @inbounds 
+        @inbounds tp.delta_v_w[hl] .= hp.b1 .* tp.delta_v_w[hl] .+ (1.0 - hp.b1) .* tp.delta_w[hl]  
+        @inbounds tp.delta_s_w[hl] .= hp.b2 .* tp.delta_s_w[hl] .+ (1.0 - hp.b2) .* tp.delta_w[hl].^2   
+        @inbounds tp.delta_w[hl] .= (  (tp.delta_v_w[hl] ./ (1.0 - hp.b1^t)) ./   
                               sqrt.(tp.delta_s_w[hl] ./ (1.0 - hp.b2^t) .+ hp.ltl_eps)  )
 
         if !hp.do_batch_norm  # then we need to do bias term
-            @inbounds tp.delta_v_b[hl] .= hp.b1 .* tp.delta_v_b[hl] .+ (1.0 - hp.b1) .* tp.delta_b[hl]  # @inbounds 
-            @inbounds tp.delta_s_b[hl] .= hp.b2 .* tp.delta_s_b[hl] .+ (1.0 - hp.b2) .* tp.delta_b[hl].^2  # @inbounds 
-            @inbounds tp.delta_b[hl] .= (  (tp.delta_v_b[hl] ./ (1.0 - hp.b1^t)) ./  # @inbounds 
+            @inbounds tp.delta_v_b[hl] .= hp.b1 .* tp.delta_v_b[hl] .+ (1.0 - hp.b1) .* tp.delta_b[hl]   
+            @inbounds tp.delta_s_b[hl] .= hp.b2 .* tp.delta_s_b[hl] .+ (1.0 - hp.b2) .* tp.delta_b[hl].^2   
+            @inbounds tp.delta_b[hl] .= (  (tp.delta_v_b[hl] ./ (1.0 - hp.b1^t)) ./   
                               (sqrt.(tp.delta_s_b[hl] ./ (1.0 - hp.b2^t)) + hp.ltl_eps)  )
         end
     end
@@ -105,17 +105,17 @@ end
 
 # two methods for linear layer units, with bias and without
 function affine!(z, a, theta, bias)  # with bias
-    z[:] = theta * a .+ bias
+    @fastmath z[:] = theta * a .+ bias
 end
 
 
 function affine!(z, a, theta)  # no bias
-    z[:] = theta * a
+    @fastmath z[:] = theta * a
 end
 
 
 function sigmoid!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
-    @fastmath a[:] = 1.0 ./ (1.0 .+ exp.(-z))  # removed @inbounds
+    @fastmath a[:] = 1.0 ./ (1.0 .+ exp.(-z))  
 end
 
 function tanh_act!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
@@ -133,11 +133,9 @@ end
 
 
 function softmax!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
-
     expf = similar(a)
     @fastmath expf[:] = exp.(z .- maximum(z,dims=1))
     @fastmath a[:] = expf ./ sum(expf, dims=1)
-
 end
 
 
@@ -155,12 +153,12 @@ end
 
 function sigmoid_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
     sigmoid!(z, grad)
-    grad[:] = grad .* (1.0 .- grad)
+    @fastmath grad[:] = grad .* (1.0 .- grad)
 end
 
 
 function tanh_act_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
-    grad[:] = 1.0 .- tanh.(z).^2
+    @fastmath grad[:] = 1.0 .- tanh.(z).^2
 end
 
 

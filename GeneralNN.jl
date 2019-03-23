@@ -531,8 +531,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
                     @inbounds nnp.theta[hl] .= nnp.theta[hl] .- (hp.alphaovermb .* nnp.delta_w[hl])
                     if hp.reg == "L2"  # subtract regularization term
                         @inbounds nnp.theta[hl] .= nnp.theta[hl] .- (hp.alphaovermb .* (hp.lambda .* nnp.theta[hl]))
-                    end
-                    if hp.reg == "L1"
+                    elseif hp.reg == "L1"
                         @inbounds nnp.theta[hl] .= nnp.theta[hl] .- (hp.alphaovermb .* (hp.lambda .* sign.(nnp.theta[hl])))
                     end
                     
@@ -598,10 +597,6 @@ function update_training_views!(mb::Training_view, train::Model_data, nnp::NN_we
 end
 
 
-# ERROR: MethodError: Cannot `convert` an object of 
-# type SubArray{BitArray,2,Array{BitArray,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true} to an object of 
-# type SubArray{Bool,2,BitArray{2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true}
-
 """
 function feedfwd!(dat, nnp, bn, do_batch_norm; istrain)
     modifies a, a_wb, z in place to reduce memory allocations
@@ -612,24 +607,6 @@ function feedfwd!(dat, nnp, bn, do_batch_norm; istrain)
 function feedfwd!(dat::Union{Model_data, Training_view}, nnp, bn,  hp; istrain=true)
 
     # hidden layers
-    # @fastmath for hl = 2:nnp.output_layer-1  
-        # @inbounds dat.z[hl][:] = nnp.theta[hl] * dat.a[hl-1]
-        # affine!(dat.z[hl], dat.a[hl-1], nnp.theta[hl])
-
-        # if hp.do_batch_norm 
-        #     batch_norm_fwd!(hp, bn, dat, hl, istrain)
-        #     unit_function!(dat.a[hl], dat.z[hl])
-        # else
-        #     @inbounds dat.z[hl][:] =  dat.z[hl] .+ nnp.bias[hl]
-        #     unit_function!(dat.a[hl], dat.z[hl])
-        # end
-
-        # if istrain && hp.dropout  
-        #     dropout!(dat,hp,hl)
-        # end
-    # end
-
-    # separate affine calculation, clarify batch_norm
     @fastmath for hl = 2:nnp.output_layer-1  
         if hp.do_batch_norm 
             affine!(dat.z[hl], dat.a[hl-1], nnp.theta[hl])
@@ -667,20 +644,18 @@ function backprop!(nnp, bn, dat, hp, t)
     # for output layer
     dat.epsilon[nnp.output_layer][:] = dat.a[nnp.output_layer] .- dat.targets  
     @fastmath nnp.delta_w[nnp.output_layer][:] = dat.epsilon[nnp.output_layer] * dat.a[nnp.output_layer-1]' # 2nd term is effectively the grad for error   
-    @fastmath nnp.delta_b[nnp.output_layer][:] = sum(dat.epsilon[nnp.output_layer],dims=2)  # @inbounds 
+    @fastmath nnp.delta_b[nnp.output_layer][:] = sum(dat.epsilon[nnp.output_layer],dims=2)  
 
+    # loop over hidden layers
+    @fastmath for hl = (nnp.output_layer - 1):-1:2  
+        gradient_function!(dat.grad[hl], dat.z[hl])
+        @inbounds hp.dropout && (dat.grad[hl] .* dat.drop_filt_w[hl])
+        @inbounds dat.epsilon[hl][:] = nnp.theta[hl+1]' * dat.epsilon[hl+1] .* dat.grad[hl]  
 
-    @fastmath for hl = (nnp.output_layer - 1):-1:2  # loop over hidden layers
         if hp.do_batch_norm
-            gradient_function!(dat.grad[hl], dat.z[hl])
-            @inbounds hp.dropout && (dat.grad[hl] .* dat.drop_filt_w[hl])
-            @inbounds dat.epsilon[hl][:] = nnp.theta[hl+1]' * dat.epsilon[hl+1] .* dat.grad[hl]  
             batch_norm_back!(nnp, dat, bn, hl, hp)
             @inbounds nnp.delta_w[hl][:] = dat.delta_z[hl] * dat.a[hl-1]'   
         else
-            gradient_function!(dat.grad[hl], dat.z[hl])
-            @inbounds hp.dropout && (dat.grad[hl] .* dat.drop_filt_w[hl])
-            @inbounds dat.epsilon[hl][:] = nnp.theta[hl+1]' * dat.epsilon[hl+1] .* dat.grad[hl]   
             @inbounds nnp.delta_w[hl][:] = dat.epsilon[hl] * dat.a[hl-1]'  # @inbounds 
             @inbounds nnp.delta_b[hl][:] = sum(dat.epsilon[hl],dims=2)  #  times a column of 1's = sum(row)
         end
