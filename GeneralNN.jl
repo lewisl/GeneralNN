@@ -54,7 +54,7 @@ Includes the following functions to run directly:
 - right_preds() --  return the indices of correct predictions against supplied correct labels
 - plot_output() --  plot learning, cost for training and test for previously saved training runs
 
-To use, include() the file.  Then enter using GeneralNN to use the module.
+To use, include() the file.  Then enter using .GeneralNN to use the module.
 
 These data structures are used to hold parameters and data:
 
@@ -674,13 +674,13 @@ function backprop!(nnp, bn, dat, hp, t)
         if hp.do_batch_norm
             gradient_function!(dat.grad[hl], dat.z[hl])
             @inbounds hp.dropout && (dat.grad[hl] .* dat.drop_filt_w[hl])
-            @inbounds dat.epsilon[hl][:] = nnp.theta[hl+1]' * dat.epsilon[hl+1] .* dat.grad[hl]  # @inbounds 
+            @inbounds dat.epsilon[hl][:] = nnp.theta[hl+1]' * dat.epsilon[hl+1] .* dat.grad[hl]  
             batch_norm_back!(nnp, dat, bn, hl, hp)
-            @inbounds nnp.delta_w[hl][:] = dat.delta_z[hl] * dat.a[hl-1]'  # @inbounds 
+            @inbounds nnp.delta_w[hl][:] = dat.delta_z[hl] * dat.a[hl-1]'   
         else
             gradient_function!(dat.grad[hl], dat.z[hl])
             @inbounds hp.dropout && (dat.grad[hl] .* dat.drop_filt_w[hl])
-            @inbounds dat.epsilon[hl][:] = nnp.theta[hl+1]' * dat.epsilon[hl+1] .* dat.grad[hl]  # @inbounds 
+            @inbounds dat.epsilon[hl][:] = nnp.theta[hl+1]' * dat.epsilon[hl+1] .* dat.grad[hl]   
             @inbounds nnp.delta_w[hl][:] = dat.epsilon[hl] * dat.a[hl-1]'  # @inbounds 
             @inbounds nnp.delta_b[hl][:] = sum(dat.epsilon[hl],dims=2)  #  times a column of 1's = sum(row)
         end
@@ -727,9 +727,9 @@ function batch_norm_back!(nnp, dat, bn, hl, hp)
     # end
     # error("that's all folks....")
 
-    dat.delta_z_norm[hl][:] = bn.gam[hl] .* dat.epsilon[hl]  # @inbounds 
+    @inbounds dat.delta_z_norm[hl][:] = bn.gam[hl] .* dat.epsilon[hl]  # 
 
-    @inbounds dat.delta_z[hl][:] = (                               # @inbounds 
+    @inbounds dat.delta_z[hl][:] = (                               
         (1.0 / mb) .* (1.0 ./ bn.stddev[hl]) .* (
             mb .* dat.delta_z_norm[hl] .- sum(dat.delta_z_norm[hl], dims=2) .-
             dat.z_norm[hl] .* sum(dat.delta_z_norm[hl] .* dat.z_norm[hl], dims=2)
