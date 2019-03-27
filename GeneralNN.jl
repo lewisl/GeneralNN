@@ -2,6 +2,8 @@
 
 
 #TODO
+#   look at performance of staticarrays
+#   should we put all of the inputs into a dict or named tuple or a mutable struct?
 #   is dropout dropping the same units on backprop as feedfwd?
 #   set a directory for training stats (keep out of code project directory)
 #   there is no reason for views on backprop data--always the size of minibatch
@@ -139,14 +141,16 @@ This is a front-end function that verifies all inputs and calls run_training(). 
 all of the input parameters to be read from a JSON file.  This is further explained below.
 
 
-    returns:  train.inputs, train.targets, train.a[nnp.output_layer], test.a[nnp.output_layer], nnp, bn, hp  
-        train.inputs  ::= after any normalization
-        train.targets ::= matches original inputs
-        train predictions ::= using final values of trained parameters
-        test predictions  ::=          ditto
-        nnp  ::= struct that holds all trained parameters
-        Batch_norm_params ::= struct that holds all batch_norm parameters
-        hyper_parameters ::= all hyper parameters used to control training
+    returns a dict containing these keys:  
+        train_inputs      ::= after any normalization
+        train_targets     ::= matches original inputs
+        train_preds       ::= using final values of trained parameters
+        test_inputs
+        test_targets
+        test_preds        ::=  using final values of trained parameters
+        nn_params         ::= struct that holds all trained parameters
+        batch_norm_params ::= struct that holds all batch_norm parameters
+        hyper_params      ::= all hyper parameters used to control training
 
 
     key inputs:
@@ -451,7 +455,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     #################################################################################
 
     hp = Hyper_parameters()  # hyper_parameters:  sets defaults
-    # update Hyper_parameters with user inputs--more below based on other logic
+    # update Hyper_parameters with user inputs; others set in function setup_model!
         hp.units = units
         hp.alpha = alpha
         hp.lambda = lambda
@@ -556,7 +560,17 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     output_stats(train, test, nnp, bn, hp, training_time, dotest, plotdef, plot_now)
 
     #  return train inputs, train targets, train predictions, test predictions, trained parameters, batch_norm parms., hyper parms.
-    return train.inputs, train.targets, train.a[nnp.output_layer], test.inputs, test.targets, test.a[nnp.output_layer], nnp, bn, hp;  
+    return Dict(
+                "train_inputs" => train.inputs, 
+                "train_targets"=> train.targets, 
+                "train_preds" => train.a[nnp.output_layer], 
+                "test_inputs" => test.inputs, 
+                "test_targets" => test.targets, 
+                "test_preds" => test.a[nnp.output_layer], 
+                "nn_params" => nnp, 
+                "batchnorm_params" => bn, 
+                "hyper_params" => hp
+                );  
      
 end  # function run_training
 

@@ -13,7 +13,7 @@ includet("GeneralNN.jl")
 using .GeneralNN
 
 
-function runjob()
+function runjob(jsoninputs="nninputs.json")
 
     println(
         """ 
@@ -22,15 +22,16 @@ function runjob()
     )
 
     println("........ Training the neural network ........")
-    train_inputs, train_targets, train_preds, test_inputs, test_targets, test_preds, nnp, bn, hp = train_nn("nninputs.json");
+    results = GeneralNN.train_nn(jsoninputs);
+     # train_inputs, train_targets, train_preds, test_inputs, test_targets, test_preds, nn_params, batchnorm_params, 
+     # hyper_params
 
 
-
-    predmax = vec(map(x -> x[1], argmax(test_preds,dims=1)));
+    predmax = vec(map(x -> x[1], argmax(results["test_preds"],dims=1)));
 
     # which predictions are wrong?
-    test_wrongs = GeneralNN.wrong_preds(test_targets, test_preds);
-    train_wrongs = GeneralNN.wrong_preds(train_targets, train_preds);
+    test_wrongs = GeneralNN.wrong_preds(results["test_targets"], results["test_preds"]);
+    train_wrongs = GeneralNN.wrong_preds(results["train_targets"], results["train_preds"]);
 
     println("\n\nThere are ", length(test_wrongs), " incorrect test predictions.")
     println("There are ", length(train_wrongs), " incorrect training predictions.")
@@ -55,7 +56,7 @@ function runjob()
                 println("Oops, try again...")
                 continue
             else
-                GeneralNN.dodigit(n, test_wrongs, test_inputs, test_targets, predmax)
+                GeneralNN.dodigit(n, test_wrongs, results["test_inputs"], results["test_targets"], predmax)
                 continue
             end # response case: display a wrong prediction
         end  # response cases
