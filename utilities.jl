@@ -192,14 +192,25 @@ function plot_output(plotdef::Dict)
         gr()
 
         if plotdef["plot_switch"]["Cost"]
-            plt_cost = plot(plotdef["cost_history"], title="Cost Function",
-                labels=plotdef["plot_labels"], ylims=(0.0, Inf), bottom_margin=7mm, size=(400,400))
+            plt_cost = plot(
+                plotdef["cost_history"], 
+                title="Cost Function",
+                labels=plotdef["plot_labels"], 
+                legend=:bottomright,
+                ylims=(0.0, Inf), 
+                bottom_margin=7mm, 
+                size=(400,400))
             display(plt_cost)  # or can use gui()
         end
 
         if plotdef["plot_switch"]["Learning"]
-            plt_learning = plot(plotdef["fracright_history"], title="Learning Progress",
-                labels=plotdef["plot_labels"], ylims=(0.0, 1.05), bottom_margin=7mm) 
+            plt_learning = plot(
+                plotdef["fracright_history"], 
+                title="Learning Progress",
+                labels=plotdef["plot_labels"], 
+                legend=:bottomright,
+                ylims=(0.0, 1.05), 
+                bottom_margin=7mm) 
             display(plt_learning)
         end
 

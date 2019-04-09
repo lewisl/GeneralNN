@@ -63,7 +63,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         "sigmoid",      # units
         0.35,           # alpha -- OK for nn. way too high for linear regression
         0.01,           # lambda
-        [],             # h_hid
+        [],             # n_hid
         0.9,            # b1
         0.999,          # b2
         1e-8,           # ltl_eps

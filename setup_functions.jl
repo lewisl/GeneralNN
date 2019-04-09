@@ -50,8 +50,8 @@ end
 function normalize_inputs(inputs, test_inputs, norm_mode="none")
     if lowercase(norm_mode) == "standard"
         # normalize training data
-        x_mu = mean(inputs, 2)
-        x_std = std(inputs, 2)
+        x_mu = mean(inputs, dims=2)
+        x_std = std(inputs, dims=2)
         inputs = (inputs .- x_mu) ./ (x_std .+ 1e-08)
         # normalize test data
         if size(test_inputs) != (0,0)
@@ -165,17 +165,27 @@ function setup_model!(mb, hp, nnp, bn, dotest, train, test)
 
     # dropout parameters: droplim is in hp (Hyper_parameters),
     #    drop_ran_w and drop_filt_w are in mb or train (Model_data)
-    # set a droplim for each layer (input layer and output layer will be ignored)
+    # set a droplim for each layer 
     if hp.dropout
-        # fill droplim to match number of hidden layers
-        if length(hp.droplim) > length(hp.n_hid)
-            hp.droplim = hp.droplim[1:length(hp.n_hid)] # truncate
-        elseif length(hp.droplim) < length(hp.n_hid)
-            for i = 1:length(hp.n_hid)-length(hp.droplim)
-                push!(hp.droplim,hp.droplim[end]) # pad
+        if length(hp.droplim) == length(hp.n_hid) + 2
+            # droplim supplied for every layer
+            if hp.droplim[end] != 1.0
+                @warn("Poor performance when dropping units from output layer, continuing.")
             end
+        elseif length(hp.droplim) == length(hp.n_hid) + 1
+            # droplim supplied for input layer and hidden layers
+            hp.droplim = [hp.droplim..., 1.0]  # keep all units in output layer
+        elseif length(hp.droplim) < length(hp.n_hid)
+            # pad to provide same droplim for all hidden layers
+            for i = 1:length(hp.n_hid)-length(hp.droplim)
+                push!(hp.droplim,hp.droplim[end]) 
+            end
+            hp.droplim = [1.0, hp.droplim..., 1.0] # use all units for input and output layers
+        else
+            @warn("More drop limits provided than total network layers, use limits ONLY for hidden layers.")
+            hp.droplim = hp.droplim[1:length(hp.n_hid)]  # truncate
+            hp.droplim = [1.0, hp.droplim..., 1.0] # placeholders for input and output layers
         end
-        hp.droplim = [1.0, hp.droplim..., 1.0] # placeholders for input and output layers
     end
 
     # debug
