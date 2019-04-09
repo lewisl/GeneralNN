@@ -2,20 +2,21 @@
 
 
 #TODO
+#   stats on individual regression parameters
 #   look at performance of staticarrays
-#   should we put all of the inputs into a dict or named tuple or a mutable struct?
 #   is dropout dropping the same units on backprop as feedfwd?
 #   set a directory for training stats (keep out of code project directory)
 #   there is no reason for views on backprop data--always the size of minibatch
-#   revise initialization and make it depend on type of layer unit
+#   revise initialization and make it depend on type of layer unit???
 #   try different versions of ensemble predictions_vector
 #   allow dropout to drop from the input layer?
-#   augment data by perturbing the images
+#   augment MINST data by perturbing the images
 #   don't create plotdef if not plotting
 #   try batch norm with minmax normalization
 #   cleaning up batch norm is complicated:
 #       affects feedfwd, backprop, pre-allocation (several), momentum, adam search for if [!hp.]*do_batch_norm
 #       type dispatch on bn:  either a struct or a bool to eliminate if tests all over to see if we batch normalize
+#           maybe not: if test fastest; code a bit ragged
 #   check for type stability: @code_warntype pisum(500,10000)
 #   still lots of memory allocations despite the pre-allocation
         # You can devectorize r -= d[j]*A[:,j] with r .= -.(r,d[j]*A[:.j]) 
@@ -23,18 +24,13 @@
         # As @LutfullahTomak said sum(A[:,j].*r) should devectorize as dot(view(A,:,j),r) 
         #        to get rid of all of the temporaries in there. 
         # To use an infix operator, you can use \cdot, as in view(A,:,j)⋅r.
-#   stats on individual regression parameters
 #   figure out memory use between train set and minibatch set
-#   fix predictions
 #   make affine units a separate layer with functions for feedfwd, gradient and test--do we need to?
-#   try "flatscale" x = x / max(x)
 #   implement a gradient checking function with option to run it
 #   convolutional layers
 #   pooling layers
 #   implement early stopping
-#   separate plots data structure from stats data structure?
 
-#  __precompile__()  # not obvious this does anything at all as no persistent cache is created
 
 """
 Module GeneralNN:
@@ -655,7 +651,7 @@ function backprop!(nnp, dat, do_batch_norm)
 """
 function backprop!(nnp, bn, dat, hp, t)
 
-    # for output layer
+    # for output layer if cross_entropy_cost or mean squared error???
     dat.epsilon[nnp.output_layer][:] = dat.a[nnp.output_layer] .- dat.targets  
     @fastmath nnp.delta_w[nnp.output_layer][:] = dat.epsilon[nnp.output_layer] * dat.a[nnp.output_layer-1]' # 2nd term is effectively the grad for error   
     @fastmath nnp.delta_b[nnp.output_layer][:] = sum(dat.epsilon[nnp.output_layer],dims=2)  

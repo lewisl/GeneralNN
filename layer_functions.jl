@@ -34,13 +34,6 @@ function mse_cost(targets, predictions, n, theta, hp, output_layer)
 end
 
 
-# not using yet
-function mse_grad!(mb, layer) # only for output layer using mse_cost
-    # do we really need this?
-    mb.grad[layer] = mb.a[layer-1]
-end
-
-
 function momentum!(tp, hp, t)
     @fastmath for hl = (tp.output_layer - 1):-1:2  # loop over hidden layers
         @inbounds tp.delta_v_w[hl] .= hp.b1 .* tp.delta_v_w[hl] .+ (1.0 - hp.b1) .* tp.delta_w[hl]  # @inbounds 
@@ -76,7 +69,7 @@ end
 
 
 function dropout!(dat,hp,hl)
-    @inbounds dat.drop_ran_w[hl][:] = rand(size(dat.drop_ran_w[hl]))
+    @inbounds dat.drop_ran_w[hl][:] = rand(Float64, size(dat.drop_ran_w[hl]))
     @inbounds dat.drop_filt_w[hl][:] = dat.drop_ran_w[hl] .< hp.droplim[hl]
     @inbounds dat.a[hl][:] = dat.a[hl] .* dat.drop_filt_w[hl]
     @inbounds dat.a[hl][:] = dat.a[hl] ./ hp.droplim[hl]
@@ -167,7 +160,17 @@ function l_relu_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float
 end
 
 
+# function relu_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
+#     grad[:] = map(j -> j > 0.0 ? 1.0 : 0.0, z);
+# end
+
+# optimized? relu_gradient!
 function relu_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
-    grad[:] = map(j -> j > 0.0 ? 1.0 : 0.0, z);
+    grad[:] .= 0.0
+    for i = 1:length(z)
+        if z[i] > 0.0
+            grad[i] = 1.0
+        end
+    end
 end
 

@@ -2,9 +2,15 @@
 
 
 
-
+println(
+    """ 
+    Sample run of neural net training with MNIST digits.
+    """
+)
 
 println("........ Loading code ........")
+
+println("\n........ enter runjob() -> code compiles the first time ........")
 
 using Printf
 using Revise
@@ -15,11 +21,7 @@ using .GeneralNN
 
 function runjob(jsoninputs="nninputs.json")
 
-    println(
-        """ 
-        Sample run of neural net training with MNIST digits.
-        """
-    )
+
 
     println("........ Training the neural network ........")
     results = GeneralNN.train_nn(jsoninputs);
