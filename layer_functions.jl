@@ -71,7 +71,9 @@ end
 function dropout!(dat,hp,hl)
     @inbounds dat.drop_ran_w[hl][:] = rand(Float64, size(dat.drop_ran_w[hl]))
     @inbounds dat.drop_filt_w[hl][:] = dat.drop_ran_w[hl] .< hp.droplim[hl]
+    # choose activations to remain
     @inbounds dat.a[hl][:] = dat.a[hl] .* dat.drop_filt_w[hl]
+    # scale the remaining activations
     @inbounds dat.a[hl][:] = dat.a[hl] ./ hp.droplim[hl]
 end
 

@@ -1,5 +1,7 @@
 using Plots
 using JLD2
+using Printf
+using LinearAlgebra
 
 """
 
@@ -125,10 +127,12 @@ function output_stats(train, test, nnp, bn, hp, training_time, dotest, plotdef, 
     fname = repr(Dates.now())
     fname = "nnstats-" * replace(fname, r"[.:]" => "-") * ".txt"
         println(fname)
+    # print to file and console
     open(fname, "w") do stats
         println(stats, "Training time: ",training_time, " seconds")  # cpu time since tic() =>  toq() returns secs without printing
 
-        feedfwd!(train, nnp, bn, hp, istrain=false)  # output for entire training set
+        # output for entire training set
+        feedfwd!(train, nnp, bn, hp, istrain=false)  
         println(stats, "Fraction correct labels predicted training: ",
                 hp.classify == "regression" ? r_squared(train.targets, train.a[nnp.output_layer])
                     : accuracy(train.targets, train.a[nnp.output_layer],hp.epochs))
@@ -156,6 +160,12 @@ function output_stats(train, test, nnp, bn, hp, training_time, dotest, plotdef, 
                 print("\n")
             end
         end
+
+        # output number of incorrect predictions
+        test_wrongs = GeneralNN.wrong_preds(results["test_targets"], results["test_preds"]);
+        train_wrongs = GeneralNN.wrong_preds(results["train_targets"], results["train_preds"]);
+        println(stats, "\n\nThere are ", length(test_wrongs), " incorrect test predictions.")
+        println(stats, "There are ", length(train_wrongs), " incorrect training predictions.")
 
         # output hyper hyper_parameters
         hp.alpha = (   hp.do_learn_decay   # back out alpha to original input
@@ -237,6 +247,38 @@ function dodigit(n, test_wrongs, test_inputs, test_targets, predmax)
 end
 
 
+"""
+    function onehot(vect, cnt)
+    function onehot(vect, cnt, result_type)
+
+Create a matrix of onehot vectors with cnt categories from a vector that
+contains the category number from 1 to cnt.
+Elements of the returned matrix will have eltype of vect or of the
+argument result_type.
+"""
+function onehot(vect, cnt; dim=1)
+    et = eltype(vect)
+    onehot(vect, cnt, et, dim=dim)
+end
+
+
+function onehot(vect,cnt,result_type; dim=1)
+    et = result_type
+
+    # if ndims(vect) == 1
+    # end
+
+    eye = zeros(et, cnt,cnt)
+    setone = convert(et,1)
+    for i = 1:cnt
+        eye[i,i] = setone
+    end
+    if dim == 1
+        return eye[vect,:]
+    else
+        return eye[:,vect]
+    end
+end
 
 
 # to file and console

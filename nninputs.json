@@ -1,7 +1,7 @@
 {
     "matfname": "digits60000by784.mat",
     "epochs":  18,
-    "n_hid": [150,150],
+    "n_hid": [400,400],
     "alpha":   0.74,
     "reg":  "",
     "lambda":  0.00026,

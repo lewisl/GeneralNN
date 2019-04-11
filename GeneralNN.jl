@@ -2,6 +2,8 @@
 
 
 #TODO
+#   check dropout: drops same units forward and back; update denominators for number of units
+#   logistic regression
 #   stats on individual regression parameters
 #   look at performance of staticarrays
 #   is dropout dropping the same units on backprop as feedfwd?
@@ -129,7 +131,7 @@ function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha:
     learn_decay::Array{Float64,1}=[1.0, 1.0])
 
 Train sigmoid/softmax neural networks up to 11 layers.  Detects
-number of output labels from data. Detects number of features from data for output units.
+number of output labels from data. Detects number of features from data for input units.
 Enables any size mini-batch (last batch will be smaller if minibatch size doesn't divide evenly
 into number of examples).  Plots learning and cost outcomes by epoch for training and test data.
 
@@ -141,9 +143,9 @@ all of the input parameters to be read from a JSON file.  This is further explai
         train_inputs      ::= after any normalization
         train_targets     ::= matches original inputs
         train_preds       ::= using final values of trained parameters
-        test_inputs
-        test_targets
-        test_preds        ::=  using final values of trained parameters
+        test_inputs       ::= after any normalization
+        test_targets      ::= matches original inputs
+        test_preds        ::= using final values of trained parameters
         nn_params         ::= struct that holds all trained parameters
         batch_norm_params ::= struct that holds all batch_norm parameters
         hyper_params      ::= all hyper parameters used to control training
@@ -173,8 +175,8 @@ all of the input parameters to be read from a JSON file.  This is further explai
         reg             ::= type of regularization, must be one of "L1", "L2", ""
         dropout         ::= true to use dropout network or false
         droplim         ::= array of values between 0.5 and 1.0 determines how much dropout for
-                            hidden layers and output layer (ex: [0.8] or [0.8,0.9, 1.0]).  A single
-                            value will be applied to all layers.  If fewer values than layers, then the
+                            hidden layers and input layer (ex: [0.8] or [0.8,0.9, 1.0]).  A single
+                            value will be applied to all hidden layers.  If fewer values than layers, then the
                             last value extends to remaining layers.
         learn_decay     ::= array of 2 float values:  first is > 0.0 and <= 1.0 which is pct. reduction of 
                             learning rate; second is >= 1.0 and <= 10.0 for number of times to 
@@ -247,10 +249,10 @@ function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha:
     end
 
     if alpha < 0.000001
-        warn("Alpha learning rate set too small. Setting to default 0.35")
+        @warn("Alpha learning rate set too small. Setting to default 0.35")
         alpha = 0.35
     elseif alpha > 9.0
-        warn("Alpha learning rate set too large. Setting to defaut 0.35")
+        @warn("Alpha learning rate set too large. Setting to defaut 0.35")
         alpha = 0.35
     end
 
@@ -265,47 +267,47 @@ function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha:
 
     norm_mode = lowercase(norm_mode)
         if !in(norm_mode, ["", "none", "standard", "minmax"])
-            warn("Invalid norm mode: $norm_mode, using \"none\".")
+            @warn("Invalid norm mode: $norm_mode, using \"none\".")
             norm_mode = ""
         end
 
     units = lowercase(units)
         if !in(units, ["l_relu", "sigmoid", "relu", "tanh"])
-            warn("units must be \"relu,\" \"l_relu,\" \"tanh\" or \"sigmoid\". Setting to default \"sigmoid\".")
+            @warn("units must be \"relu,\" \"l_relu,\" \"tanh\" or \"sigmoid\". Setting to default \"sigmoid\".")
             units = "sigmoid"
         end
 
     if in(units, ["l_relu", "relu"])
         if (norm_mode=="" || norm_mode=="none") && !do_batch_norm
-            warn("Better results obtained with relu using input and/or batch normalization. Proceeding...")
+            @warn("Better results obtained with relu using input and/or batch normalization. Proceeding...")
         end
     end
 
 opt = lowercase(opt)  # match title case for string argument
     if !in(opt, ["momentum", "adam", ""])
-        warn("opt must be \"momentum\" or \"adam\" or \"\" (nothing).  Setting to \"\" (nothing).")
+        @warn("opt must be \"momentum\" or \"adam\" or \"\" (nothing).  Setting to \"\" (nothing).")
         opt = ""
     end
 
     if in(opt, ["momentum", "adam"])
         if size(opt_params) == (2,)
             if opt_params[1] > 1.0 || opt_params[1] < 0.5
-                warn("First opt_params for momentum or adam should be between 0.5 and 0.999. Using default")
+                @warn("First opt_params for momentum or adam should be between 0.5 and 0.999. Using default")
                 opt_params = [0.9, opt_params[2]]
             end
             if opt_params[2] > 1.0 || opt_params[2] < 0.8
-                warn("second opt_params for adam should be between 0.8 and 0.999. Using default")
+                @warn("second opt_params for adam should be between 0.8 and 0.999. Using default")
                 opt_params = [opt_params[1], 0.999]
             end
         else
-            warn("opt_params must be 2 element array with values between 0.9 and 0.999. Using default")
+            @warn("opt_params must be 2 element array with values between 0.9 and 0.999. Using default")
             opt_params = [0.9, 0.999]
         end
     end
 
     reg = titlecase(lowercase(reg))
         if !in(reg, ["L1", "L2", ""])
-            warn("reg must be \"L1\", \"L2\" or \"\" (nothing). Setting to default \"L2\".")
+            @warn("reg must be \"L1\", \"L2\" or \"\" (nothing). Setting to default \"L2\".")
             reg = "L2"
         end
 
@@ -318,23 +320,23 @@ opt = lowercase(opt)  # match title case for string argument
     # lambda
     if reg == "L2"  || reg == "L1"
         if lambda < 0.0  # set reg = "" relu with batch_norm
-            warn("Lambda regularization rate must be positive floating point value. Setting to 0.01")
+            @warn("Lambda regularization rate must be positive floating point value. Setting to 0.01")
             lamba = 0.01
         elseif lambda > 5.0
-            warn("Lambda regularization rate set too large. Setting to max of 5.0")
+            @warn("Lambda regularization rate set too large. Setting to max of 5.0")
             lambda == 5.0
         end
     end
 
     learn_decay = 
         if size(learn_decay) != (2,)
-            warn("learn_decay must be a vector of 2 numbers. Using no learn_decay")
+            @warn("learn_decay must be a vector of 2 numbers. Using no learn_decay")
             [1.0, 1.0]
         elseif !(learn_decay[1] >= 0.0 && learn_decay[1] <= 1.0)
-            warn("First value of learn_decay must be >= 0.0 and < 1.0. Using no learn_decay")
+            @warn("First value of learn_decay must be >= 0.0 and < 1.0. Using no learn_decay")
             [1.0, 1.0]
         elseif !(learn_decay[2] >= 1.0 && learn_decay[2] < 10.0)
-            warn("Second value of learn_decay must be >= 1.0 and <= 10.0. Using no learn_decay")
+            @warn("Second value of learn_decay must be >= 1.0 and <= 10.0. Using no learn_decay")
             [1.0, 1.0]
         else
             [learn_decay[1], floor(learn_decay[2])]
@@ -345,7 +347,7 @@ opt = lowercase(opt)  # match title case for string argument
     new_plots = [pl for pl in valid_plots if in(pl, plots)] # both valid and input by the user
     plots = 
         if sort(new_plots) != sort(plots) # the plots list included something not in valid_plots
-            warn("Plots argument can only include \"Training\", \"Test\", \"Learning\" and \"Cost\" or \"None\" or \"\".
+            @warn("Plots argument can only include \"Training\", \"Test\", \"Learning\" and \"Cost\" or \"None\" or \"\".
                 \nProceeding no plots [\"None\"].")
             ["None"]
         else
