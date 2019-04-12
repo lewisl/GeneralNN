@@ -164,7 +164,7 @@ function setup_model!(mb, hp, nnp, bn, dotest, train, test)
         end
 
     # dropout parameters: droplim is in hp (Hyper_parameters),
-    #    drop_ran_w and drop_filt_w are in mb or train (Model_data)
+    #    dropout_random and dropout_mask_units are in mb or train (Model_data)
     # set a droplim for each layer 
     if hp.dropout
         if length(hp.droplim) == length(hp.n_hid) + 2
@@ -222,7 +222,7 @@ function setup_model!(mb, hp, nnp, bn, dotest, train, test)
 
     # debug
     # verify correct dimensions of dropout filter
-    # for item in mb.drop_filt_w
+    # for item in mb.dropout_mask_units
     #     println(size(item))
     # end
     # error("that's all folks!....")
@@ -260,8 +260,8 @@ function preallocate_data!(dat, nnp, n, hp)
 
     # backprop / training
     if hp.dropout
-        dat.drop_ran_w = [i[:,1:hp.mb_size_in] for i in dat.a]
-        dat.drop_filt_w = [BitArray(ones(size(i,1),hp.mb_size_in)) for i in dat.a]
+        dat.dropout_random = [i[:,1:hp.mb_size_in] for i in dat.a]
+        dat.dropout_mask_units = [BitArray(ones(size(i,1),hp.mb_size_in)) for i in dat.a]
     end
 
 end
@@ -320,7 +320,7 @@ end
 
 """
     Pre-allocate these arrays for the training batch--either minibatches or one big batch
-    Arrays: epsilon, grad, delta_z_norm, delta_z, drop_ran_w, drop_filt_w
+    Arrays: epsilon, grad, delta_z_norm, delta_z, dropout_random, dropout_mask_units
 
 
     NOT USED  -- PROBABLY WON'T WORK AS IS WHEN GOING BACK TO SLICE APPROACH INSTEAD OF VIEW APPROACH
@@ -344,10 +344,10 @@ function preallocate_minibatch!(mb, nnp, hp)
     # error("that's all folks....")
 
     if hp.dropout
-        mb.drop_ran_w = deepcopy(mb.epsilon)
-        push!(mb.drop_filt_w,fill(true,(2,2))) # for input layer, not used
-        for item in mb.drop_ran_w[2:end]
-            push!(mb.drop_filt_w,fill(true,size(item)))
+        mb.dropout_random = deepcopy(mb.epsilon)
+        push!(mb.dropout_mask_units,fill(true,(2,2))) # for input layer, not used
+        for item in mb.dropout_random[2:end]
+            push!(mb.dropout_mask_units,fill(true,size(item)))
         end
     end
 end

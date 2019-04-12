@@ -528,23 +528,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
 
                 optimization_function!(nnp, hp, t)
 
-                # update weights, bias, and batch_norm parameters
-                @fastmath for hl = 2:nnp.output_layer            
-                    @inbounds nnp.theta[hl] .= nnp.theta[hl] .- (hp.alphaovermb .* nnp.delta_w[hl])
-                    if hp.reg == "L2"  # subtract regularization term
-                        @inbounds nnp.theta[hl] .= nnp.theta[hl] .- (hp.alphaovermb .* (hp.lambda .* nnp.theta[hl]))
-                    elseif hp.reg == "L1"
-                        @inbounds nnp.theta[hl] .= nnp.theta[hl] .- (hp.alphaovermb .* (hp.lambda .* sign.(nnp.theta[hl])))
-                    end
-                    
-                    if hp.do_batch_norm  # update batch normalization parameters
-                        @inbounds bn.gam[hl][:] -= hp.alphaovermb .* bn.delta_gam[hl]
-                        @inbounds bn.bet[hl][:] -= hp.alphaovermb .* bn.delta_bet[hl]
-                    else  # update bias
-                        @inbounds nnp.bias[hl] .= nnp.bias[hl] .- (hp.alphaovermb .* nnp.delta_b[hl])
-                    end
-
-                end  # weights update by layer
+                update_parameters!(nnp, hp, bn)
 
             end # mini-batch loop
 
@@ -602,8 +586,8 @@ function update_training_views!(mb::Training_view, train::Model_data, nnp::NN_we
 
     if hp.dropout
         # training:  applied to feedforward, but only for training
-        @inbounds mb.drop_ran_w = [view(train.drop_ran_w[i], :, mb_cols) for i = 1:n_layers]
-        @inbounds mb.drop_filt_w = [view(train.drop_filt_w[i], :, mb_cols) for i = 1:n_layers]
+        @inbounds mb.dropout_random = [view(train.dropout_random[i], :, mb_cols) for i = 1:n_layers]
+        @inbounds mb.dropout_mask_units = [view(train.dropout_mask_units[i], :, mb_cols) for i = 1:n_layers]
     end
 
 end
@@ -618,6 +602,11 @@ function feedfwd!(dat, nnp, bn, do_batch_norm; istrain)
 """
 function feedfwd!(dat::Union{Model_data, Training_view}, nnp, bn,  hp; istrain=true)
 
+    # dropout for input layer (if probability < 1.0)
+    if istrain && hp.dropout && (hp.droplim[1] < 1.0)
+        dropout!(dat, hp, 1)
+    end
+
     # hidden layers
     @fastmath for hl = 2:nnp.output_layer-1  
         if hp.do_batch_norm 
@@ -629,7 +618,7 @@ function feedfwd!(dat::Union{Model_data, Training_view}, nnp, bn,  hp; istrain=t
 
         unit_function!(dat.a[hl], dat.z[hl])
 
-        if istrain && hp.dropout  
+        if istrain && hp.dropout && (hp.droplim[hl] < 1.0)
             dropout!(dat,hp,hl)
         end
     end
@@ -661,18 +650,43 @@ function backprop!(nnp, bn, dat, hp, t)
     # loop over hidden layers
     @fastmath for hl = (nnp.output_layer - 1):-1:2  
         gradient_function!(dat.grad[hl], dat.z[hl])
-        @inbounds hp.dropout && (dat.grad[hl] .* dat.drop_filt_w[hl])
-        @inbounds dat.epsilon[hl][:] = nnp.theta[hl+1]' * dat.epsilon[hl+1] .* dat.grad[hl]  
+        @inbounds dat.epsilon[hl][:] = nnp.theta[hl+1]' * dat.epsilon[hl+1] .* dat.grad[hl] 
+
+        if hp.dropout && (hp.droplim[hl] < 1.0)
+            @inbounds dat.epsilon[hl][:] = dat.epsilon[hl] .* dat.dropout_mask_units[hl]
+        end
 
         if hp.do_batch_norm
             batch_norm_back!(nnp, dat, bn, hl, hp)
             @inbounds nnp.delta_w[hl][:] = dat.delta_z[hl] * dat.a[hl-1]'   
         else
-            @inbounds nnp.delta_w[hl][:] = dat.epsilon[hl] * dat.a[hl-1]'  # @inbounds 
+            @inbounds nnp.delta_w[hl][:] = dat.epsilon[hl] * dat.a[hl-1]'  
             @inbounds nnp.delta_b[hl][:] = sum(dat.epsilon[hl],dims=2)  #  times a column of 1's = sum(row)
         end
 
     end
+
+end
+
+
+function update_parameters!(nnp, hp, bn)
+    # update weights, bias, and batch_norm parameters
+    @fastmath for hl = 2:nnp.output_layer            
+        @inbounds nnp.theta[hl] .= nnp.theta[hl] .- (hp.alphaovermb .* nnp.delta_w[hl])
+        if hp.reg == "L2"  # subtract regularization term
+            @inbounds nnp.theta[hl] .= nnp.theta[hl] .- (hp.alphaovermb .* (hp.lambda .* nnp.theta[hl]))
+        elseif hp.reg == "L1"
+            @inbounds nnp.theta[hl] .= nnp.theta[hl] .- (hp.alphaovermb .* (hp.lambda .* sign.(nnp.theta[hl])))
+        end
+        
+        if hp.do_batch_norm  # update batch normalization parameters
+            @inbounds bn.gam[hl][:] -= hp.alphaovermb .* bn.delta_gam[hl]
+            @inbounds bn.bet[hl][:] -= hp.alphaovermb .* bn.delta_bet[hl]
+        else  # update bias
+            @inbounds nnp.bias[hl] .= nnp.bias[hl] .- (hp.alphaovermb .* nnp.delta_b[hl])
+        end
+
+    end  # weights update by layer
 
 end
 

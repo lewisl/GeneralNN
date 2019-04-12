@@ -47,18 +47,18 @@ function momentum!(tp, hp, t)
 end
 
 
-function adam!(tp, hp, t)
-    @fastmath for hl = (tp.output_layer - 1):-1:2  # loop over hidden layers
-        @inbounds tp.delta_v_w[hl] .= hp.b1 .* tp.delta_v_w[hl] .+ (1.0 - hp.b1) .* tp.delta_w[hl]  
-        @inbounds tp.delta_s_w[hl] .= hp.b2 .* tp.delta_s_w[hl] .+ (1.0 - hp.b2) .* tp.delta_w[hl].^2   
-        @inbounds tp.delta_w[hl] .= (  (tp.delta_v_w[hl] ./ (1.0 - hp.b1^t)) ./   
-                              sqrt.(tp.delta_s_w[hl] ./ (1.0 - hp.b2^t) .+ hp.ltl_eps)  )
+function adam!(nnp, hp, t)
+    @fastmath for hl = (nnp.output_layer - 1):-1:2  # loop over hidden layers
+        @inbounds nnp.delta_v_w[hl] .= hp.b1 .* nnp.delta_v_w[hl] .+ (1.0 - hp.b1) .* nnp.delta_w[hl]  
+        @inbounds nnp.delta_s_w[hl] .= hp.b2 .* nnp.delta_s_w[hl] .+ (1.0 - hp.b2) .* nnp.delta_w[hl].^2   
+        @inbounds nnp.delta_w[hl] .= (  (nnp.delta_v_w[hl] ./ (1.0 - hp.b1^t)) ./   
+                              sqrt.(nnp.delta_s_w[hl] ./ (1.0 - hp.b2^t) .+ hp.ltl_eps)  )
 
         if !hp.do_batch_norm  # then we need to do bias term
-            @inbounds tp.delta_v_b[hl] .= hp.b1 .* tp.delta_v_b[hl] .+ (1.0 - hp.b1) .* tp.delta_b[hl]   
-            @inbounds tp.delta_s_b[hl] .= hp.b2 .* tp.delta_s_b[hl] .+ (1.0 - hp.b2) .* tp.delta_b[hl].^2   
-            @inbounds tp.delta_b[hl] .= (  (tp.delta_v_b[hl] ./ (1.0 - hp.b1^t)) ./   
-                              sqrt.(tp.delta_s_b[hl] ./ (1.0 - hp.b2^t) .+ hp.ltl_eps) )  
+            @inbounds nnp.delta_v_b[hl] .= hp.b1 .* nnp.delta_v_b[hl] .+ (1.0 - hp.b1) .* nnp.delta_b[hl]   
+            @inbounds nnp.delta_s_b[hl] .= hp.b2 .* nnp.delta_s_b[hl] .+ (1.0 - hp.b2) .* nnp.delta_b[hl].^2   
+            @inbounds nnp.delta_b[hl] .= (  (nnp.delta_v_b[hl] ./ (1.0 - hp.b1^t)) ./   
+                              sqrt.(nnp.delta_s_b[hl] ./ (1.0 - hp.b2^t) .+ hp.ltl_eps) )  
         end
     end
 end
@@ -68,13 +68,11 @@ function no_optimization(tp, hp, t)
 end
 
 
-function dropout!(dat,hp,hl)
-    @inbounds dat.drop_ran_w[hl][:] = rand(Float64, size(dat.drop_ran_w[hl]))
-    @inbounds dat.drop_filt_w[hl][:] = dat.drop_ran_w[hl] .< hp.droplim[hl]
-    # choose activations to remain
-    @inbounds dat.a[hl][:] = dat.a[hl] .* dat.drop_filt_w[hl]
-    # scale the remaining activations
-    @inbounds dat.a[hl][:] = dat.a[hl] ./ hp.droplim[hl]
+function dropout!(dat,hp,hl)  # applied per layer
+    @inbounds dat.dropout_random[hl][:] = rand(Float64, size(dat.dropout_random[hl]))
+    @inbounds dat.dropout_mask_units[hl][:] = dat.dropout_random[hl] .< hp.droplim[hl]
+    # choose activations to remain and scale
+    @inbounds dat.a[hl][:] = dat.a[hl] .* (dat.dropout_mask_units[hl] ./ hp.droplim[hl])
 end
 
 

@@ -162,8 +162,8 @@ function output_stats(train, test, nnp, bn, hp, training_time, dotest, plotdef, 
         end
 
         # output number of incorrect predictions
-        test_wrongs = GeneralNN.wrong_preds(results["test_targets"], results["test_preds"]);
-        train_wrongs = GeneralNN.wrong_preds(results["train_targets"], results["train_preds"]);
+        test_wrongs = GeneralNN.wrong_preds(test.targets, test.a[nnp.output_layer]);
+        train_wrongs = GeneralNN.wrong_preds(train.targets, train.a[nnp.output_layer]);
         println(stats, "\n\nThere are ", length(test_wrongs), " incorrect test predictions.")
         println(stats, "There are ", length(train_wrongs), " incorrect training predictions.")
 

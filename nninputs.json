@@ -1,7 +1,7 @@
 {
     "matfname": "digits60000by784.mat",
-    "epochs":  18,
-    "n_hid": [400,400],
+    "epochs":  24,
+    "n_hid": [300,100],
     "alpha":   0.74,
     "reg":  "",
     "lambda":  0.00026,
@@ -13,7 +13,8 @@
     "opt_params": [0.9, 0.999],
     "units":  "relu",
     "classify": "softmax",
-    "dropout": false,
+    "dropout": true,
+    "droplim": [1.0,0.55,1.0],
     "plots": ["Training", "Learning", "Test"],
     "plot_now": true
 }
