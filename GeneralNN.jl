@@ -2,23 +2,23 @@
 
 
 #TODO
-#   check dropout: drops same units forward and back; update denominators for number of units
-#   logistic regression
+#   implement RNN
+#   implement logistic regression--most of the pieces present--create inputs and test
 #   stats on individual regression parameters
+#   change to layer based api, with simplified api as alternate front-end
+#   separate reg from the cost calculation and the parameter updates
+#   do check on existence of matfname file and that type is .mat
+#   implement one vs. all for logistic classification with multiple classes
+#   factor out extract data--provide as utility; start process with datafiles
 #   look at performance of staticarrays
 #   is dropout dropping the same units on backprop as feedfwd?
 #   set a directory for training stats (keep out of code project directory)
 #   there is no reason for views on backprop data--always the size of minibatch
 #   revise initialization and make it depend on type of layer unit???
 #   try different versions of ensemble predictions_vector
-#   allow dropout to drop from the input layer?
 #   augment MINST data by perturbing the images
 #   don't create plotdef if not plotting
 #   try batch norm with minmax normalization
-#   cleaning up batch norm is complicated:
-#       affects feedfwd, backprop, pre-allocation (several), momentum, adam search for if [!hp.]*do_batch_norm
-#       type dispatch on bn:  either a struct or a bool to eliminate if tests all over to see if we batch normalize
-#           maybe not: if test fastest; code a bit ragged
 #   check for type stability: @code_warntype pisum(500,10000)
 #   still lots of memory allocations despite the pre-allocation
         # You can devectorize r -= d[j]*A[:,j] with r .= -.(r,d[j]*A[:.j]) 
@@ -115,7 +115,7 @@ import Measures: mm # for some plot dimensioning
 
 include("layer_functions.jl")
 include("nn_data_structs.jl")
-include("setup_functions.jl")
+include("setup_model.jl")
 include("utilities.jl")
 
 const l_relu_neg = .01  # makes the type constant; value can be changed
@@ -503,14 +503,15 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
 
         for ep_i = 1:hp.epochs  # loop for "epochs" with counter epoch i as ep_i
 
-            hp.do_learn_decay && step_lrn_decay!(hp, ep_i)
+            hp.do_learn_decay && step_learn_decay!(hp, ep_i)
 
             # reset for at start of each epoch
             done = 0 # how many training examples have been trained on in the epoch
             hp.mb_size = hp.mb_size_in # reset the minibatch size to the input
 
             for mb_j = 1:hp.n_mb  # loop for mini-batches 
-                left = train.n - done  # how many training examples remain for this epoch
+                # set size of minibatch:  allows for minibatch size that doesn't divide evenly in no. of examples in data
+                left = train.n - done  
                 hp.mb_size = left > hp.mb_size ? hp.mb_size : left # last minibatch count = left
                 done += hp.mb_size
 
@@ -532,7 +533,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
 
             end # mini-batch loop
 
-            # stats for all mini-batches of one epoch
+            # stats across all mini-batches of one epoch (e.g.--no stats per minibatch)
             gather_stats!(plotdef, ep_i, train, test, nnp, bn, cost_function, train.n, test.n, hp)  
 
         end # epoch loop
@@ -686,7 +687,7 @@ function update_parameters!(nnp, hp, bn)
             @inbounds nnp.bias[hl] .= nnp.bias[hl] .- (hp.alphaovermb .* nnp.delta_b[hl])
         end
 
-    end  # weights update by layer
+    end  
 
 end
 
@@ -714,21 +715,7 @@ function batch_norm_back!(nnp, dat, bn, hl, hp)
     @inbounds bn.delta_bet[hl][:] = sum(dat.epsilon[hl], dims=2)
     @inbounds bn.delta_gam[hl][:] = sum(dat.epsilon[hl] .* dat.z_norm[hl], dims=2)
 
-    # debug
-    # println("size of pre-allocated dat.delta_z_norm $(size(dat.delta_z_norm))")
-    # for i in 1:size(dat.delta_z_norm,1)
-    #     println("$i size: $(size(dat.delta_z_norm[i]))")
-    # end
-    # error("that's all folks....")
-
-    # debug
-    # println("size of pre-allocated mb.epsilon $(size(dat.epsilon))")
-    # for i in 1:size(dat.epsilon,1)
-    #     println("$i size: $(size(dat.epsilon[i]))")
-    # end
-    # error("that's all folks....")
-
-    @inbounds dat.delta_z_norm[hl][:] = bn.gam[hl] .* dat.epsilon[hl]  # 
+    @inbounds dat.delta_z_norm[hl][:] = bn.gam[hl] .* dat.epsilon[hl]  
 
     @inbounds dat.delta_z[hl][:] = (                               
         (1.0 / mb) .* (1.0 ./ bn.stddev[hl]) .* (
@@ -771,12 +758,6 @@ function gather_stats!(plotdef, i, train, test, nnp, bn, cost_function, train_n,
                     : accuracy(test.targets, test.a[nnp.output_layer], i)  )
         end
     end
-
-    # println("train 1 - predictions:")
-    # println(1.0 .- train.a[nnp.output_layer][:, 1:2])
-
-    # println("test 1 - predictions:")
-    # println(1.0 .- test.a[nnp.output_layer][:, 1:2])
     
 end
 
@@ -804,118 +785,5 @@ function accuracy(targets, preds, i)
     return fracright
 end
 
-
-function wrong_preds(targets, preds, cf = !isequal)
-    if size(targets,1) > 1
-        # targetmax = ind2sub(size(targets),vec(findmax(targets,dims=1)[2]))[1]
-        # predmax = ind2sub(size(preds),vec(findmax(preds,dims=1)[2]))[1]
-        targetmax = vec(map(x -> x[1], argmax(targets,dims=1)));
-        predmax = vec(map(x -> x[1], argmax(preds,dims=1)));
-        wrongs = findall(cf.(targetmax, predmax))
-    else
-        # works because single output unit is sigmoid--well, what do we do about regression? we use r_squared
-        choices = [j >= 0.5 ? 1.0 : 0.0 for j in preds]
-        wrongs = findall(cf.(choices, targets))
-    end
-    return wrongs
-end
-
-
-function right_preds(targets, preds)
-    return wrong_preds(targets, preds, isequal)
-end
-
-function r_squared(targets, preds)
-    ybar = mean(targets)
-    return 1.0 - sum((targets .- preds).^2.) / sum((targets .- ybar).^2.)
-end
-
-
-"""
-
-    function test_score(theta_fname, data_fname, lambda = 0.01,
-        classify="softmax")
-
-Calculate the test accuracy score and cost for a dataset containing test or validation
-data.  This data must contain outcome labels, e.g.--y.
-"""
-function test_score(theta_fname, data_fname, lambda = 0.01, classify="softmax")
-    # read theta
-    dtheta = matread(theta_fname)
-    theta = dtheta["theta"]
-
-    # read the test data:  can be in a "test" key with x and y or can be top-level keys x and y
-    df = matread(data_fname)
-
-    if in("test", keys(df))
-        inputs = df["test"]["x"]'  # set examples as columns to optimize for julia column-dominant operations
-        targets = df["test"]["y"]'
-    else
-        inputs = df["x"]'
-        targets = df["y"]'
-    end
-    n = size(inputs,2)
-    output_layer = size(theta,1)
-
-    # setup cost
-    cost_function = cross_entropy_cost
-
-    predictions = predict(inputs, theta)
-    score = accuracy(targets, predictions)
-    println("Fraction correct labels predicted test: ", score)
-    println("Final cost test: ", cost_function(targets, predictions, n, theta, hp, output_layer))
-
-    return score
-end
-
-
-"""
-
-    function predict()
-
-Two methods:
-    with a .mat file as input: 
-        function predict(matfname::String, hp, nnp, bn; test::Bool=false, norm_mode::String="")
-    with arrays as input:
-        function predict(inputs, targets, hp, nnp, bn, norm_factors)
-
-Generate predictions given previously trained parameters and input data.
-Not suitable in a loop because of all the additional allocations.
-Use with one-off needs like scoring a test data set or
-producing predictions for operational data fed into an existing model.
-"""
-function nnpredict(matfname::String, hp, nnp, bn; test::Bool=false)
-    if !test
-        inputs, targets, _, __ = extract_data(matfname)  # training data
-    else
-        _, __, inputs, targets = extract_data(matfname)  # test data
-    end
-
-    nnpredict(inputs, targets, hp, nnp, bn)
-end
-
-
-function nnpredict(inputs, targets, hp, nnp, bn)
-    dataset = Model_data()
-        dataset.inputs = inputs
-        dataset.targets = targets
-        dataset.in_k, dataset.n = size(inputs)  # number of features in_k (rows) by no. of examples n (columns)
-        dataset.out_k = size(dataset.targets,1)  # number of output units
-
-    if hp.norm_mode == "standard" || hp.norm_mode == "minmax"
-        normalize_replay!(dataset.inputs, hp.norm_mode, nnp.norm_factors)
-    end
-
-    preallocate_data!(dataset, nnp, dataset.n, hp)
-
-    setup_functions!(hp.units, dataset.out_k, hp.opt, hp.classify)  # for feedforward calculations
-
-    feedfwd!(dataset, nnp, bn, hp, istrain=false)  # output for entire dataset
-
-    println("Fraction correct labels predicted: ",
-        hp.classify == "regression" ? r_squared(dataset.targets, dataset.a[nnp.output_layer])
-                                    : accuracy(dataset.targets, dataset.a[nnp.output_layer], hp.epochs))
-    return dataset.a[nnp.output_layer]
-end
 
 end  # module GeneralNN

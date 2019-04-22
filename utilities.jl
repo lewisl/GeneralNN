@@ -294,3 +294,126 @@ function pretty_print_hp(hp)
         @printf("%16s = %s\n",item, getfield(hp,item))
     end
 end
+
+
+##############################################################
+#
+#    TEST EVERYTHING BELOW:  PROBABLY DON'T WORK
+#
+##############################################################
+
+
+
+
+function wrong_preds(targets, preds, cf = !isequal)
+    if size(targets,1) > 1
+        # targetmax = ind2sub(size(targets),vec(findmax(targets,dims=1)[2]))[1]
+        # predmax = ind2sub(size(preds),vec(findmax(preds,dims=1)[2]))[1]
+        targetmax = vec(map(x -> x[1], argmax(targets,dims=1)));
+        predmax = vec(map(x -> x[1], argmax(preds,dims=1)));
+        wrongs = findall(cf.(targetmax, predmax))
+    else
+        # works because single output unit is sigmoid--well, what do we do about regression? we use r_squared
+        choices = [j >= 0.5 ? 1.0 : 0.0 for j in preds]
+        wrongs = findall(cf.(choices, targets))
+    end
+    return wrongs
+end
+
+
+function right_preds(targets, preds)
+    return wrong_preds(targets, preds, isequal)
+end
+
+function r_squared(targets, preds)
+    ybar = mean(targets)
+    return 1.0 - sum((targets .- preds).^2.) / sum((targets .- ybar).^2.)
+end
+
+
+"""
+
+    function test_score(theta_fname, data_fname, lambda = 0.01,
+        classify="softmax")
+
+Calculate the test accuracy score and cost for a dataset containing test or validation
+data.  This data must contain outcome labels, e.g.--y.
+"""
+function test_score(theta_fname, data_fname, lambda = 0.01, classify="softmax")
+    # read theta
+    dtheta = matread(theta_fname)
+    theta = dtheta["theta"]
+
+    # read the test data:  can be in a "test" key with x and y or can be top-level keys x and y
+    df = matread(data_fname)
+
+    if in("test", keys(df))
+        inputs = df["test"]["x"]'  # set examples as columns to optimize for julia column-dominant operations
+        targets = df["test"]["y"]'
+    else
+        inputs = df["x"]'
+        targets = df["y"]'
+    end
+    n = size(inputs,2)
+    output_layer = size(theta,1)
+
+    # setup cost
+    cost_function = cross_entropy_cost
+
+    predictions = predict(inputs, theta)
+    score = accuracy(targets, predictions)
+    println("Fraction correct labels predicted test: ", score)
+    println("Final cost test: ", cost_function(targets, predictions, n, theta, hp, output_layer))
+
+    return score
+end
+
+
+"""
+
+    function nnpredict()
+
+Two methods:
+    with a .mat file as input: 
+        function predict(matfname::String, hp, nnp, bn; test::Bool=false, norm_mode::String="")
+    with arrays as input:
+        function predict(inputs, targets, hp, nnp, bn, norm_factors)
+
+Generate predictions given previously trained parameters and input data.
+Not suitable in a loop because of all the additional allocations.
+Use with one-off needs like scoring a test data set or
+producing predictions for operational data fed into an existing model.
+"""
+function nnpredict(matfname::String, hp, nnp, bn; test::Bool=false)
+    if !test
+        inputs, targets, _, __ = extract_data(matfname)  # training data
+    else
+        _, __, inputs, targets = extract_data(matfname)  # test data
+    end
+
+    nnpredict(inputs, targets, hp, nnp, bn)
+end
+
+
+function nnpredict(inputs, targets, hp, nnp, bn)
+    dataset = Model_data()
+        dataset.inputs = inputs
+        dataset.targets = targets
+        dataset.in_k, dataset.n = size(inputs)  # number of features in_k (rows) by no. of examples n (columns)
+        dataset.out_k = size(dataset.targets,1)  # number of output units
+
+    if hp.norm_mode == "standard" || hp.norm_mode == "minmax"
+        normalize_replay!(dataset.inputs, hp.norm_mode, nnp.norm_factors)
+    end
+
+    preallocate_data!(dataset, nnp, dataset.n, hp)
+
+    setup_functions!(hp.units, dataset.out_k, hp.opt, hp.classify)  # for feedforward calculations
+
+    feedfwd!(dataset, nnp, bn, hp, istrain=false)  # output for entire dataset
+
+    println("Fraction correct labels predicted: ",
+        hp.classify == "regression" ? r_squared(dataset.targets, dataset.a[nnp.output_layer])
+                                    : accuracy(dataset.targets, dataset.a[nnp.output_layer], hp.epochs))
+    return dataset.a[nnp.output_layer]
+end

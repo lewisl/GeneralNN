@@ -102,9 +102,10 @@ mutable struct Model_data               # we will use train for inputs and test 
     delta_z_norm::Array{Array{Float64,2},1}   # same size as z
     delta_z::Array{Array{Float64,2},1}        # same size as z
     grad::Array{Array{Float64,2},1}
-    epsilon::Array{Array{Float64,2},1}
-    drop_ran_w::Array{Array{Float64,2},1}     # randomization for dropout--dims of a
-    drop_filt_w::Array{BitArray{2}, 1}       # boolean filter for dropout--dims of a
+    epsilon::Array{Array{Float64,2},1}        # dims of a
+    # calculate dropout mask for training
+    dropout_random::Array{Array{Float64,2},1}     # randomization for dropout--dims of a
+    dropout_mask_units::Array{BitArray{2}, 1}       # boolean filter for dropout--dims of a
     # descriptive
     n::Int64                                  # number of examples
     in_k::Int64                               # number of input features
@@ -121,8 +122,8 @@ mutable struct Model_data               # we will use train for inputs and test 
         Array{Array{Float64,2},1}(undef, 0),   # delta_z
         Array{Array{Float64,2},1}(undef, 0),   # grad
         Array{Array{Float64,2},1}(undef, 0),   # epsilon
-        Array{Array{Float64,2},1}(undef, 0),   # drop_ran_w
-        Array{BitArray{2},1}(undef, 0),        # drop_filt_w   Array{Array{Bool,2},1}
+        Array{Array{Float64,2},1}(undef, 0),   # dropout_random
+        Array{BitArray{2},1}(undef, 0),        # dropout_mask_units   Array{Array{Bool,2},1}
         0,                              # n
         0,                              # in_k
         0                               # out_k
@@ -143,8 +144,8 @@ mutable struct Training_view               # we will use mb for as the variable 
     delta_z::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     grad::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     epsilon::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    drop_ran_w::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    drop_filt_w::Array{SubArray{Bool,2,BitArray{2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    dropout_random::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    dropout_mask_units::Array{SubArray{Bool,2,BitArray{2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
 
     Training_view() = new(                      # empty constructor
         [view(zeros(2,2),:,1:2) for i in 1:2],  # a
@@ -155,8 +156,8 @@ mutable struct Training_view               # we will use mb for as the variable 
         [view(zeros(2,2),:,1:2) for i in 1:2],  # delta_z
         [view(zeros(2,2),:,1:2) for i in 1:2],  # grad
         [view(zeros(2,2),:,1:2) for i in 1:2],  # epsilon
-        [view(zeros(2,2),:,1:2) for i in 1:2],  # drop_ran_w
-        [view(BitArray([1 1; 1 1]),:,1:2) for i in 1:2]   # drop_filt_w     
+        [view(zeros(2,2),:,1:2) for i in 1:2],  # dropout_random
+        [view(BitArray([1 1; 1 1]),:,1:2) for i in 1:2]   # dropout_mask_units     
     )
 
 end

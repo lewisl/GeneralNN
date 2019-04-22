@@ -1,10 +1,10 @@
 {
     "matfname": "digits60000by784.mat",
     "epochs":  24,
-    "n_hid": [300,100],
+    "n_hid": [100,100],
     "alpha":   0.74,
-    "reg":  "",
-    "lambda":  0.00026,
+    "reg":  "L2",
+    "lambda":  0.000191,
     "learn_decay": [0.52,3.0],
     "mb_size_in":   50, 
     "norm_mode":   "none",
@@ -13,8 +13,8 @@
     "opt_params": [0.9, 0.999],
     "units":  "relu",
     "classify": "softmax",
-    "dropout": true,
-    "droplim": [1.0,0.55,1.0],
+    "dropout": false,
+    "droplim": [1.0,0.8,1.0],
     "plots": ["Training", "Learning", "Test"],
     "plot_now": true
 }

@@ -76,7 +76,7 @@ function dropout!(dat,hp,hl)  # applied per layer
 end
 
 
-function step_lrn_decay!(hp, ep_i)
+function step_learn_decay!(hp, ep_i)
     decay_rate = hp.learn_decay[1]
     e_steps = hp.learn_decay[2]
     stepsize = floor(hp.epochs / e_steps)
@@ -124,6 +124,9 @@ function relu!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
     a[:] = max.(z, 0.0)
 end
 
+#############################################################################
+# Classifiers
+#############################################################################
 
 function softmax!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
     expf = similar(a)
@@ -135,6 +138,24 @@ end
 function regression!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
     a[:] = z[:]
 end
+
+
+"""
+    function multiclass_pred(preds::AbstractArray{Float64,2})
+
+Converts vector of probabilities of each outcome class to a numeric category.
+Returns a 1-dimensional vector of ints with values from 1 to the number of classes.
+
+"""
+function multiclass_pred(preds::AbstractArray{Float64,2})
+    if size(targets,1) > 1
+        predmax = vec(map(x -> x[1], argmax(preds,dims=1)))
+    else
+        @error("Final targets must contain more than one outcome per example.")
+    end
+    return predmax
+end
+
 
 
 # two methods for gradient of linear layer units:  without bias and with

@@ -421,12 +421,12 @@ function setup_functions!(hp, train)
                 error("Function to classify output labels must be \"sigmoid\" or \"softmax\".")
             end
         else
-            if hp.classify == "sigmoid"
+            if hp.classify == "sigmoid" || hp.classify == "logistic"
                 sigmoid!  # for one output label
             elseif hp.classify == "regression"
                 regression!
             else
-                error("Function to classify output must be \"sigmoid\" or \"regression\".")
+                error("Function to classify output must be \"sigmoid\", \"logistic\" or \"regression\".")
             end
         end
 
