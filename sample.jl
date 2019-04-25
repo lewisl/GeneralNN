@@ -19,12 +19,22 @@ includet("GeneralNN.jl")
 using .GeneralNN
 
 
-function runjob(jsoninputs="nninputs.json")
+function runjob(jsoninputs="nninputs.json", matfname="digits60000by784.mat")
 
+    println("........ Loading training and test data ........")
+    train_x, train_y, test_x, test_y = extract_data(matfname);
 
+    # fix the funny thing that MAT file extration does to the type of the files
+    train_x = convert(Array{Float64,2}, train_x)
+    train_y = convert(Array{Float64,2}, train_y)
+    test_x = convert(Array{Float64,2}, test_x)
+    test_y = convert(Array{Float64,2}, test_y)
+
+    # debug
+    println("train_x ", typeof(train_x), " train_y ", typeof(train_y))
 
     println("........ Training the neural network ........")
-    results = GeneralNN.train_nn(jsoninputs);
+    results = GeneralNN.train_nn(train_x, train_y, test_x, test_y, jsoninputs);
      # train_inputs, train_targets, train_preds, test_inputs, test_targets, test_preds, nn_params, batchnorm_params, 
      # hyper_params
 

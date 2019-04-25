@@ -58,6 +58,8 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
     epochs::Int64               # number of "outer" loops of training
     do_learn_decay::Bool        # step down the learning rate across epochs
     learn_decay::Array{Float64,1}  # reduction factor (fraction) and number of steps
+    sparse::Bool
+    initializer::String         # "xavier" or "zero"
 
     Hyper_parameters() = new(       # constructor with defaults--we use hp as the struct variable
         "sigmoid",      # units
@@ -81,7 +83,9 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         100,            # n_mb
         30,             # epochs
         false,          # do_learn_decay
-        [1.0, 1.0]      # learn_decay
+        [1.0, 1.0],     # learn_decay
+        false,          # sparse
+        "xavier"        # initializer
     )
 end
 
@@ -92,17 +96,17 @@ pre-allocate to reduce memory allocations and improve speed
 """
 mutable struct Model_data               # we will use train for inputs and test for test data
     # read from training, test, or production data
-    inputs::Array{Float64,2}            # in_k features by n examples
-    targets::Array{Float64,2}           # labels for each example
+    inputs #::Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}}   # in_k features by n examples
+    targets #::Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}}  # labels for each example
     # calculated in feedforward pass
-    a::Array{Array{Float64,2},1}
-    z::Array{Array{Float64,2},1}
-    z_norm::Array{Array{Float64,2},1}         # same size as z--for batch_norm
+    a::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}
+    z::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}
+    z_norm::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}  # same size as z--for batch_norm
     # calculated in backprop (training) pass
-    delta_z_norm::Array{Array{Float64,2},1}   # same size as z
-    delta_z::Array{Array{Float64,2},1}        # same size as z
-    grad::Array{Array{Float64,2},1}
-    epsilon::Array{Array{Float64,2},1}        # dims of a
+    delta_z_norm::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}   # same size as z
+    delta_z::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}        # same size as z
+    grad::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}
+    epsilon::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}        # dims of a
     # calculate dropout mask for training
     dropout_random::Array{Array{Float64,2},1}     # randomization for dropout--dims of a
     dropout_mask_units::Array{BitArray{2}, 1}       # boolean filter for dropout--dims of a
@@ -113,15 +117,15 @@ mutable struct Model_data               # we will use train for inputs and test 
     
 
     Model_data() = new(                 # empty constructor
-        Array{Float64,2}(undef, 2,2),          # inputs
-        Array{Float64,2}(undef, 2,2),          # targets
-        Array{Array{Float64,2},1}(undef, 0),   # a
-        Array{Array{Float64,2},1}(undef, 0),   # z
-        Array{Array{Float64,2},1}(undef, 0),   # z_norm -- only pre-allocate if batch_norm
-        Array{Array{Float64,2},1}(undef, 0),   # delta_z_norm
-        Array{Array{Float64,2},1}(undef, 0),   # delta_z
-        Array{Array{Float64,2},1}(undef, 0),   # grad
-        Array{Array{Float64,2},1}(undef, 0),   # epsilon
+        zeros(0,0),          # inputs
+        zeros(0,0),          # targets
+        [zeros(0,0)],       # a
+        [zeros(0,0)],       # z
+        [zeros(0,0)],       # z_norm -- only pre-allocate if batch_norm
+        [zeros(0,0)],       # delta_z_norm
+        [zeros(0,0)],       # delta_z
+        [zeros(0,0)],       # grad
+        [zeros(0,0)],       # epsilon
         Array{Array{Float64,2},1}(undef, 0),   # dropout_random
         Array{BitArray{2},1}(undef, 0),        # dropout_mask_units   Array{Array{Bool,2},1}
         0,                              # n

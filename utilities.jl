@@ -162,10 +162,12 @@ function output_stats(train, test, nnp, bn, hp, training_time, dotest, plotdef, 
         end
 
         # output number of incorrect predictions
-        test_wrongs = GeneralNN.wrong_preds(test.targets, test.a[nnp.output_layer]);
         train_wrongs = GeneralNN.wrong_preds(train.targets, train.a[nnp.output_layer]);
-        println(stats, "\n\nThere are ", length(test_wrongs), " incorrect test predictions.")
         println(stats, "There are ", length(train_wrongs), " incorrect training predictions.")
+        if dotest
+            test_wrongs = GeneralNN.wrong_preds(test.targets, test.a[nnp.output_layer]);
+            println(stats, "\n\nThere are ", length(test_wrongs), " incorrect test predictions.")
+        end
 
         # output hyper hyper_parameters
         hp.alpha = (   hp.do_learn_decay   # back out alpha to original input

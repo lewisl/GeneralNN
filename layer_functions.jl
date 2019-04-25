@@ -135,6 +135,12 @@ function softmax!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
 end
 
 
+function logistic!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
+    @fastmath a[:] = 1.0 ./ (1.0 .+ exp.(.-z))  
+    @fastmath a[:] = sign.(a)
+end
+
+
 function regression!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
     a[:] = z[:]
 end

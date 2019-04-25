@@ -1,5 +1,4 @@
 {
-    "matfname": "digits60000by784.mat",
     "epochs":  24,
     "n_hid": [100,100],
     "alpha":   0.74,

@@ -2,6 +2,12 @@
 
 
 #TODO
+#   don't pre-allocate inputs--doesn't do anything
+#   try replacing view pre-allocation with @views macro
+#   TODO use bias in the output layer with no batch norm?
+#   implement precision and recall
+#   enable training without the mess of test data
+#   for pre-allocation, support propagation of sparse vectors and matrices
 #   implement RNN
 #   implement logistic regression--most of the pieces present--create inputs and test
 #   stats on individual regression parameters
@@ -105,6 +111,7 @@ using Printf
 using Dates
 using LinearAlgebra
 using JSON
+using SparseArrays
 
 # new plotting approach
 using Plots
@@ -124,7 +131,7 @@ const l_relu_neg = .01  # makes the type constant; value can be changed
 
 
 """
-function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha::Float64=0.35,
+function train_nn(train_x, train_y, test_x, test_y, epochs::Int64, n_hid::Array{Int64,1}; alpha::Float64=0.35,
     mb_size::Int64=0, lambda::Float64=0.01, classify::String="softmax", norm_mode::String="none",
     opt::String="", opt_params::Array{Float64,1}=[0.9,0.999], units::String="sigmoid", do_batch_norm::Bool=false,
     reg::String="L2", dropout::Bool=false, droplim::Array{Float64,1}=[0.5], plots::Array{String,1}=["Training", "Learning"],
@@ -218,11 +225,13 @@ This method allows all input parameters to be supplied by a JSON file:
     If any errors are found, neural network training is not run.
 """
 
-function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha::Float64=0.35,
-    mb_size_in::Int64=0, lambda::Float64=0.01, classify::String="softmax", norm_mode::String="none",
-    opt::String="", opt_params::Array{Float64,1}=[0.9,0.999], units::String="sigmoid", do_batch_norm::Bool=false,
-    reg::String="L2", dropout::Bool=false, droplim::Array{Float64,1}=[0.5], plots::Array{String,1}=["Training", "Learning"],
-    learn_decay::Array{Float64,1}=[1.0, 1.0], plot_now::Bool=true)
+function train_nn(train_x, train_y, test_x, test_y, epochs::Int64, n_hid::Array{Int64,1}; 
+    alpha::Float64=0.35, mb_size_in::Int64=0, lambda::Float64=0.01, classify::String="softmax", 
+    norm_mode::String="none", opt::String="", opt_params::Array{Float64,1}=[0.9,0.999], 
+    units::String="sigmoid", do_batch_norm::Bool=false, reg::String="L2", dropout::Bool=false, 
+    droplim::Array{Float64,1}=[0.5], plots::Array{String,1}=["Training", "Learning"],
+    learn_decay::Array{Float64,1}=[1.0, 1.0], plot_now::Bool=true, sparse::Bool=false, 
+    initializer::String="xavier")
 
 
     ################################################################################
@@ -261,8 +270,8 @@ function train_nn(matfname::String, epochs::Int64, n_hid::Array{Int64,1}; alpha:
     end
 
     classify = lowercase(classify)
-    if !in(classify, ["softmax", "sigmoid", "regression"])
-        error("classify must be \"softmax\", \"sigmoid\" or \"regression\".")
+    if !in(classify, ["softmax", "sigmoid", "regression", "logistic"])
+        error("classify must be \"softmax\", \"sigmoid\", \"logistic\" or \"regression\".")
     end
 
     norm_mode = lowercase(norm_mode)
@@ -354,15 +363,21 @@ opt = lowercase(opt)  # match title case for string argument
             new_plots
         end
 
-    run_training(matfname, epochs, n_hid,
+    initializer = lowercase(initializer)
+        if !in(initializer, ["zero", "xavier"])
+            @warn("initializer must be \"zero\" or \"xavier\". Setting to default \"xavier\".")
+            reg = "xavier"
+        end
+
+    run_training(train_x, train_y, test_x, test_y, epochs, n_hid;
         plots=plots, reg=reg, alpha=alpha, mb_size_in=mb_size_in, lambda=lambda,
         opt=opt, opt_params=opt_params, classify=classify, dropout=dropout, droplim=droplim,
         norm_mode=norm_mode, do_batch_norm=do_batch_norm, units=units, learn_decay=learn_decay,
-        plot_now=plot_now);
+        plot_now=plot_now, initializer=initializer);
 end
 
 
-function train_nn(argsjsonfile::String, errorcheck::Bool=false)
+function train_nn(train_x, train_y, test_x, test_y, argsjsonfile::String, errorcheck::Bool=false)
 
     ################################################################################
     #   This method gets input arguments from a JSON file. This method does no
@@ -377,7 +392,8 @@ function train_nn(argsjsonfile::String, errorcheck::Bool=false)
         validargnames = [
                          "matfname", "epochs", "n_hid", "alpha", "mb_size_in", "lambda",
                          "classify", "norm_mode", "opt", "opt_params", "units", "do_batch_norm",
-                         "reg", "dropout", "droplim", "plots", "learn_decay", "plot_now"
+                         "reg", "dropout", "droplim", "plots", "learn_decay", "plot_now", "sparse",
+                         "initializer"
                          ]
         requiredargs = ["matfname", "epochs", "n_hid"]
 
@@ -411,7 +427,6 @@ function train_nn(argsjsonfile::String, errorcheck::Bool=false)
     end  # errorcheck
 
     # collect individual required args
-    matfname = pop!(argsdict, "matfname")
     epochs = pop!(argsdict, "epochs")
     n_hid = Int64.(pop!(argsdict, "n_hid"))
 
@@ -432,17 +447,17 @@ function train_nn(argsjsonfile::String, errorcheck::Bool=false)
     # return Dict(zip(Symbol.(keys(argsdict)),values(argsdict)))
 
     train_nn(
-             matfname, epochs, n_hid; 
+             train_x, train_y, test_x, test_y, epochs, n_hid; 
              Dict(   zip(Symbol.(keys(argsdict)),values(argsdict))    )...
              )
 end
 
 
-function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
+function run_training(train_x, train_y, test_x, test_y, epochs::Int64, n_hid::Array{Int64,1};
     plots::Array{String,1}=["Training", "Learning"], reg="L2", alpha=0.35,
     mb_size_in=0, lambda=0.01, opt="", opt_params=[], dropout=false, droplim=[0.5],
     classify="softmax", norm_mode="none", do_batch_norm=false, units="sigmoid",
-    learn_decay::Array{Float64,1}=[1.0, 1.0], plot_now=true)
+    learn_decay::Array{Float64,1}=[1.0, 1.0], plot_now=true, sparse=false, initializer="xavier")
 
     # seed random number generator.  For runs of identical models the same weight initialization
     # will be used, given the number of parameters to be estimated.  Enables better comparisons.
@@ -469,6 +484,8 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
         hp.opt_params = opt_params
         hp.learn_decay = learn_decay
         hp.do_batch_norm = do_batch_norm
+        hp.sparse = sparse
+        hp.initializer = initializer
 
     # instantiate data containers
     train = Model_data()  # train holds all the training data and layer inputs/outputs
@@ -477,13 +494,12 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     nnp = NN_weights()  # neural network trained parameters
     bn = Batch_norm_params()  # do we always need the data structure to run?  yes--TODO fix this
 
-    # load training data and test data (if any)
-    train.inputs, train.targets, test.inputs, test.targets = extract_data(matfname)
+    train.inputs, train.targets, test.inputs, test.targets = train_x, train_y, test_x, test_y
 
     # set some useful variables
-    train.in_k, train.n = size(train.inputs)  # number of features in_k (rows) by no. of examples n (columns)
-    train.out_k = size(train.targets,1)  # number of output units
-    dotest = size(test.inputs, 1) > 0  # there is testing data -> true, else false
+    train.in_k, train.n = size(train_x)  # number of features in_k (rows) by no. of examples n (columns)
+    train.out_k = size(train_y,1)  # number of output units
+    dotest = size(test_x, 1) > 0  # there is testing data -> true, else false
 
     #  optimization parameters, minibatch, preallocate data storage
     setup_model!(mb, hp, nnp, bn, dotest, train, test)
@@ -502,7 +518,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
         t = 0  # counter:  number of times parameters will have been updated: minibatches * epochs
 
         for ep_i = 1:hp.epochs  # loop for "epochs" with counter epoch i as ep_i
-
+            println("Start epoch $ep_i")
             hp.do_learn_decay && step_learn_decay!(hp, ep_i)
 
             # reset for at start of each epoch
@@ -510,6 +526,7 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
             hp.mb_size = hp.mb_size_in # reset the minibatch size to the input
 
             for mb_j = 1:hp.n_mb  # loop for mini-batches 
+                println("   Start minibatch $mb_j")
                 # set size of minibatch:  allows for minibatch size that doesn't divide evenly in no. of examples in data
                 left = train.n - done  
                 hp.mb_size = left > hp.mb_size ? hp.mb_size : left # last minibatch count = left
@@ -543,13 +560,19 @@ function run_training(matfname::String, epochs::Int64, n_hid::Array{Int64,1};
     output_stats(train, test, nnp, bn, hp, training_time, dotest, plotdef, plot_now)
 
     #  return train inputs, train targets, train predictions, test predictions, trained parameters, batch_norm parms., hyper parms.
+    # this is a hack
+            if dotest
+                test_preds = test.a[nnp.output_layer]
+            else
+                test_preds = zeros(0,0)
+            end
     return Dict(
-                "train_inputs" => train.inputs, 
-                "train_targets"=> train.targets, 
+                "train_inputs" => train_x, 
+                "train_targets"=> train_y, 
                 "train_preds" => train.a[nnp.output_layer], 
                 "test_inputs" => test.inputs, 
                 "test_targets" => test.targets, 
-                "test_preds" => test.a[nnp.output_layer], 
+                "test_preds" => test_preds, 
                 "nn_params" => nnp, 
                 "batchnorm_params" => bn, 
                 "hyper_params" => hp

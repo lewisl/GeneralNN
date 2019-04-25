@@ -136,7 +136,7 @@ function setup_model!(mb, hp, nnp, bn, dotest, train, test)
         if !(hp.opt_params == [])  # use inputs for opt_params
             # set b1 for Momentum and Adam
             if hp.opt_params[1] > 1.0 || hp.opt_params[1] < 0.5
-                warn("First opt_params for momentum or adam should be between 0.5 and 0.999. Using default")
+                @warn("First opt_params for momentum or adam should be between 0.5 and 0.999. Using default")
                 # nothing to do:  hp.b1 = 0.9 and hp.b2 = 0.999 and hp.ltl_eps = 1e-8
             else
                 hp.b1 = hp.opt_params[1] # use the passed parameter
@@ -144,7 +144,7 @@ function setup_model!(mb, hp, nnp, bn, dotest, train, test)
             # set b2 for Adam
             if length(hp.opt_params) > 1
                 if hp.opt_params[2] > 1.0 || hp.opt_params[2] < 0.9
-                    warn("second opt_params for adam should be between 0.9 and 0.999. Using default")
+                    @warn("second opt_params for adam should be between 0.9 and 0.999. Using default")
                 else
                     hp.b2 = hp.opt_params[2]
                 end
@@ -237,6 +237,7 @@ end
 # use for test and training data
 function preallocate_data!(dat, nnp, n, hp)
     # feedforward
+    
     dat.a = [dat.inputs]
     dat.z = [zeros(size(dat.inputs))] # not used for input layer  TODO--this permeates the code but not needed
     for i = 2:nnp.output_layer-1  # hidden layers
@@ -294,8 +295,14 @@ function preallocate_nn_params!(nnp, hp, in_k, n, out_k)
     nnp.theta = [zeros(2,2)] # layer 1 not used
 
     # Xavier initialization--current best practice for relu
-    for l = 2:nnp.output_layer
-        push!(nnp.theta, randn(nnp.theta_dims[l]) .* sqrt(2.0/nnp.theta_dims[l][2])) # sqrt of no. of input units
+    if hp.initializer == "xavier"
+        for l = 2:nnp.output_layer
+            push!(nnp.theta, randn(nnp.theta_dims[l]) .* sqrt(2.0/nnp.theta_dims[l][2])) # sqrt of no. of input units
+        end
+    else
+        for l = 2:nnp.output_layer
+            push!(nnp.theta, zeros(nnp.theta_dims[l])) # sqrt of no. of input units
+        end
     end
 
     # bias initialization: random non-zero initialization performs worse
@@ -422,7 +429,7 @@ function setup_functions!(hp, train)
             end
         else
             if hp.classify == "sigmoid" || hp.classify == "logistic"
-                sigmoid!  # for one output label
+                logistic!  # for one output label
             elseif hp.classify == "regression"
                 regression!
             else
@@ -477,7 +484,7 @@ function setup_plots(epochs::Int64, dotest::Bool, plots::Array{String,1})
     # set up cost_history to track 1 or 2 data series for plots
     # lots of indirection here:  someday might add "validation"
     if size(plots,1) > 4
-        warn("Only 4 plot requests permitted. Proceeding with up to 4.")
+        @warn("Only 4 plot requests permitted. Proceeding with up to 4.")
     end
 
     valid_plots = ["Training", "Test", "Learning", "Cost"]
@@ -492,7 +499,7 @@ function setup_plots(epochs::Int64, dotest::Bool, plots::Array{String,1})
         # nothing to change
     else
         if plot_switch["Test"]  # input requested plotting test data results
-            warn("Can't plot test data. No test data. Proceeding.")
+            @warn("Can't plot test data. No test data. Proceeding.")
             plot_switch["Test"] = false
         end
     end
