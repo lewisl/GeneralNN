@@ -98,7 +98,7 @@ end
 
 
 function setup_model!(mb, hp, nnp, bn, dotest, train, test)
-
+    !hp.quiet && println("Setup_model beginning")
     # normalize input data
     if !(hp.norm_mode == "" || lowercase(hp.norm_mode) == "none")
         train.inputs, test.inputs, norm_factors = normalize_inputs(train.inputs, test.inputs, hp.norm_mode)
@@ -125,10 +125,12 @@ function setup_model!(mb, hp, nnp, bn, dotest, train, test)
     # randomize order of all training samples:
         # labels in training data often in a block, which will make
         # mini-batch train badly because a batch will not contain mix of target labels
+    # this slicing is SLOW AS HELL.
+    # do it this way: b = view(m, :, sel[colrng])
     if hp.mb_size < train.n
-        select_index = randperm(train.n)
-        train.inputs[:] = train.inputs[:, select_index]
-        train.targets[:] = train.targets[:, select_index]
+        mb.sel = randperm(train.n)
+        # train.inputs[:] = train.inputs[:, select_index]
+        # train.targets[:] = train.targets[:, select_index]
     end
 
     # set parameters for Momentum or Adam optimization
@@ -199,15 +201,16 @@ function setup_model!(mb, hp, nnp, bn, dotest, train, test)
     ##########################################################################
     #  pre-allocate data storage
     ##########################################################################
-
+    !hp.quiet && println("Pre-allocate storage starting")
     preallocate_nn_params!(nnp, hp, train.in_k, train.n, train.out_k)
-
-    preallocate_data!(train, nnp, train.n, hp)
+    istest = false   # HACK
+    preallocate_data!(train, nnp, train.n, hp, istest)
 
     # feedfwd test data--if test input found
     if dotest
-        test.n = size(test.inputs,2)
-        preallocate_data!(test, nnp, test.n, hp)
+        test.n = size(test.inputs,2)   # TODO move this to be close to where train.n is originally set
+        istest = true
+        preallocate_data!(test, nnp, test.n, hp, istest)
     else
         test.n = 0
     end
@@ -220,12 +223,15 @@ function setup_model!(mb, hp, nnp, bn, dotest, train, test)
         preallocate_batchnorm!(bn, mb, nnp.layer_units)
     end
 
+    !hp.quiet && println("Pre-allocate storage completed")
+
     # debug
     # verify correct dimensions of dropout filter
     # for item in mb.dropout_mask_units
     #     println(size(item))
     # end
     # error("that's all folks!....")
+    !hp.quiet && println("Setup model completed")
 
 end
 
@@ -235,9 +241,9 @@ end
 ####################################################################
 
 # use for test and training data
-function preallocate_data!(dat, nnp, n, hp)
+function preallocate_data!(dat, nnp, n, hp, istest)
     # feedforward
-    
+
     dat.a = [dat.inputs]
     dat.z = [zeros(size(dat.inputs))] # not used for input layer  TODO--this permeates the code but not needed
     for i = 2:nnp.output_layer-1  # hidden layers
@@ -248,9 +254,12 @@ function preallocate_data!(dat, nnp, n, hp)
     push!(dat.a, zeros(size(nnp.theta[nnp.output_layer],1),n))
 
     # training / backprop  -- pre-allocate only minibatch size (except last one, which could be smaller)
-    dat.epsilon = [i[:,1:hp.mb_size_in] for i in dat.a]
-    dat.grad = [i[:,1:hp.mb_size_in] for i in dat.a]
-    dat.delta_z = [i[:,1:hp.mb_size_in] for i in dat.a]
+    # this doesn't work for test set when not using minibatches (minibatch size on training then > entire test set)
+    if !istest   # e.g., only for training
+        dat.epsilon = [i[:,1:hp.mb_size_in] for i in dat.a]
+        dat.grad = [i[:,1:hp.mb_size_in] for i in dat.a]
+        dat.delta_z = [i[:,1:hp.mb_size_in] for i in dat.a]
+    end
 
     if hp.do_batch_norm  # required for full pass performance stats
         # feedforward
@@ -383,7 +392,7 @@ end
 define and choose functions to be used in neural net training
 """
 function setup_functions!(hp, train)
-
+    !hp.quiet && println("Setup functions beginning")
     # make these function variables module level 
         # the layer functions they point to are all module level (in file layer_functions.jl)
         # these are just substitute names or aliases
@@ -453,7 +462,7 @@ function setup_functions!(hp, train)
         else
             cross_entropy_cost
         end
-
+    !hp.quiet && println("Setup functions completed.")
 end
 
 

@@ -2,8 +2,13 @@
 
 
 #TODO
+#   DONE reimplement minibatch randomization without rearranging entire matrix
+#   new minibatch selection is slow because it is non-contiguous
+#   accuracy for logistic or other single class classifiers should allow -1 or 0 for "bad"
+#   decide on right strategy for minibatch allocation:  as big as minibatch or slice of entire examples range?
+#   fix preallocation for test set--no backprop arrays needed
+#   DONE fix the LinearAlgebra.Adjoint problem using AbstractArray{Float64} everywhere
 #   don't pre-allocate inputs--doesn't do anything
-#   try replacing view pre-allocation with @views macro
 #   TODO use bias in the output layer with no batch norm?
 #   implement precision and recall
 #   enable training without the mess of test data
@@ -70,7 +75,7 @@ These data structures are used to hold parameters and data:
     data used for backprop with batch normalization: delta_gam, delta_bet, 
     delta_z_norm, delta_z, mu, stddev, mu_run, std_run
 - Hyper_parameters holds user input hyper_parameters and some derived parameters.
-- Training_view holds views on model data to hold the subset of data used in minibatches. 
+- Batch_view holds views on model data to hold the subset of data used in minibatches. 
   (This is not exported as there is no way to use it outside of the backprop loop.)
 
 """
@@ -231,8 +236,9 @@ function train_nn(train_x, train_y, test_x, test_y, epochs::Int64, n_hid::Array{
     units::String="sigmoid", do_batch_norm::Bool=false, reg::String="L2", dropout::Bool=false, 
     droplim::Array{Float64,1}=[0.5], plots::Array{String,1}=["Training", "Learning"],
     learn_decay::Array{Float64,1}=[1.0, 1.0], plot_now::Bool=true, sparse::Bool=false, 
-    initializer::String="xavier")
+    initializer::String="xavier", quiet=true)
 
+    !quiet && println("Validate input parameters")
 
     ################################################################################
     #   This is a front-end function that verifies all inputs and calls run_training
@@ -369,11 +375,13 @@ opt = lowercase(opt)  # match title case for string argument
             reg = "xavier"
         end
 
+    !quiet && println("Validation of input parameters completed")
+        
     run_training(train_x, train_y, test_x, test_y, epochs, n_hid;
         plots=plots, reg=reg, alpha=alpha, mb_size_in=mb_size_in, lambda=lambda,
         opt=opt, opt_params=opt_params, classify=classify, dropout=dropout, droplim=droplim,
         norm_mode=norm_mode, do_batch_norm=do_batch_norm, units=units, learn_decay=learn_decay,
-        plot_now=plot_now, initializer=initializer);
+        plot_now=plot_now, initializer=initializer, quiet=quiet);
 end
 
 
@@ -393,7 +401,7 @@ function train_nn(train_x, train_y, test_x, test_y, argsjsonfile::String, errorc
                          "matfname", "epochs", "n_hid", "alpha", "mb_size_in", "lambda",
                          "classify", "norm_mode", "opt", "opt_params", "units", "do_batch_norm",
                          "reg", "dropout", "droplim", "plots", "learn_decay", "plot_now", "sparse",
-                         "initializer"
+                         "initializer", "quiet"
                          ]
         requiredargs = ["matfname", "epochs", "n_hid"]
 
@@ -457,8 +465,10 @@ function run_training(train_x, train_y, test_x, test_y, epochs::Int64, n_hid::Ar
     plots::Array{String,1}=["Training", "Learning"], reg="L2", alpha=0.35,
     mb_size_in=0, lambda=0.01, opt="", opt_params=[], dropout=false, droplim=[0.5],
     classify="softmax", norm_mode="none", do_batch_norm=false, units="sigmoid",
-    learn_decay::Array{Float64,1}=[1.0, 1.0], plot_now=true, sparse=false, initializer="xavier")
+    learn_decay::Array{Float64,1}=[1.0, 1.0], plot_now=true, sparse=false, initializer="xavier",
+    quiet=true)
 
+    !quiet && println("Setting up model beginning")
     # seed random number generator.  For runs of identical models the same weight initialization
     # will be used, given the number of parameters to be estimated.  Enables better comparisons.
     Random.seed!(70653)  # seed int value is meaningless
@@ -486,15 +496,20 @@ function run_training(train_x, train_y, test_x, test_y, epochs::Int64, n_hid::Ar
         hp.do_batch_norm = do_batch_norm
         hp.sparse = sparse
         hp.initializer = initializer
+        hp.quiet = quiet
 
     # instantiate data containers
+    !hp.quiet && println("Instantiate data containers")
+
     train = Model_data()  # train holds all the training data and layer inputs/outputs
     test = Model_data()   # for test--but there is no training, just prediction
-    mb = Training_view()  # layer data for mini-batches: as views on training data or arrays
+    mb = Batch_view()  # layer data for mini-batches: as views on training data or arrays
     nnp = NN_weights()  # neural network trained parameters
     bn = Batch_norm_params()  # do we always need the data structure to run?  yes--TODO fix this
 
+    !hp.quiet && println("Set input data aliases to model data structures")
     train.inputs, train.targets, test.inputs, test.targets = train_x, train_y, test_x, test_y
+    !hp.quiet && println("Alias to model data structures completed")
 
     # set some useful variables
     train.in_k, train.n = size(train_x)  # number of features in_k (rows) by no. of examples n (columns)
@@ -510,6 +525,7 @@ function run_training(train_x, train_y, test_x, test_y, epochs::Int64, n_hid::Ar
     # statistics for plots and history data
     plotdef = setup_plots(epochs, dotest, plots)
 
+    !quiet && println("Training setup complete")
     ##########################################################
     #   neural network training loop
     ##########################################################
@@ -518,7 +534,7 @@ function run_training(train_x, train_y, test_x, test_y, epochs::Int64, n_hid::Ar
         t = 0  # counter:  number of times parameters will have been updated: minibatches * epochs
 
         for ep_i = 1:hp.epochs  # loop for "epochs" with counter epoch i as ep_i
-            println("Start epoch $ep_i")
+            !quiet && println("Start epoch $ep_i")
             hp.do_learn_decay && step_learn_decay!(hp, ep_i)
 
             # reset for at start of each epoch
@@ -526,7 +542,7 @@ function run_training(train_x, train_y, test_x, test_y, epochs::Int64, n_hid::Ar
             hp.mb_size = hp.mb_size_in # reset the minibatch size to the input
 
             for mb_j = 1:hp.n_mb  # loop for mini-batches 
-                println("   Start minibatch $mb_j")
+                !quiet && println("   Start minibatch $mb_j")
                 # set size of minibatch:  allows for minibatch size that doesn't divide evenly in no. of examples in data
                 left = train.n - done  
                 hp.mb_size = left > hp.mb_size ? hp.mb_size : left # last minibatch count = left
@@ -538,7 +554,7 @@ function run_training(train_x, train_y, test_x, test_y, epochs::Int64, n_hid::Ar
 
                 t += 1 
 
-                update_training_views!(mb, train, nnp, hp, colrng)  # select data columns for the minibatch                
+                update_Batch_views!(mb, train, nnp, hp, colrng)  # select data columns for the minibatch                
 
                 feedfwd!(mb, nnp, bn,  hp)  # for all layers
 
@@ -585,27 +601,44 @@ end  # function run_training
     Create or update views for the training data in minibatches or one big batch
         Arrays: a, z, z_norm, targets  are all fields of struct mb
 """
-function update_training_views!(mb::Training_view, train::Model_data, nnp::NN_weights, 
+function update_Batch_views!(mb::Batch_view, train::Model_data, nnp::NN_weights, 
     hp::Hyper_parameters, colrng::UnitRange{Int64})
+
     # colrng refers to the set of training examples included in the minibatch
     n_layers = nnp.output_layer
     mb_cols = 1:hp.mb_size  # only reason for this is that the last minibatch might be smaller
 
-    # feedforward:   minibatch views update the underlying data
-    @inbounds mb.a = [view(train.a[i],:,colrng) for i = 1:n_layers]
-    @inbounds mb.z = [view(train.z[i],:,colrng) for i = 1:n_layers]
-    @inbounds mb.targets = view(train.targets,:,colrng)  # only at the output layer
+    # another hack to deal with no minibatches
+    if hp.n_mb == 1
+        mb.a = train.a
+        mb.targets = train.targets
+        mb.z = train.z
+        mb.z_norm  = train.z_norm
+        mb.delta_z_norm  = train.delta_z_norm
+        mb.delta_z  = train.delta_z
+        mb.grad  = train.grad
+        mb.epsilon  = train.epsilon
+        mb.dropout_random  = train.dropout_random
+        mb.dropout_mask_units  = mb.dropout_mask_units
 
-    # training / backprop:  don't need this data and only use minibatch size
-    @inbounds mb.epsilon = [view(train.epsilon[i], :, mb_cols) for i = 1:n_layers]
-    @inbounds mb.grad = [view(train.grad[i], :, mb_cols) for i = 1:n_layers]
-    @inbounds mb.delta_z = [view(train.delta_z[i], :, mb_cols) for i = 1:n_layers]
+    else
 
-    if hp.do_batch_norm
-        # feedforward
-        @inbounds mb.z_norm = [view(train.z_norm[i],:, colrng) for i = 1:n_layers]
-        # backprop
-        @inbounds mb.delta_z_norm = [view(train.delta_z_norm[i], :, mb_cols) for i = 1:n_layers]
+        # feedforward:   minibatch views update the underlying data
+        @inbounds mb.a = [view(train.a[i],:,mb.sel[colrng]) for i = 1:n_layers]  # sel is random order of example indices
+        @inbounds mb.targets = view(train.targets,:,mb.sel[colrng])  # only at the output layer
+        @inbounds mb.z = [view(train.z[i],:,mb.sel[colrng]) for i = 1:n_layers]
+
+        # training / backprop:  don't need this data and only use minibatch size
+        @inbounds mb.epsilon = [view(train.epsilon[i], :, mb_cols) for i = 1:n_layers]
+        @inbounds mb.grad = [view(train.grad[i], :, mb_cols) for i = 1:n_layers]
+        @inbounds mb.delta_z = [view(train.delta_z[i], :, mb_cols) for i = 1:n_layers]
+
+        if hp.do_batch_norm
+            # feedforward
+            @inbounds mb.z_norm = [view(train.z_norm[i],:, mb.sel[colrng]) for i = 1:n_layers]
+            # backprop
+            @inbounds mb.delta_z_norm = [view(train.delta_z_norm[i], :, mb_cols) for i = 1:n_layers]
+        end
     end
 
     if hp.dropout
@@ -624,7 +657,7 @@ function feedfwd!(dat, nnp, bn, do_batch_norm; istrain)
 
     feed forward from inputs to output layer predictions
 """
-function feedfwd!(dat::Union{Model_data, Training_view}, nnp, bn,  hp; istrain=true)
+function feedfwd!(dat::Union{Model_data, Batch_view}, nnp, bn,  hp; istrain=true)
 
     # dropout for input layer (if probability < 1.0)
     if istrain && hp.dropout && (hp.droplim[1] < 1.0)
@@ -802,7 +835,7 @@ function accuracy(targets, preds, i)
         end
     else
         # works because single output unit is sigmoid
-        choices = [j >= 0.5 ? 1.0 : 0.0 for j in preds]
+        choices = [j >= 0.5 ? 1.0 : -1.0 for j in preds]
         fracright = mean(convert(Array{Int},choices .== targets))
     end
     return fracright

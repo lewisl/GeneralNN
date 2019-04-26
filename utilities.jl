@@ -157,7 +157,7 @@ function output_stats(train, test, nnp, bn, hp, training_time, dotest, plotdef, 
                 for i=1:10
                     @printf(stats, "%0.3f : ", printdata[i])
                 end
-                print("\n")
+                print("\n\n")
             end
         end
 

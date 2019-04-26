@@ -31,7 +31,7 @@ function runjob(jsoninputs="nninputs.json", matfname="digits60000by784.mat")
     test_y = convert(Array{Float64,2}, test_y)
 
     # debug
-    println("train_x ", typeof(train_x), " train_y ", typeof(train_y))
+    # println("train_x ", typeof(train_x), " train_y ", typeof(train_y))
 
     println("........ Training the neural network ........")
     results = GeneralNN.train_nn(train_x, train_y, test_x, test_y, jsoninputs);

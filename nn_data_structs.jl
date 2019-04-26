@@ -60,6 +60,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
     learn_decay::Array{Float64,1}  # reduction factor (fraction) and number of steps
     sparse::Bool
     initializer::String         # "xavier" or "zero"
+    quiet::Bool                 # display progress messages or not
 
     Hyper_parameters() = new(       # constructor with defaults--we use hp as the struct variable
         "sigmoid",      # units
@@ -85,30 +86,33 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         false,          # do_learn_decay
         [1.0, 1.0],     # learn_decay
         false,          # sparse
-        "xavier"        # initializer
+        "xavier",       # initializer
+        true
     )
 end
 
 
 """
 Struct Model_data hold examples and all layer outputs-->
-pre-allocate to reduce memory allocations and improve speed
+pre-allocate to reduce memory allocations and improve speed.
+Most of these are 1 dimensional arrays (an element for each layer) of arrays
+(the array data values at a layer).
 """
 mutable struct Model_data               # we will use train for inputs and test for test data
     # read from training, test, or production data
-    inputs #::Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}}   # in_k features by n examples
-    targets #::Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}}  # labels for each example
+    inputs::Union{AbstractArray{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}} #::   # in_k features by n examples
+    targets::Union{AbstractArray{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}} #::  # labels for each example
     # calculated in feedforward pass
-    a::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}
+    a::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}  # 
     z::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}
-    z_norm::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}  # same size as z--for batch_norm
+    z_norm::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}   # same size as z--for batch_norm
     # calculated in backprop (training) pass
-    delta_z_norm::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}   # same size as z
-    delta_z::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}        # same size as z
-    grad::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}
-    epsilon::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}        # dims of a
+    delta_z_norm::Array{AbstractArray{Float64},1}    # same size as z
+    delta_z::Array{AbstractArray{Float64},1}        # same size as z
+    grad::Array{AbstractArray{Float64},1}
+    epsilon::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}       # dims of a
     # calculate dropout mask for training
-    dropout_random::Array{Array{Float64,2},1}     # randomization for dropout--dims of a
+    dropout_random::Array{AbstractArray{Float64,2},1}     # randomization for dropout--dims of a
     dropout_mask_units::Array{BitArray{2}, 1}       # boolean filter for dropout--dims of a
     # descriptive
     n::Int64                                  # number of examples
@@ -136,32 +140,45 @@ end
 
 
 """
-Struct Training_view holds views on all model data that will be broken into minibatches
+Struct Batch_view holds views on all model data that will be broken into minibatches
 """
-mutable struct Training_view               # we will use mb for as the variable for minibatches
+mutable struct Batch_view               # we will use mb for as the variable for minibatches
     # array of views
-    a::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    targets::SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true}
-    z::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    z_norm::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    delta_z_norm::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    delta_z::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    grad::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    epsilon::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    dropout_random::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    dropout_mask_units::Array{SubArray{Bool,2,BitArray{2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    a  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    targets  #::SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true}
+    z  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    z_norm  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    delta_z_norm  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    delta_z  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    grad  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    epsilon  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    dropout_random  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    dropout_mask_units  #::Array{SubArray{Bool,2,BitArray{2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    sel::AbstractArray{Int64}
 
-    Training_view() = new(                      # empty constructor
-        [view(zeros(2,2),:,1:2) for i in 1:2],  # a
-        view(zeros(2,2),:,1:2),                 # targets
-        [view(zeros(2,2),:,1:2) for i in 1:2],  # z
-        [view(zeros(2,2),:,1:2) for i in 1:2],  # z_norm
-        [view(zeros(2,2),:,1:2) for i in 1:2],  # delta_z_norm
-        [view(zeros(2,2),:,1:2) for i in 1:2],  # delta_z
-        [view(zeros(2,2),:,1:2) for i in 1:2],  # grad
-        [view(zeros(2,2),:,1:2) for i in 1:2],  # epsilon
-        [view(zeros(2,2),:,1:2) for i in 1:2],  # dropout_random
-        [view(BitArray([1 1; 1 1]),:,1:2) for i in 1:2]   # dropout_mask_units     
+    Batch_view() = new(                      # empty constructor
+        [],  # a
+        [],                 # targets
+        [],  # z
+        [],  # z_norm
+        [],  # delta_z_norm
+        [],  # delta_z
+        [],  # grad
+        [],  # epsilon
+        [],  # dropout_random
+        [],  # dropout_mask_units  
+        []
+
+        # [view(zeros(2,2),:,1:2) for i in 1:2],  # a
+        # view(zeros(2,2),:,1:2),                 # targets
+        # [view(zeros(2,2),:,1:2) for i in 1:2],  # z
+        # [view(zeros(2,2),:,1:2) for i in 1:2],  # z_norm
+        # [view(zeros(2,2),:,1:2) for i in 1:2],  # delta_z_norm
+        # [view(zeros(2,2),:,1:2) for i in 1:2],  # delta_z
+        # [view(zeros(2,2),:,1:2) for i in 1:2],  # grad
+        # [view(zeros(2,2),:,1:2) for i in 1:2],  # epsilon
+        # [view(zeros(2,2),:,1:2) for i in 1:2],  # dropout_random
+        # [view(BitArray([1 1; 1 1]),:,1:2) for i in 1:2]   # dropout_mask_units     
     )
 
 end
