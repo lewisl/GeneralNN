@@ -3,6 +3,55 @@ using JLD2
 using Printf
 using LinearAlgebra
 
+
+"""
+function extract_data(matfname::String, norm_mode::String="none")
+
+Extract data from a matlab formatted binary file.
+
+The matlab file may contain these keys: 
+- "train", which is required, 
+- "test", which is optional.
+
+Within each top-level key the following keys must be present:
+- "x", which holds the examples in variables as columns (no column headers should be used)
+- "y", which holds the labels as columns for each example (it is possible to have multiple output columns for categories)
+
+Multiple Returns:
+-    inputs..........2d array of float64 with rows as features and columns as examples
+-    targets.........2d array of float64 with columns as examples
+-    test_inputs.....2d array of float64 with rows as features and columns as examples
+-    test_targets....2d array of float64 with columns as examples
+-    norm_factors.....1d vector of float64 containing [x_mu, x_std] or [m_min, x_max]
+.....................note that the factors may be vectors for multiple rows of x
+
+"""
+function extract_data(matfname::String)
+    # read the data
+    df = matread(matfname)
+
+    # Split into train and test datasets, if we have them
+    # transpose examples as columns to optimize for julia column-dominant operations
+    # e.g.:  rows of a single column are features; each column is an example data point
+    if in("train", keys(df))
+        inputs = df["train"]["x"]'
+        targets = df["train"]["y"]'
+    else
+        inputs = df["x"]'
+        targets = df["y"]'
+    end
+    if in("test", keys(df))
+        test_inputs = df["test"]["x"]'  # note transpose operator
+        test_targets = df["test"]["y"]'
+    else
+        test_inputs = zeros(0,0)
+        test_targets = zeros(0,0)
+    end
+
+    return inputs, targets, test_inputs, test_targets
+end
+
+
 """
 
     function save_params(jld2_fname, nnp, bn, hp; train_preds=[], test_preds=[])

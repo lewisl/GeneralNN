@@ -85,7 +85,7 @@ function step_learn_decay!(hp, ep_i)
     elseif (rem(ep_i,stepsize) == 0.0)
         hp.alpha *= decay_rate
         hp.alphaovermb *= decay_rate
-        println("     **** at $ep_i stepping down learning rate to $(hp.alpha)")
+        println("     **** at epoch $ep_i stepping down learning rate to $(hp.alpha)")
     else
         return
     end

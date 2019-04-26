@@ -1,50 +1,7 @@
-
-"""
-function extract_data(matfname::String, norm_mode::String="none")
-
-Extract data from a matlab formatted binary file.
-
-The matlab file may contain these keys: 
-- "train", which is required, 
-- "test", which is optional.
-
-Within each top-level key the following keys must be present:
-- "x", which holds the examples in variables as columns (no column headers should be used)
-- "y", which holds the labels as columns for each example (it is possible to have multiple output columns for categories)
-
-Multiple Returns:
--    inputs..........2d array of float64 with rows as features and columns as examples
--    targets.........2d array of float64 with columns as examples
--    test_inputs.....2d array of float64 with rows as features and columns as examples
--    test_targets....2d array of float64 with columns as examples
--    norm_factors.....1d vector of float64 containing [x_mu, x_std] or [m_min, x_max]
-.....................note that the factors may be vectors for multiple rows of x
-
-"""
-function extract_data(matfname::String)
-    # read the data
-    df = matread(matfname)
-
-    # Split into train and test datasets, if we have them
-    # transpose examples as columns to optimize for julia column-dominant operations
-    # e.g.:  rows of a single column are features; each column is an example data point
-    if in("train", keys(df))
-        inputs = df["train"]["x"]'
-        targets = df["train"]["y"]'
-    else
-        inputs = df["x"]'
-        targets = df["y"]'
-    end
-    if in("test", keys(df))
-        test_inputs = df["test"]["x"]'  # note transpose operator
-        test_targets = df["test"]["y"]'
-    else
-        test_inputs = zeros(0,0)
-        test_targets = zeros(0,0)
-    end
-
-    return inputs, targets, test_inputs, test_targets
-end
+using Plots
+using JLD2
+using Printf
+using LinearAlgebra
 
 
 function normalize_inputs(inputs, test_inputs, norm_mode="none")
@@ -109,28 +66,33 @@ function setup_model!(mb, hp, nnp, bn, dotest, train, test)
     # println(norm_factors)
 
     #setup mini-batch
-    if hp.mb_size_in < 1
-        hp.mb_size_in = train.n  # use 1 (mini-)batch with all of the examples
-        hp.mb_size = train.n
-    elseif hp.mb_size_in >= train.n
-        hp.mb_size_in = train.n
-        hp.mb_size = train_n
-    else 
-        hp.mb_size = hp.mb_size_in
-    end
-    hp.n_mb = ceil(Int, train.n / hp.mb_size)  # number of mini-batches
-    hp.alphaovermb = hp.alpha / hp.mb_size  # calc once, use in hot loop
-    hp.do_batch_norm = hp.n_mb == 1 ? false : hp.do_batch_norm  # no batch normalization for 1 batch
+    if hp.dobatch
+        if hp.mb_size_in < 1
+            hp.mb_size_in = train.n  # use 1 (mini-)batch with all of the examples
+            hp.mb_size = train.n
+        elseif hp.mb_size_in >= train.n
+            hp.mb_size_in = train.n
+            hp.mb_size = train_n
+        else 
+            hp.mb_size = hp.mb_size_in
+        end
+        hp.n_mb = ceil(Int, train.n / hp.mb_size)  # number of mini-batches
+        hp.alphaovermb = hp.alpha / hp.mb_size  # calc once, use in hot loop
+        hp.do_batch_norm = hp.n_mb == 1 ? false : hp.do_batch_norm  # no batch normalization for 1 batch
 
-    # randomize order of all training samples:
-        # labels in training data often in a block, which will make
-        # mini-batch train badly because a batch will not contain mix of target labels
-    # this slicing is SLOW AS HELL.
-    # do it this way: b = view(m, :, sel[colrng])
-    if hp.mb_size < train.n
-        mb.sel = randperm(train.n)
-        # train.inputs[:] = train.inputs[:, select_index]
-        # train.targets[:] = train.targets[:, select_index]
+        # randomize order of all training samples:
+            # labels in training data often in a block, which will make
+            # mini-batch train badly because a batch will not contain mix of target labels
+        # this slicing is SLOW AS HELL if data huge. But, repeated view/slicing raises a smaller cost.
+        # do it this way: b = view(m, :, sel[colrng])
+        if hp.mb_size < train.n
+            mb.sel = randperm(train.n)
+            # train.inputs[:] = train.inputs[:, select_index]
+            # train.targets[:] = train.targets[:, select_index]
+        end
+
+        # pre-allocate feedfwd mini-batch training data
+        # preallocate_minibatch!(mb, tp, hp)  
     end
 
     # set parameters for Momentum or Adam optimization
@@ -205,6 +167,10 @@ function setup_model!(mb, hp, nnp, bn, dotest, train, test)
     preallocate_nn_params!(nnp, hp, train.in_k, train.n, train.out_k)
     istest = false   # HACK
     preallocate_data!(train, nnp, train.n, hp, istest)
+    # batch normalization parameters
+    if hp.do_batch_norm
+        preallocate_batchnorm!(bn, mb, nnp.layer_units)
+    end
 
     # feedfwd test data--if test input found
     if dotest
@@ -215,13 +181,6 @@ function setup_model!(mb, hp, nnp, bn, dotest, train, test)
         test.n = 0
     end
 
-    # pre-allocate feedfwd mini-batch training data
-    # preallocate_minibatch!(mb, tp, hp)  
-    
-    # batch normalization parameters
-    if hp.do_batch_norm
-        preallocate_batchnorm!(bn, mb, nnp.layer_units)
-    end
 
     !hp.quiet && println("Pre-allocate storage completed")
 
@@ -256,16 +215,24 @@ function preallocate_data!(dat, nnp, n, hp, istest)
     # training / backprop  -- pre-allocate only minibatch size (except last one, which could be smaller)
     # this doesn't work for test set when not using minibatches (minibatch size on training then > entire test set)
     if !istest   # e.g., only for training
-        dat.epsilon = [i[:,1:hp.mb_size_in] for i in dat.a]
-        dat.grad = [i[:,1:hp.mb_size_in] for i in dat.a]
-        dat.delta_z = [i[:,1:hp.mb_size_in] for i in dat.a]
+        if hp.dobatch   # TODO  fix this HACK
+            dat.epsilon = [i[:,1:hp.mb_size_in] for i in dat.a]
+            dat.grad = [i[:,1:hp.mb_size_in] for i in dat.a]
+            dat.delta_z = [i[:,1:hp.mb_size_in] for i in dat.a]
+        else
+            dat.epsilon = [i for i in dat.a]
+            dat.grad = [i for i in dat.a]
+            dat.delta_z = [i for i in dat.a]
+
+        end
     end
 
-    if hp.do_batch_norm  # required for full pass performance stats
+    if hp.dobatch  # required for full pass performance stats
         # feedforward
         dat.z_norm = deepcopy(dat.z)
         # backprop
         dat.delta_z_norm = [i[:,1:hp.mb_size_in] for i in dat.a]
+        # preallocate_batchnorm!(bn, mb, nnp.layer_units)
     end
 
     # backprop / training
