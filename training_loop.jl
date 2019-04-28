@@ -8,7 +8,7 @@
 
 include("nn_data_structs.jl")
 
-# this method accepts both train, mb, bn--so it will do minibatch training
+# do minibatch training:  this method accepts both train, mb, bn
 function training_loop(hp, train, mb, nnp, bn, test, plotdef)
 
 training_time = @elapsed begin # start the cpu clock and begin block for training process
@@ -367,38 +367,24 @@ function update_Batch_views!(mb::Batch_view, train::Model_data, nnp::NN_weights,
     # colrng refers to the set of training examples included in the minibatch
     n_layers = nnp.output_layer
     mb_cols = 1:hp.mb_size  # only reason for this is that the last minibatch might be smaller
+    
+    colselector = hp.shuffle ? mb.sel[colrng] : colrng
 
-    # another hack to deal with no minibatches
-    if hp.n_mb == 1
-        mb.a = train.a
-        mb.targets = train.targets
-        mb.z = train.z
-        mb.z_norm  = train.z_norm
-        mb.delta_z_norm  = train.delta_z_norm
-        mb.delta_z  = train.delta_z
-        mb.grad  = train.grad
-        mb.epsilon  = train.epsilon
-        mb.dropout_random  = train.dropout_random
-        mb.dropout_mask_units  = mb.dropout_mask_units
+    # feedforward:   minibatch views update the underlying data
+    @inbounds mb.a = [view(train.a[i],:,colselector) for i = 1:n_layers]  # sel is random order of example indices
+    @inbounds mb.targets = view(train.targets,:,colselector)  # only at the output layer
+    @inbounds mb.z = [view(train.z[i],:,colselector) for i = 1:n_layers]
 
-    else
+    # training / backprop:  don't need this data and only use minibatch size
+    @inbounds mb.epsilon = [view(train.epsilon[i], :, mb_cols) for i = 1:n_layers]
+    @inbounds mb.grad = [view(train.grad[i], :, mb_cols) for i = 1:n_layers]
+    @inbounds mb.delta_z = [view(train.delta_z[i], :, mb_cols) for i = 1:n_layers]
 
-        # feedforward:   minibatch views update the underlying data
-        @inbounds mb.a = [view(train.a[i],:,mb.sel[colrng]) for i = 1:n_layers]  # sel is random order of example indices
-        @inbounds mb.targets = view(train.targets,:,mb.sel[colrng])  # only at the output layer
-        @inbounds mb.z = [view(train.z[i],:,mb.sel[colrng]) for i = 1:n_layers]
-
-        # training / backprop:  don't need this data and only use minibatch size
-        @inbounds mb.epsilon = [view(train.epsilon[i], :, mb_cols) for i = 1:n_layers]
-        @inbounds mb.grad = [view(train.grad[i], :, mb_cols) for i = 1:n_layers]
-        @inbounds mb.delta_z = [view(train.delta_z[i], :, mb_cols) for i = 1:n_layers]
-
-        if hp.do_batch_norm
-            # feedforward
-            @inbounds mb.z_norm = [view(train.z_norm[i],:, mb.sel[colrng]) for i = 1:n_layers]
-            # backprop
-            @inbounds mb.delta_z_norm = [view(train.delta_z_norm[i], :, mb_cols) for i = 1:n_layers]
-        end
+    if hp.do_batch_norm
+        # feedforward
+        @inbounds mb.z_norm = [view(train.z_norm[i],:, colselector) for i = 1:n_layers]
+        # backprop
+        @inbounds mb.delta_z_norm = [view(train.delta_z_norm[i], :, mb_cols) for i = 1:n_layers]
     end
 
     if hp.dropout

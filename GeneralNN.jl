@@ -2,13 +2,14 @@
 
 
 #TODO
-#   DONE reimplement minibatch randomization without rearranging entire matrix
+#   Switch to an explicit layer based approach to allow layers to be different
+#   condition use of batchs on dobatch rather than do_batch_norm:  test it, could work as is
+#   fix dropout
 #   set an explicit data size variable for both test and train for preallocation
 #   new minibatch selection is slow because it is non-contiguous
 #   accuracy for logistic or other single class classifiers should allow -1 or 0 for "bad"
 #   decide on right strategy for minibatch allocation:  as big as minibatch or slice of entire examples range?
 #   fix preallocation for test set--no backprop arrays needed
-#   DONE fix the LinearAlgebra.Adjoint problem using AbstractArray{Float64} everywhere
 #   don't pre-allocate inputs--doesn't do anything
 #   TODO use bias in the output layer with no batch norm?
 #   implement precision and recall
@@ -198,6 +199,10 @@ all of the input parameters to be read from a JSON file.  This is further explai
                             [1.0, 1.0] signals don't do learning decay
         plot_now        ::Bool.  If true, plot training stats and save the plotdef that contains stats 
                             gathered while running the training.  You can plot the file separately, later.
+        sparse
+        initializer
+        quiet
+        shuffle
 
 This method allows all input parameters to be supplied by a JSON file:
 
@@ -238,7 +243,7 @@ function train_nn(train_x, train_y, test_x, test_y, epochs::Int64, n_hid::Array{
     units::String="sigmoid", dobatch=false, do_batch_norm::Bool=false, reg::String="L2", 
     dropout::Bool=false, droplim::Array{Float64,1}=[0.5], 
     plots::Array{String,1}=["Training", "Learning"], learn_decay::Array{Float64,1}=[1.0, 1.0], 
-    plot_now::Bool=true, sparse::Bool=false, initializer::String="xavier", quiet=true)
+    plot_now::Bool=true, sparse::Bool=false, initializer::String="xavier", quiet=true, shuffle=false)
 
     !quiet && println("Validate input parameters")
 
@@ -383,7 +388,8 @@ opt = lowercase(opt)  # match title case for string argument
         plots=plots, reg=reg, alpha=alpha, mb_size_in=mb_size_in, lambda=lambda,
         opt=opt, opt_params=opt_params, classify=classify, dropout=dropout, droplim=droplim,
         norm_mode=norm_mode, dobatch=dobatch, do_batch_norm=do_batch_norm, units=units, 
-        learn_decay=learn_decay, plot_now=plot_now, initializer=initializer, quiet=quiet);
+        learn_decay=learn_decay, plot_now=plot_now, initializer=initializer, quiet=quiet,
+        shuffle=shuffle);
 end
 
 
@@ -403,7 +409,7 @@ function train_nn(train_x, train_y, test_x, test_y, argsjsonfile::String, errorc
                          "matfname", "epochs", "n_hid", "alpha", "mb_size_in", "lambda",
                          "classify", "norm_mode", "opt", "opt_params", "units", "dobatch", "do_batch_norm",
                          "reg", "dropout", "droplim", "plots", "learn_decay", "plot_now", "sparse",
-                         "initializer", "quiet"
+                         "initializer", "quiet", "shuffle"
                          ]
         requiredargs = ["matfname", "epochs", "n_hid"]
 
@@ -468,7 +474,7 @@ function run_training(train_x, train_y, test_x, test_y, epochs::Int64, n_hid::Ar
     mb_size_in=0, lambda=0.01, opt="", opt_params=[], dropout=false, droplim=[0.5],
     classify="softmax", norm_mode="none", dobatch = false, do_batch_norm=false, units="sigmoid",
     learn_decay::Array{Float64,1}=[1.0, 1.0], plot_now=true, sparse=false, initializer="xavier",
-    quiet=true)
+    quiet=true, shuffle=false)
 
     !quiet && println("Setting up model beginning")
     # seed random number generator.  For runs of identical models the same weight initialization
@@ -500,6 +506,7 @@ function run_training(train_x, train_y, test_x, test_y, epochs::Int64, n_hid::Ar
         hp.sparse = sparse
         hp.initializer = initializer
         hp.quiet = quiet
+        hp.shuffle = false
 
     # instantiate data containers
     !hp.quiet && println("Instantiate data containers")

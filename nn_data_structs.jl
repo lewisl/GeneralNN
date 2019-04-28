@@ -62,6 +62,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
     sparse::Bool
     initializer::String         # "xavier" or "zero"
     quiet::Bool                 # display progress messages or not
+    shuffle::Bool
 
     Hyper_parameters() = new(       # constructor with defaults--we use hp as the struct variable
         "sigmoid",      # units
@@ -89,7 +90,8 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         [1.0, 1.0],     # learn_decay
         false,          # sparse
         "xavier",       # initializer
-        true
+        true,           # quiet
+        false           # shuffle
     )
 end
 
@@ -108,7 +110,7 @@ mutable struct Model_data               # we will use train for inputs and test 
     a::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}  # 
     z::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}
     z_norm::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}   # same size as z--for batch_norm
-    # calculated in backprop (training) pass
+    # calculated in backprop (training) pass for batch normalization
     delta_z_norm::Array{AbstractArray{Float64},1}    # same size as z
     delta_z::Array{AbstractArray{Float64},1}        # same size as z
     grad::Array{AbstractArray{Float64},1}

@@ -85,7 +85,7 @@ function setup_model!(mb, hp, nnp, bn, dotest, train, test)
             # mini-batch train badly because a batch will not contain mix of target labels
         # this slicing is SLOW AS HELL if data huge. But, repeated view/slicing raises a smaller cost.
         # do it this way: b = view(m, :, sel[colrng])
-        if hp.mb_size < train.n
+        if hp.mb_size < train.n  & hp.shuffle
             mb.sel = randperm(train.n)
             # train.inputs[:] = train.inputs[:, select_index]
             # train.targets[:] = train.targets[:, select_index]
@@ -204,13 +204,21 @@ function preallocate_data!(dat, nnp, n, hp, istest)
     # feedforward
 
     dat.a = [dat.inputs]
-    dat.z = [zeros(size(dat.inputs))] # not used for input layer  TODO--this permeates the code but not needed
-    for i = 2:nnp.output_layer-1  # hidden layers
-        push!(dat.z, zeros(nnp.layer_units[i], n))
-        push!(dat.a, zeros(size(dat.z[i])))  #  and up...  ...output layer set after loop
+    dat.z = [dat.inputs] # not used for input layer  TODO--this permeates the code but not needed
+    if hp.sparse
+        for i = 2:nnp.output_layer-1  # hidden layers
+            push!(dat.z, spzeros(nnp.layer_units[i], n, 0.1))
+            push!(dat.a, spzeros(size(dat.z[i]), 0.1))  #  and up...  ...output layer set after loop
+        end
+        push!(dat.z, zeros(size(nnp.theta[nnp.output_layer],1),n))
+    else
+        for i = 2:nnp.output_layer-1  # hidden layers
+            push!(dat.z, zeros(nnp.layer_units[i], n))
+            push!(dat.a, zeros(size(dat.z[i])))  #  and up...  ...output layer set after loop
+        end
+        push!(dat.z, zeros(size(nnp.theta[nnp.output_layer],1),n))
+        push!(dat.a, zeros(size(nnp.theta[nnp.output_layer],1),n))
     end
-    push!(dat.z, zeros(size(nnp.theta[nnp.output_layer],1),n))
-    push!(dat.a, zeros(size(nnp.theta[nnp.output_layer],1),n))
 
     # training / backprop  -- pre-allocate only minibatch size (except last one, which could be smaller)
     # this doesn't work for test set when not using minibatches (minibatch size on training then > entire test set)
@@ -227,7 +235,7 @@ function preallocate_data!(dat, nnp, n, hp, istest)
         end
     end
 
-    if hp.dobatch  # required for full pass performance stats
+    if hp.dobatch  # required for full pass performance stats  TODO: really? or only for batch_norm
         # feedforward
         dat.z_norm = deepcopy(dat.z)
         # backprop
