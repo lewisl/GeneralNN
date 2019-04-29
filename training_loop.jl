@@ -222,7 +222,10 @@ end
 
 function update_parameters!(nnp, hp, bn)
     # update weights, bias, and batch_norm parameters
-    @fastmath for hl = 2:nnp.output_layer            
+    @fastmath for hl = 2:nnp.output_layer       
+
+# println(" total change in coeffs ", sum(nnp.delta_w[hl]))
+
         @inbounds nnp.theta[hl] .= nnp.theta[hl] .- (hp.alphaovermb .* nnp.delta_w[hl])
         if hp.reg == "L2"  # subtract regularization term
             @inbounds nnp.theta[hl] .= nnp.theta[hl] .- (hp.alphaovermb .* (hp.lambda .* nnp.theta[hl]))
@@ -286,7 +289,6 @@ function gather_stats!(plotdef, i, train, test, nnp, bn, cost_function, train_n,
             plotdef["cost_history"][i, plotdef["col_test"]] =cost
         end
         if plotdef["plot_switch"]["Learning"]
-            # printdims(Dict("test.a"=>test.a, "test.z"=>test.z))
             plotdef["fracright_history"][i, plotdef["col_test"]] = (  hp.classify == "regression"
                     ? r_squared(test.targets, test.a[nnp.output_layer])
                     : accuracy(test.targets, test.a[nnp.output_layer], i)  )
@@ -350,8 +352,8 @@ function accuracy(targets, preds, i)
         end
     else
         # works because single output unit is sigmoid
-        choices = [j >= 0.5 ? 1.0 : -1.0 for j in preds]
-        fracright = mean(convert(Array{Int},choices .== targets))
+        choices = [j > 0.5 ? 1.0 : 0.0 for j in preds]
+        fracright = mean(choices .== targets)
     end
     return fracright
 end

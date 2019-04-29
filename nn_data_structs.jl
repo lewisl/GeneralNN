@@ -111,9 +111,9 @@ mutable struct Model_data               # we will use train for inputs and test 
     z::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}
     z_norm::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}   # same size as z--for batch_norm
     # calculated in backprop (training) pass for batch normalization
-    delta_z_norm::Array{AbstractArray{Float64},1}    # same size as z
-    delta_z::Array{AbstractArray{Float64},1}        # same size as z
-    grad::Array{AbstractArray{Float64},1}
+    delta_z_norm::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}    # same size as z
+    delta_z::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}        # same size as z
+    grad::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}
     epsilon::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}       # dims of a
     # calculate dropout mask for training
     dropout_random::Array{AbstractArray{Float64,2},1}     # randomization for dropout--dims of a

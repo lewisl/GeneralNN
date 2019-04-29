@@ -2,21 +2,21 @@
 
 
 #TODO
+#   DONE fixed more bugs in sparse
+#   sort out what preallocation is needed for Batch and batch with batchnorm
+#   enable training without the mess of test data
 #   Switch to an explicit layer based approach to allow layers to be different
-#   condition use of batchs on dobatch rather than do_batch_norm:  test it, could work as is
 #   fix dropout
 #   set an explicit data size variable for both test and train for preallocation
 #   new minibatch selection is slow because it is non-contiguous
 #   accuracy for logistic or other single class classifiers should allow -1 or 0 for "bad"
-#   decide on right strategy for minibatch allocation:  as big as minibatch or slice of entire examples range?
 #   fix preallocation for test set--no backprop arrays needed
 #   don't pre-allocate inputs--doesn't do anything
 #   TODO use bias in the output layer with no batch norm?
 #   implement precision and recall
-#   enable training without the mess of test data
-#   for pre-allocation, support propagation of sparse vectors and matrices
+#   DONE for pre-allocation, support propagation of sparse vectors and matrices
 #   implement RNN
-#   implement logistic regression--most of the pieces present--create inputs and test
+#   DONE implement logistic regression--most of the pieces present--create inputs and test
 #   stats on individual regression parameters
 #   change to layer based api, with simplified api as alternate front-end
 #   separate reg from the cost calculation and the parameter updates
@@ -40,7 +40,7 @@
         #        to get rid of all of the temporaries in there. 
         # To use an infix operator, you can use \cdot, as in view(A,:,j)⋅r.
 #   figure out memory use between train set and minibatch set
-#   make affine units a separate layer with functions for feedfwd, gradient and test--do we need to?
+#   DONE make affine units a separate layer with functions for feedfwd, gradient and test--do we need to?
 #   implement a gradient checking function with option to run it
 #   convolutional layers
 #   pooling layers

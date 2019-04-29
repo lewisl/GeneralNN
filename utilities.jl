@@ -201,8 +201,9 @@ function output_stats(train, test, nnp, bn, hp, training_time, dotest, plotdef, 
         # output improvement of last 10 iterations for test data
         if plotdef["plot_switch"]["Test"]
             if plotdef["plot_switch"]["Learning"]
-                println(stats, "Test data accuracy in final 10 iterations:")
-                printdata = plotdef["fracright_history"][end-10+1:end, plotdef["col_test"]]
+                tailcount = min(10, hp.epochs)
+                println(stats, "Test data accuracy in final $tailcount iterations:")
+                printdata = plotdef["fracright_history"][end-tailcount+1:end, plotdef["col_test"]]
                 for i=1:10
                     @printf(stats, "%0.3f : ", printdata[i])
                 end
