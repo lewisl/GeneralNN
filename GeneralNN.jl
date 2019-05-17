@@ -2,7 +2,8 @@
 
 
 #TODO
-#   DONE fixed more bugs in sparse
+#   make test data optional.  don't pre-allocate it or create struct for it
+#   don't pre-allocate or create struct for minibatches if not using them
 #   sort out what preallocation is needed for Batch and batch with batchnorm
 #   enable training without the mess of test data
 #   Switch to an explicit layer based approach to allow layers to be different
@@ -14,9 +15,7 @@
 #   don't pre-allocate inputs--doesn't do anything
 #   TODO use bias in the output layer with no batch norm?
 #   implement precision and recall
-#   DONE for pre-allocation, support propagation of sparse vectors and matrices
 #   implement RNN
-#   DONE implement logistic regression--most of the pieces present--create inputs and test
 #   stats on individual regression parameters
 #   change to layer based api, with simplified api as alternate front-end
 #   separate reg from the cost calculation and the parameter updates
@@ -40,7 +39,6 @@
         #        to get rid of all of the temporaries in there. 
         # To use an infix operator, you can use \cdot, as in view(A,:,j)⋅r.
 #   figure out memory use between train set and minibatch set
-#   DONE make affine units a separate layer with functions for feedfwd, gradient and test--do we need to?
 #   implement a gradient checking function with option to run it
 #   convolutional layers
 #   pooling layers
@@ -271,11 +269,11 @@ function train_nn(train_x, train_y, test_x, test_y, epochs::Int64, n_hid::Array{
     end
 
     if alpha < 0.000001
-        @warn("Alpha learning rate set too small. Setting to default 0.35")
-        alpha = 0.35
+        @warn("Alpha learning rate set too small. Proceeding...")
+        # alpha = 0.35
     elseif alpha > 9.0
-        @warn("Alpha learning rate set too large. Setting to defaut 0.35")
-        alpha = 0.35
+        @warn("Alpha learning rate set too large. Proceeding...")
+        # alpha = 0.35
     end
 
     if mb_size_in < 0
@@ -345,8 +343,8 @@ opt = lowercase(opt)  # match title case for string argument
             @warn("Lambda regularization rate must be positive floating point value. Setting to 0.01")
             lamba = 0.01
         elseif lambda > 5.0
-            @warn("Lambda regularization rate set too large. Setting to max of 5.0")
-            lambda == 5.0
+            @warn("Lambda regularization rate probably set too large. Proceeding with your input.")
+            # lambda == 5.0
         end
     end
 
@@ -404,6 +402,7 @@ function train_nn(train_x, train_y, test_x, test_y, argsjsonfile::String, errorc
     argstxt = read(argsjsonfile, String)
     argsdict = JSON.parse(argstxt)
     inputargslist = keys(argsdict)
+
     if errorcheck
         validargnames = [
                          "matfname", "epochs", "n_hid", "alpha", "mb_size_in", "lambda",
@@ -485,7 +484,7 @@ function run_training(train_x, train_y, test_x, test_y, epochs::Int64, n_hid::Ar
     #   setup model: data structs, many control parameters, functions,  memory pre-allocation
     #################################################################################
 
-    hp = Hyper_parameters()  # hyper_parameters:  sets defaults
+    hp = Hyper_parameters()  # hyper_parameters constructor:  sets defaults
     # update Hyper_parameters with user inputs; others set in function setup_model!
         hp.units = units
         hp.alpha = alpha
@@ -506,7 +505,7 @@ function run_training(train_x, train_y, test_x, test_y, epochs::Int64, n_hid::Ar
         hp.sparse = sparse
         hp.initializer = initializer
         hp.quiet = quiet
-        hp.shuffle = false
+        hp.shuffle = shuffle
 
     # instantiate data containers
     !hp.quiet && println("Instantiate data containers")

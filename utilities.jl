@@ -447,7 +447,7 @@ function nnpredict(matfname::String, hp, nnp, bn; test::Bool=false)
 end
 
 
-function nnpredict(inputs, targets, hp, nnp, bn)
+function nnpredict(inputs, targets, hp, nnp, bn, istest)
     dataset = Model_data()
         dataset.inputs = inputs
         dataset.targets = targets
@@ -460,7 +460,7 @@ function nnpredict(inputs, targets, hp, nnp, bn)
 
     preallocate_data!(dataset, nnp, dataset.n, hp)
 
-    setup_functions!(hp.units, dataset.out_k, hp.opt, hp.classify)  # for feedforward calculations
+    setup_functions!(hp.units, dataset.out_k, hp.opt, hp.classify, istest)  # for feedforward calculations
 
     feedfwd!(dataset, nnp, bn, hp, istrain=false)  # output for entire dataset
 

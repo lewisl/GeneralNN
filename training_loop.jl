@@ -24,10 +24,12 @@ training_time = @elapsed begin # start the cpu clock and begin block for trainin
 
         for mb_j = 1:hp.n_mb  # loop for mini-batches 
             !hp.quiet && println("   Start minibatch $mb_j")
+
             # set size of minibatch:  allows for minibatch size that doesn't divide evenly in no. of examples in data
             left = train.n - done  
             hp.mb_size = left > hp.mb_size ? hp.mb_size : left # last minibatch count = left
             done += hp.mb_size
+            # set the column range of examples to include in the batch
             first_example = (mb_j - 1) * hp.mb_size + 1  # mini-batch subset for the inputs (layer 1)
             last_example = first_example + hp.mb_size - 1
             colrng = first_example:last_example
@@ -227,10 +229,10 @@ function update_parameters!(nnp, hp, bn)
 # println(" total change in coeffs ", sum(nnp.delta_w[hl]))
 
         @inbounds nnp.theta[hl] .= nnp.theta[hl] .- (hp.alphaovermb .* nnp.delta_w[hl])
-        if hp.reg == "L2"  # subtract regularization term
-            @inbounds nnp.theta[hl] .= nnp.theta[hl] .- (hp.alphaovermb .* (hp.lambda .* nnp.theta[hl]))
+        if hp.reg == "L2"  # regularization term  opposite sign of gradient?
+            @inbounds nnp.theta[hl] .= nnp.theta[hl] .+ (hp.alphaovermb .* (hp.lambda .* nnp.theta[hl]))
         elseif hp.reg == "L1"
-            @inbounds nnp.theta[hl] .= nnp.theta[hl] .- (hp.alphaovermb .* (hp.lambda .* sign.(nnp.theta[hl])))
+            @inbounds nnp.theta[hl] .= nnp.theta[hl] .+ (hp.alphaovermb .* (hp.lambda .* sign.(nnp.theta[hl])))
         end
         
         if hp.do_batch_norm  # update batch normalization parameters
@@ -251,16 +253,51 @@ function update_parameters!(nnp, hp)
     @fastmath for hl = 2:nnp.output_layer            
         @inbounds nnp.theta[hl] .= nnp.theta[hl] .- (hp.alphaovermb .* nnp.delta_w[hl])
 
-        if hp.reg == "L2"  # subtract regularization term
-            @inbounds nnp.theta[hl] .= nnp.theta[hl] .- (hp.alphaovermb .* (hp.lambda .* nnp.theta[hl]))
+        if hp.reg == "L2"  # regularization term: opposite sign of gradient
+            @inbounds nnp.theta[hl] .= nnp.theta[hl] .+ (hp.alphaovermb .* (hp.lambda .* nnp.theta[hl]))
         elseif hp.reg == "L1"
-            @inbounds nnp.theta[hl] .= nnp.theta[hl] .- (hp.alphaovermb .* (hp.lambda .* sign.(nnp.theta[hl])))
+            @inbounds nnp.theta[hl] .= nnp.theta[hl] .+ (hp.alphaovermb .* (hp.lambda  .* sign.(nnp.theta[hl])))
         end
         
         @inbounds nnp.bias[hl] .= nnp.bias[hl] .- (hp.alphaovermb .* nnp.delta_b[hl])
     end  
 
 end
+
+
+function momentum!(tp, hp, t)
+    @fastmath for hl = (tp.output_layer - 1):-1:2  # loop over hidden layers
+        @inbounds tp.delta_v_w[hl] .= hp.b1 .* tp.delta_v_w[hl] .+ (1.0 - hp.b1) .* tp.delta_w[hl]  # @inbounds 
+        @inbounds tp.delta_w[hl] .= tp.delta_v_w[hl]
+
+        if !hp.do_batch_norm  # then we need to do bias term
+            @inbounds tp.delta_v_b[hl] .= hp.b1 .* tp.delta_v_b[hl] .+ (1.0 - hp.b1) .* tp.delta_b[hl]  # @inbounds 
+            @inbounds tp.delta_b[hl] .= tp.delta_v_b[hl]
+        end
+    end
+end
+
+
+function adam!(nnp, hp, t)
+    @fastmath for hl = (nnp.output_layer - 1):-1:2  # loop over hidden layers
+        @inbounds nnp.delta_v_w[hl] .= hp.b1 .* nnp.delta_v_w[hl] .+ (1.0 - hp.b1) .* nnp.delta_w[hl]  
+        @inbounds nnp.delta_s_w[hl] .= hp.b2 .* nnp.delta_s_w[hl] .+ (1.0 - hp.b2) .* nnp.delta_w[hl].^2   
+        @inbounds nnp.delta_w[hl] .= (  (nnp.delta_v_w[hl] ./ (1.0 - hp.b1^t)) ./   
+                              sqrt.(nnp.delta_s_w[hl] ./ (1.0 - hp.b2^t) .+ hp.ltl_eps)  )
+
+        if !hp.do_batch_norm  # then we need to do bias term
+            @inbounds nnp.delta_v_b[hl] .= hp.b1 .* nnp.delta_v_b[hl] .+ (1.0 - hp.b1) .* nnp.delta_b[hl]   
+            @inbounds nnp.delta_s_b[hl] .= hp.b2 .* nnp.delta_s_b[hl] .+ (1.0 - hp.b2) .* nnp.delta_b[hl].^2   
+            @inbounds nnp.delta_b[hl] .= (  (nnp.delta_v_b[hl] ./ (1.0 - hp.b1^t)) ./   
+                              sqrt.(nnp.delta_s_b[hl] ./ (1.0 - hp.b2^t) .+ hp.ltl_eps) )  
+        end
+    end
+end
+
+
+function no_optimization(tp, hp, t)
+end
+
 
 
 function gather_stats!(plotdef, i, train, test, nnp, bn, cost_function, train_n, test_n, hp)
@@ -370,7 +407,7 @@ function update_Batch_views!(mb::Batch_view, train::Model_data, nnp::NN_weights,
     n_layers = nnp.output_layer
     mb_cols = 1:hp.mb_size  # only reason for this is that the last minibatch might be smaller
     
-    colselector = hp.shuffle ? mb.sel[colrng] : colrng
+    colselector = hp.shuffle ? mb.sel[colrng] : colrng # note:  always better to do your shuffle before training
 
     # feedforward:   minibatch views update the underlying data
     @inbounds mb.a = [view(train.a[i],:,colselector) for i = 1:n_layers]  # sel is random order of example indices

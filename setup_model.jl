@@ -72,7 +72,7 @@ function setup_model!(mb, hp, nnp, bn, dotest, train, test)
             hp.mb_size = train.n
         elseif hp.mb_size_in >= train.n
             hp.mb_size_in = train.n
-            hp.mb_size = train_n
+            hp.mb_size = train.n
         else 
             hp.mb_size = hp.mb_size_in
         end
@@ -90,6 +90,8 @@ function setup_model!(mb, hp, nnp, bn, dotest, train, test)
             # train.inputs[:] = train.inputs[:, select_index]
             # train.targets[:] = train.targets[:, select_index]
         end
+    else
+        hp.alphaovermb = hp.alpha / train.n
 
         # pre-allocate feedfwd mini-batch training data
         # preallocate_minibatch!(mb, tp, hp)  
