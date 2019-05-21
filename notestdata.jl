@@ -33,25 +33,25 @@ function runjob(jsoninputs="nninputs.json", matfname="digits60000by784.mat")
     # println("train_x ", typeof(train_x), " train_y ", typeof(train_y))
 
     println("........ Training the neural network ........")
-    results = train_nn(train_x, train_y, test_x, test_y, jsoninputs)
+    results = train_nn(train_x, train_y, jsoninputs)
      # train_inputs, train_targets, train_preds, test_inputs, test_targets, test_preds, nn_params, batchnorm_params, 
      # hyper_params
 
 
-    predmax = vec(map(x -> x[1], argmax(results["test_preds"],dims=1)));
+    predmax = vec(map(x -> x[1], argmax(results["train_preds"],dims=1)));
 
     # which predictions are wrong?
-    test_wrongs = GeneralNN.wrong_preds(results["test_targets"], results["test_preds"]);
+    # test_wrongs = GeneralNN.wrong_preds(results["test_targets"], results["test_preds"]);
     train_wrongs = GeneralNN.wrong_preds(results["train_targets"], results["train_preds"]);
 
-    println("\n\nThere are ", length(test_wrongs), " incorrect test predictions.")
+    # println("\n\nThere are ", length(test_wrongs), " incorrect test predictions.")
     println("There are ", length(train_wrongs), " incorrect training predictions.")
 
 
-    # look at wrong test predictions
+    # look at wrong train predictions
     while true  
         println("\nPick a wrong test prediction to display or q to quit:")
-        print("   enter a number between 1 and $(length(test_wrongs))> ")
+        print("   enter a number between 1 and $(length(train_wrongs))> ")
         resp = chomp(readline())
         n = 0
         # response cases
@@ -63,11 +63,11 @@ function runjob(jsoninputs="nninputs.json", matfname="digits60000by784.mat")
             catch
                 continue
             end
-            if n > length(test_wrongs) || n < 1
+            if n > length(train_wrongs) || n < 1
                 println("Oops, try again...")
                 continue
             else
-                GeneralNN.dodigit(n, test_wrongs, results["test_inputs"], results["test_targets"], predmax)
+                GeneralNN.dodigit(n, train_wrongs, results["train_inputs"], results["train_targets"], predmax)
                 continue
             end # response case: display a wrong prediction
         end  # response cases

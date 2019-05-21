@@ -170,7 +170,19 @@ end
     Save, print and plot training statistics after all epochs
 
 """
-function output_stats(train, test, nnp, bn, hp, training_time, dotest, plotdef, plot_now)
+function output_stats(datalist, nnp, bn, hp, training_time, plotdef, plot_now)
+
+    if size(datalist, 1) == 1
+        train = datalist[1]
+        dotest = false
+    elseif size(datalist,1) == 2
+        train = datalist[1]
+        test = datalist[2]
+        dotest = true
+    else
+        error("Datalist contains wrong number of elements.")
+    end
+
 
     # file for simple training stats
     fname = repr(Dates.now())
@@ -188,6 +200,19 @@ function output_stats(train, test, nnp, bn, hp, training_time, dotest, plotdef, 
         println(stats, "Final cost training: ", cost_function(train.targets, train.a[nnp.output_layer], train.n,
                         nnp.theta, hp, nnp.output_layer))
 
+        # output improvement of last 10 iterations for training data
+        if plotdef["plot_switch"]["train"]
+            if plotdef["plot_switch"]["learning"]
+                tailcount = min(10, hp.epochs)
+                println(stats, "Training data accuracy in final $tailcount iterations:")
+                printdata = plotdef["fracright_history"][end-tailcount+1:end, plotdef["train"]]
+                for i=1:10
+                    @printf(stats, "%0.3f : ", printdata[i])
+                end
+                print("\n\n")
+            end
+        end
+
         # output test statistics
         if dotest
             feedfwd!(test, nnp, bn,  hp, istrain=false)
@@ -199,11 +224,11 @@ function output_stats(train, test, nnp, bn, hp, training_time, dotest, plotdef, 
         end
 
         # output improvement of last 10 iterations for test data
-        if plotdef["plot_switch"]["Test"]
-            if plotdef["plot_switch"]["Learning"]
+        if plotdef["plot_switch"]["test"]
+            if plotdef["plot_switch"]["learning"]
                 tailcount = min(10, hp.epochs)
                 println(stats, "Test data accuracy in final $tailcount iterations:")
-                printdata = plotdef["fracright_history"][end-tailcount+1:end, plotdef["col_test"]]
+                printdata = plotdef["fracright_history"][end-tailcount+1:end, plotdef["test"]]
                 for i=1:10
                     @printf(stats, "%0.3f : ", printdata[i])
                 end
@@ -249,11 +274,11 @@ end
 """
 function plot_output(plotdef::Dict)
     # plot the progress of training cost and/or learning
-    if (plotdef["plot_switch"]["Training"] || plotdef["plot_switch"]["Test"])
+    if (plotdef["plot_switch"]["train"] || plotdef["plot_switch"]["test"])
         # plotlyjs(size=(600,400)) # set chart size defaults
         gr()
 
-        if plotdef["plot_switch"]["Cost"]
+        if plotdef["plot_switch"]["cost"]
             plt_cost = plot(
                 plotdef["cost_history"], 
                 title="Cost Function",
@@ -265,7 +290,7 @@ function plot_output(plotdef::Dict)
             display(plt_cost)  # or can use gui()
         end
 
-        if plotdef["plot_switch"]["Learning"]
+        if plotdef["plot_switch"]["learning"]
             plt_learning = plot(
                 plotdef["fracright_history"], 
                 title="Learning Progress",
@@ -276,7 +301,7 @@ function plot_output(plotdef::Dict)
             display(plt_learning)
         end
 
-        if (plotdef["plot_switch"]["Cost"] || plotdef["plot_switch"]["Learning"])
+        if (plotdef["plot_switch"]["cost"] || plotdef["plot_switch"]["learning"])
             println("Press enter to close plot window..."); readline()
             closeall()
         end

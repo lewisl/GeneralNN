@@ -4,26 +4,18 @@ using Printf
 using LinearAlgebra
 
 
-function normalize_inputs(inputs, test_inputs, norm_mode="none")
+function normalize_inputs!(inputs, norm_mode="none")
     if lowercase(norm_mode) == "standard"
         # normalize training data
         x_mu = mean(inputs, dims=2)
         x_std = std(inputs, dims=2)
-        inputs = (inputs .- x_mu) ./ (x_std .+ 1e-08)
-        # normalize test data
-        if size(test_inputs) != (0,0)
-            test_inputs = (test_inputs .- x_mu) ./ (x_std .+ 1e-08)
-        end
+        inputs[:] = (inputs .- x_mu) ./ (x_std .+ 1e-08)
         norm_factors = (x_mu, x_std) # tuple of Array{Float64,2}
     elseif lowercase(norm_mode) == "minmax"
         # normalize training data
         x_max = maximum(inputs, dims=2)
         x_min = minimum(inputs, dims=2)
-        inputs = (inputs .- x_min) ./ (x_max .- x_min .+ 1e-08)
-        # normalize test data
-        if size(test_inputs) != (0,0)
-            test_inputs = (test_inputs .- x_min) ./ (x_max .- x_min .+ 1e-08)
-        end
+        inputs[:] = (inputs .- x_min) ./ (x_max .- x_min .+ 1e-08)
         norm_factors = (x_min, x_max) # tuple of Array{Float64,2}
     else  # handles case of "", "none" or really any crazy string
         norm_factors = ([0.0], [1.0])
@@ -35,32 +27,28 @@ function normalize_inputs(inputs, test_inputs, norm_mode="none")
     # (x - x.min()) / (x.max() - x.min())       # values from 0 to 1
     # 2*(x - x.min()) / (x.max() - x.min()) - 1 # values from -1 to 1
 
-    return inputs, test_inputs, norm_factors
+    return norm_factors
 end
 
 
-function normalize_replay!(inputs, norm_mode, norm_factors)
+function normalize_inputs!(inputs, norm_factors, norm_mode)
     if norm_mode == "standard"
         x_mu = norm_factors[1]
         x_std = norm_factors[2]
-        inputs = (inputs .- x_mu) ./ (x_std .+ 1e-08)
+        inputs[:] = (inputs .- x_mu) ./ (x_std .+ 1e-08)
     elseif norm_mode == "minmax"
         x_min = norm_factors[1]
         x_max = norm_factors[2]
-        inputs = (inputs .- x_min) ./ (x_max .- x_min .+ 1e-08)
+        inputs[:] = (inputs .- x_min) ./ (x_max .- x_min .+ 1e-08)
     else
         error("Input norm_mode = $norm_mode must be standard or minmax")
     end
 end
 
 
-function setup_model!(mb, hp, nnp, bn, dotest, train, test)
+function setup_model!(mb, hp, nnp, bn, train)
     !hp.quiet && println("Setup_model beginning")
-    # normalize input data
-    if !(hp.norm_mode == "" || lowercase(hp.norm_mode) == "none")
-        train.inputs, test.inputs, norm_factors = normalize_inputs(train.inputs, test.inputs, hp.norm_mode)
-        nnp.norm_factors = norm_factors   
-    end
+
     # debug
     # println("norm_factors ", typeof(norm_factors))
     # println(norm_factors)
@@ -162,27 +150,37 @@ function setup_model!(mb, hp, nnp, bn, dotest, train, test)
     #    println(sym," ",getfield(hp,sym), " ", typeof(getfield(hp,sym)))
     # end
 
+end
+
+
+function preallocate_storage!(hp, nnp, bn, mb, datalist)
     ##########################################################################
     #  pre-allocate data storage
     ##########################################################################
     !hp.quiet && println("Pre-allocate storage starting")
-    preallocate_nn_params!(nnp, hp, train.in_k, train.n, train.out_k)
-    istest = false   # HACK
-    preallocate_data!(train, nnp, train.n, hp, istest)
-    # batch normalization parameters
-    if hp.do_batch_norm
-        preallocate_batchnorm!(bn, mb, nnp.layer_units)
+
+    if size(datalist, 1) == 1
+        train = datalist[1]
+        dotest = false
+    elseif size(datalist, 1) == 2
+        train = datalist[1]
+        test = datalist[2]
+        dotest = true
+    else
+        error("Size of datalist must be 1 or 2.")
     end
+
+    preallocate_nn_params!(nnp, hp, train.in_k, train.n, train.out_k)
+    preallocate_data!(train, nnp, train.n, hp)
+    # batch normalization parameters
+    hp.do_batch_norm && preallocate_batchnorm!(bn, mb, nnp.layer_units)
 
     # feedfwd test data--if test input found
     if dotest
         test.n = size(test.inputs,2)   # TODO move this to be close to where train.n is originally set
-        istest = true
-        preallocate_data!(test, nnp, test.n, hp, istest)
-    else
-        test.n = 0
+        istrain = false
+        preallocate_data!(test, nnp, test.n, hp, istrain)
     end
-
 
     !hp.quiet && println("Pre-allocate storage completed")
 
@@ -193,8 +191,8 @@ function setup_model!(mb, hp, nnp, bn, dotest, train, test)
     # end
     # error("that's all folks!....")
     !hp.quiet && println("Setup model completed")
-
 end
+
 
 
 ####################################################################
@@ -202,7 +200,7 @@ end
 ####################################################################
 
 # use for test and training data
-function preallocate_data!(dat, nnp, n, hp, istest)
+function preallocate_data!(dat, nnp, n, hp, istrain=true)
     # feedforward
 
     dat.a = [dat.inputs]
@@ -225,7 +223,7 @@ function preallocate_data!(dat, nnp, n, hp, istest)
 
     # training / backprop  -- pre-allocate only minibatch size (except last one, which could be smaller)
     # this doesn't work for test set when not using minibatches (minibatch size on training then > entire test set)
-    if !istest   # e.g., only for training
+    if istrain   # e.g., only for training
         if hp.dobatch   # TODO  fix this HACK
             dat.epsilon = [i[:,1:hp.mb_size_in] for i in dat.a]
             dat.grad = [i[:,1:hp.mb_size_in] for i in dat.a]
@@ -474,7 +472,7 @@ function setup_plots(epochs::Int64, dotest::Bool, plots::Array{String,1})
         @warn("Only 4 plot requests permitted. Proceeding with up to 4.")
     end
 
-    valid_plots = ["Training", "Test", "Learning", "Cost"]
+    valid_plots = ["train", "test", "learning", "cost"]
     if in(plots, ["None", "none", ""])
         plot_switch = Dict(pl => false for pl in valid_plots) # set all to false
     else
@@ -485,9 +483,9 @@ function setup_plots(epochs::Int64, dotest::Bool, plots::Array{String,1})
     if dotest  # test data is present
         # nothing to change
     else
-        if plot_switch["Test"]  # input requested plotting test data results
+        if plot_switch["test"]  # input requested plotting test data results
             @warn("Can't plot test data. No test data. Proceeding.")
-            plot_switch["Test"] = false
+            plot_switch["test"] = false
         end
     end
 
@@ -497,21 +495,21 @@ function setup_plots(epochs::Int64, dotest::Bool, plots::Array{String,1})
 
     plotdef = Dict("plot_switch"=>plot_switch, "plot_labels"=>plot_labels)
 
-    if plot_switch["Cost"]
+    if plot_switch["cost"]
         cost_history = zeros(epochs, size(plot_labels,2))
         plotdef["cost_history"] = cost_history
     end
-    if plot_switch["Learning"]
+    if plot_switch["learning"]
         fracright_history = zeros(epochs, size(plot_labels,2))
         plotdef["fracright_history"] = fracright_history
     end
 
     # set column in cost_history for each data series
-    col_train = plot_switch["Training"] ? 1 : 0
-    col_test = plot_switch["Test"] ? col_train + 1 : 0
+    col_train = plot_switch["train"] ? 1 : 0
+    col_test = plot_switch["test"] ? col_train + 1 : 0
 
-    plotdef["col_train"] = col_train
-    plotdef["col_test"] = col_test
+    plotdef["train"] = col_train
+    plotdef["test"] = col_test
 
     return plotdef
 end

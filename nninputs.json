@@ -1,6 +1,6 @@
 {
     "epochs":  24,
-    "n_hid": [150,150],
+    "n_hid": [100],
     "alpha":   0.74,
     "reg":  "L2",
     "lambda":  0.000191,
@@ -15,9 +15,10 @@
     "classify": "softmax",
     "dropout": false,
     "droplim": [1.0,0.8,1.0],
-    "plots": ["Training", "Learning", "Test"],
+    "plots": ["Train", "Learning", "Test"],
     "plot_now": true,
     "quiet": true,
-    "initializer": "xavier"
+    "initializer": "xavier",
+    "shuffle": true
 }
 

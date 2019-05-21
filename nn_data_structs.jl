@@ -62,7 +62,8 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
     sparse::Bool
     initializer::String         # "xavier" or "zero"
     quiet::Bool                 # display progress messages or not
-    shuffle::Bool
+    shuffle::Bool               # for mini-batchs, randomize the order of the training examples
+    plots::Array{String, 1}     # not a hyper_parameter, choice of plots to create during training
 
     Hyper_parameters() = new(       # constructor with defaults--we use hp as the struct variable
         "sigmoid",      # units
@@ -91,7 +92,8 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         false,          # sparse
         "xavier",       # initializer
         true,           # quiet
-        false           # shuffle
+        false,          # shuffle
+        ["None"]        # plots
     )
 end
 

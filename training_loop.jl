@@ -9,7 +9,17 @@
 include("nn_data_structs.jl")
 
 # do minibatch training:  this method accepts both train, mb, bn
-function training_loop(hp, train, mb, nnp, bn, test, plotdef)
+function training_loop(hp, datalist, mb, nnp, bn, plotdef)
+    if size(datalist, 1) == 1
+        train = datalist[1]
+        dotest = false
+    elseif size(datalist,1) == 2
+        train = datalist[1]
+        test = datalist[2]
+        dotest = true
+    else
+        error("Datalist contains wrong number of elements.")
+    end
 
 training_time = @elapsed begin # start the cpu clock and begin block for training process
     t = 0  # counter:  number of times parameters will have been updated: minibatches * epochs
@@ -34,7 +44,7 @@ training_time = @elapsed begin # start the cpu clock and begin block for trainin
             last_example = first_example + hp.mb_size - 1
             colrng = first_example:last_example
 
-            t += 1 
+            t += 1   # number of executions of minibatch loop
             update_Batch_views!(mb, train, nnp, hp, colrng)  # select data columns for the minibatch                
 
             feedfwd!(mb, nnp, bn,  hp)  # for all layers
@@ -48,7 +58,9 @@ training_time = @elapsed begin # start the cpu clock and begin block for trainin
         end # mini-batch loop
 
         # stats across all mini-batches of one epoch (e.g.--no stats per minibatch)
-        gather_stats!(plotdef, ep_i, train, test, nnp, bn, cost_function, train.n, test.n, hp)  
+        gather_stats!(plotdef, "train", ep_i, train, nnp, bn, cost_function, hp)  
+        dotest && gather_stats!(plotdef, "test", ep_i, test, nnp, cost_function, hp) 
+
 
     end # epoch loop
 end # begin block for timing
@@ -59,7 +71,17 @@ end # function training_loop
 
 # this method works for full data training (no minibatches)
 # dispatch by removing the mb, bn arguments
-function training_loop(hp, train, nnp, test, plotdef)
+function training_loop(hp, datalist, nnp, plotdef)
+    if size(datalist, 1) == 1
+        train = datalist[1]
+        dotest = false
+    elseif size(datalist,1) == 2
+        train = datalist[1]
+        test = datalist[2]
+        dotest = true
+    else
+        error("Datalist contains wrong number of elements.")
+    end
 
 training_time = @elapsed begin # start the cpu clock and begin block for training process
     t = 0  # counter:  number of times parameters will have been updated: minibatches * epochs
@@ -80,7 +102,8 @@ training_time = @elapsed begin # start the cpu clock and begin block for trainin
         update_parameters!(nnp, hp)
 
         # stats across all mini-batches of one epoch (e.g.--no stats per minibatch)
-        gather_stats!(plotdef, ep_i, train, test, nnp, cost_function, train.n, test.n, hp)  
+        gather_stats!(plotdef, "train", ep_i, train, nnp, cost_function, train.n, hp)  
+        dotest && gather_stats!(plotdef, "test", ep_i, dat, nnp, cost_function, dat.n, hp) 
 
     end # epoch loop
 
@@ -300,76 +323,7 @@ end
 
 
 
-function gather_stats!(plotdef, i, train, test, nnp, bn, cost_function, train_n, test_n, hp)
 
-    if plotdef["plot_switch"]["Training"]
-        feedfwd!(train, nnp, bn, hp, istrain=false)
-
-        if plotdef["plot_switch"]["Cost"]
-            plotdef["cost_history"][i, plotdef["col_train"]] = cost_function(train.targets,
-                train.a[nnp.output_layer], train_n, nnp.theta, hp, nnp.output_layer)
-        end
-        if plotdef["plot_switch"]["Learning"]
-            plotdef["fracright_history"][i, plotdef["col_train"]] = (  hp.classify == "regression"
-                    ? r_squared(train.targets, train.a[nnp.output_layer])
-                    : accuracy(train.targets, train.a[nnp.output_layer], i)  )
-        end
-    end
-
-    if plotdef["plot_switch"]["Test"]
-        feedfwd!(test, nnp, bn, hp, istrain=false)
-
-        if plotdef["plot_switch"]["Cost"]
-            cost = cost_function(test.targets,
-                test.a[nnp.output_layer], test.n, nnp.theta, hp, nnp.output_layer)
-                # println("iter: ", i, " ", "cost: ", cost)
-            plotdef["cost_history"][i, plotdef["col_test"]] =cost
-        end
-        if plotdef["plot_switch"]["Learning"]
-            plotdef["fracright_history"][i, plotdef["col_test"]] = (  hp.classify == "regression"
-                    ? r_squared(test.targets, test.a[nnp.output_layer])
-                    : accuracy(test.targets, test.a[nnp.output_layer], i)  )
-        end
-    end
-    
-end
-
-
-# this method dispatches on excluding bn argument
-function gather_stats!(plotdef, i, train, test, nnp, cost_function, train_n, test_n, hp)
-
-    if plotdef["plot_switch"]["Training"]
-        feedfwd!(train, nnp, hp, istrain=false)
-
-        if plotdef["plot_switch"]["Cost"]
-            plotdef["cost_history"][i, plotdef["col_train"]] = cost_function(train.targets,
-                train.a[nnp.output_layer], train_n, nnp.theta, hp, nnp.output_layer)
-        end
-        if plotdef["plot_switch"]["Learning"]
-            plotdef["fracright_history"][i, plotdef["col_train"]] = (  hp.classify == "regression"
-                    ? r_squared(train.targets, train.a[nnp.output_layer])
-                    : accuracy(train.targets, train.a[nnp.output_layer], i)  )
-        end
-    end
-
-    if plotdef["plot_switch"]["Test"]
-        feedfwd!(test, nnp, hp, istrain=false)
-
-        if plotdef["plot_switch"]["Cost"]
-            cost = cost_function(test.targets,
-                test.a[nnp.output_layer], test.n, nnp.theta, hp, nnp.output_layer)
-                # println("iter: ", i, " ", "cost: ", cost)
-            plotdef["cost_history"][i, plotdef["col_test"]] =cost
-        end
-        if plotdef["plot_switch"]["Learning"]
-            # printdims(Dict("test.a"=>test.a, "test.z"=>test.z))
-            plotdef["fracright_history"][i, plotdef["col_test"]] = (  hp.classify == "regression"
-                    ? r_squared(test.targets, test.a[nnp.output_layer])
-                    : accuracy(test.targets, test.a[nnp.output_layer], i)  )
-        end
-    end
-    
-end
 
 
 function accuracy(targets, preds, i)
@@ -468,3 +422,55 @@ function batch_norm_back!(nnp, dat, bn, hl, hp)
         )
 end
 
+# this method includes bn argument
+function gather_stats!(plotdef, train_or_test, i, dat, nnp, bn, cost_function, hp)
+
+    if plotdef["plot_switch"][train_or_test]
+        feedfwd!(dat, nnp, bn, hp, istrain=false)
+
+        if plotdef["plot_switch"]["cost"]
+            plotdef["cost_history"][i, plotdef[train_or_test]] = cost_function(dat.targets,
+                dat.a[nnp.output_layer], dat.n, nnp.theta, hp, nnp.output_layer)
+        end
+        if plotdef["plot_switch"]["learning"]
+            plotdef["fracright_history"][i, plotdef[train_or_test]] = (  hp.classify == "regression"
+                    ? r_squared(dat.targets, dat.a[nnp.output_layer])
+                    : accuracy(dat.targets, dat.a[nnp.output_layer], i)  )
+        end
+    end
+
+    # if plotdef["plot_switch"]["test"]
+    #     feedfwd!(test, nnp, bn, hp, istrain=false)
+
+    #     if plotdef["plot_switch"]["cost"]
+    #         plotdef["cost_history"][i, plotdef["test"]] =cost_function(test.targets,
+    #             test.a[nnp.output_layer], test.n, nnp.theta, hp, nnp.output_layer)
+    #     end
+    #     if plotdef["plot_switch"]["learning"]
+    #         plotdef["fracright_history"][i, plotdef["test"]] = (  hp.classify == "regression"
+    #                 ? r_squared(test.targets, test.a[nnp.output_layer])
+    #                 : accuracy(test.targets, test.a[nnp.output_layer], i)  )
+    #     end
+    # end
+    
+end
+
+
+# this method dispatches on excluding bn argument
+function gather_stats!(plotdef, train_or_test, i, dat, nnp, cost_function, hp)
+
+    if plotdef["plot_switch"][train_or_test]
+        feedfwd!(dat, nnp, hp, istrain=false)
+
+        if plotdef["plot_switch"]["cost"]
+            plotdef["cost_history"][i, plotdef[train_or_test]] = cost_function(dat.targets,
+                dat.a[nnp.output_layer], dat.n, nnp.theta, hp, nnp.output_layer)
+        end
+        if plotdef["plot_switch"]["learning"]
+            plotdef["fracright_history"][i, plotdef[train_or_test]] = (  hp.classify == "regression"
+                    ? r_squared(dat.targets, dat.a[nnp.output_layer])
+                    : accuracy(dat.targets, dat.a[nnp.output_layer], i)  )
+        end
+    end
+    
+end

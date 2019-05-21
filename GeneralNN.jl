@@ -1,8 +1,8 @@
 #DONE
-
+#   make test data optional.  don't pre-allocate it or create struct for it
 
 #TODO
-#   make test data optional.  don't pre-allocate it or create struct for it
+#   fix preallocation--use of datalist is breaking array re-use
 #   don't pre-allocate or create struct for minibatches if not using them
 #   sort out what preallocation is needed for Batch and batch with batchnorm
 #   enable training without the mess of test data
@@ -99,8 +99,7 @@ export
     load_params, 
     accuracy,
     extract_data, 
-    normalize_inputs, 
-    normalize_replay!, 
+    normalize_inputs!, 
     nnpredict,
     display_mnist_digit,
     wrong_preds,
@@ -234,7 +233,6 @@ This method allows all input parameters to be supplied by a JSON file:
        2) To make sure that all argument names are valid.
     If any errors are found, neural network training is not run.
 """
-
 function train_nn(train_x, train_y, test_x, test_y, epochs::Int64, n_hid::Array{Int64,1}; 
     alpha::Float64=0.35, mb_size_in::Int64=0, lambda::Float64=0.01, classify::String="softmax", 
     norm_mode::String="none", opt::String="", opt_params::Array{Float64,1}=[0.9,0.999], 
@@ -242,6 +240,194 @@ function train_nn(train_x, train_y, test_x, test_y, epochs::Int64, n_hid::Array{
     dropout::Bool=false, droplim::Array{Float64,1}=[0.5], 
     plots::Array{String,1}=["Training", "Learning"], learn_decay::Array{Float64,1}=[1.0, 1.0], 
     plot_now::Bool=true, sparse::Bool=false, initializer::String="xavier", quiet=true, shuffle=false)
+
+    # validate hyper_parameters and put into struct hp
+    hp = validate_hyper_parameters(units, alpha, lambda, n_hid, reg, classify, dropout,
+            droplim, epochs, mb_size_in, norm_mode, opt, opt_params, learn_decay, dobatch,
+            do_batch_norm, sparse, initializer, quiet, shuffle, plots)
+ 
+    run_training([train_x, train_y, test_x, test_y], hp; plot_now=plot_now);
+end
+
+
+function train_nn(train_x, train_y, epochs::Int64, n_hid::Array{Int64,1}; 
+    alpha::Float64=0.35, mb_size_in::Int64=0, lambda::Float64=0.01, classify::String="softmax", 
+    norm_mode::String="none", opt::String="", opt_params::Array{Float64,1}=[0.9,0.999], 
+    units::String="sigmoid", dobatch=false, do_batch_norm::Bool=false, reg::String="L2", 
+    dropout::Bool=false, droplim::Array{Float64,1}=[0.5], 
+    plots::Array{String,1}=["Training", "Learning"], learn_decay::Array{Float64,1}=[1.0, 1.0], 
+    plot_now::Bool=true, sparse::Bool=false, initializer::String="xavier", quiet=true, shuffle=false)
+
+    # validate hyper_parameters and put into struct hp
+    hp = validate_hyper_parameters(units, alpha, lambda, n_hid, reg, classify, dropout,
+            droplim, epochs, mb_size_in, norm_mode, opt, opt_params, learn_decay, dobatch,
+            do_batch_norm, sparse, initializer, quiet, shuffle, plots)
+ 
+    run_training([train_x, train_y], hp; plot_now=plot_now);
+end
+
+# no test arrays passed in
+function train_nn(train_x, train_y, argsjsonfile::String, errorcheck::Bool=false)
+    _pass_train_nn([train_x, train_y], argsjsonfile, errorcheck)
+end
+
+# test arrays passed in
+function train_nn(train_x, train_y, test_x, test_y, argsjsonfile::String, errorcheck::Bool=false)
+    _pass_train_nn([train_x, train_y, test_x, test_y], argsjsonfile, errorcheck)
+end
+
+# check the json file and call train_nn with expanded argument list
+function _pass_train_nn(datalist, argsjsonfile::String, errorcheck::Bool=false)
+
+    ################################################################################
+    #   This method gets input arguments from a JSON file. This method does no
+    #   error checking except, optionally, for valid argnames or missing required args. 
+    #   Function validate_hyper_params does error checking on all arg values and types.
+    ################################################################################
+
+    argstxt = read(argsjsonfile, String)
+    argsdict = JSON.parse(argstxt)
+    inputargslist = keys(argsdict)
+
+    errorcheck && check_json_inputs(inputargslist)
+
+    # collect individual required args
+    epochs = pop!(argsdict, "epochs")
+    n_hid = Int64.(pop!(argsdict, "n_hid"))
+
+    # convert  JSON array type Any to appropriate Julia type
+    if "plots" in inputargslist
+        argsdict["plots"] = String.(argsdict["plots"])
+    end
+    if "learn_decay" in inputargslist
+        argsdict["learn_decay"] = Float64.(argsdict["learn_decay"])
+    end
+    if "opt_params" in inputargslist
+        argsdict["opt_params"] = Float64.(argsdict["opt_params"])
+    end
+    if "droplim" in inputargslist
+        argsdict["droplim"] = Float64.(argsdict["droplim"])
+    end
+
+    # return Dict(zip(Symbol.(keys(argsdict)),values(argsdict)))
+
+    train_nn(                               # dispatches on number of elements in datalist
+             datalist..., epochs, n_hid; 
+             Dict(   zip(Symbol.(keys(argsdict)),values(argsdict))    )...
+             )
+end
+
+
+
+
+function run_training(datalist, hp; plot_now=true)
+
+    !hp.quiet && println("Setting up model beginning")
+    # seed random number generator.  For runs of identical models the same weight initialization
+    # will be used, given the number of parameters to be estimated.  Enables better comparisons.
+    Random.seed!(70653)  # seed int value is meaningless
+
+    ##################################################################################
+    #   setup model: data structs, many control parameters, functions,  memory pre-allocation
+    #################################################################################
+    if size(datalist,1) == 4
+        train_x = datalist[1]
+        train_y = datalist[2]
+        test_x = datalist[3]
+        test_y = datalist[4]
+        dotest = size(test_x, 1) > 0  # there is testing data -> true, else false
+        if !dotest
+            error("Test data inputs are empty. Rerun without passing test data inputs at all.")
+        end
+    elseif size(datalist, 1) == 2
+        train_x = datalist[1]
+        train_y = datalist[2]
+        dotest = false
+    else
+        error("Datalist input contained wrong number of inputs")
+    end
+
+    # instantiate data containers
+    !hp.quiet && println("Instantiate data containers")
+
+    train = Model_data()  # train holds all the training data and layer inputs/outputs
+    dotest && (test = Model_data())   # for test--but there is no training, just prediction
+    mb = Batch_view()  # layer data for mini-batches: as views on training data or arrays
+    nnp = NN_weights()  # neural network trained parameters
+    bn = Batch_norm_params()  # do we always need the data structure to run?  yes--TODO fix this
+
+    !hp.quiet && println("Set input data aliases to model data structures")
+    if dotest
+        train.inputs, train.targets, test.inputs, test.targets = train_x, train_y, test_x, test_y
+    else
+        train.inputs, train.targets = train_x, train_y
+    end
+    !hp.quiet && println("Alias to model data structures completed")
+
+    # set some useful variables
+    train.in_k, train.n = size(train_x)  # number of features in_k (rows) by no. of examples n (columns)
+    train.out_k = size(train_y,1)  # number of output units
+
+    #  optimization parameters, minibatch, 
+    setup_model!(mb, hp, nnp, bn, train)
+
+    # normalize data
+    if !(hp.norm_mode == "" || lowercase(hp.norm_mode) == "none")
+        nnp.norm_factors = normalize_inputs!(train.inputs, hp.norm_mode)
+        dotest && normalize_inputs!(test.inputs, nnp.norm_factors, hp.norm_mode) 
+    end
+
+    # preallocate data storage
+    dotest && preallocate_storage!(hp, nnp, bn, mb, [train, test]) # if dotest
+    dotest || preallocate_storage!(hp, nnp, bn, mb, [train]) # if NOT dotest
+
+    # choose layer functions and cost function based on inputs
+    setup_functions!(hp, train)
+
+    # statistics for plots and history data
+    plotdef = setup_plots(hp.epochs, dotest, hp.plots)
+
+    !hp.quiet && println("Training setup complete")
+    ##########################################################
+    #   neural network training loop
+    ##########################################################
+    
+    if hp.dobatch
+        dotest && (training_time = training_loop(hp, [train, test], mb, nnp, bn, plotdef))
+        dotest || (training_time = training_loop(hp, [train], mb, nnp, bn, plotdef))
+
+    else
+        dotest && (training_time = training_loop(hp, [train, test], nnp, plotdef))
+        dotest || (training_time = training_loop(hp, [train], nnp, plotdef))
+
+    end
+    
+    # save, print and plot training statistics after all epochs
+    dotest && output_stats([train, test], nnp, bn, hp, training_time, plotdef, plot_now)
+    dotest || output_stats([train], nnp, bn, hp, training_time, plotdef, plot_now)
+
+    #  return train inputs, train targets, train predictions, test predictions, trained parameters, batch_norm parms., hyper parms.
+    ret = Dict(
+                "train_inputs" => train_x, 
+                "train_targets"=> train_y, 
+                "train_preds" => train.a[nnp.output_layer], 
+                "nn_params" => nnp, 
+                "batchnorm_params" => bn, 
+                "hyper_params" => hp
+                )
+    dotest &&   begin
+                    ret["test_inputs"] = test.inputs 
+                    ret["test_targets"] = test.targets 
+                    ret["test_preds"] = test.a[nnp.output_layer]  
+                end 
+    return ret
+
+end # run_training_core, method with test data
+
+
+function validate_hyper_parameters(units, alpha, lambda, n_hid, reg, classify, dropout,
+    droplim, epochs, mb_size_in, norm_mode, opt, opt_params, learn_decay, dobatch,
+    do_batch_norm, sparse, initializer, quiet, shuffle, plots)
 
     !quiet && println("Validate input parameters")
 
@@ -362,14 +548,14 @@ opt = lowercase(opt)  # match title case for string argument
             [learn_decay[1], floor(learn_decay[2])]
         end
 
-    valid_plots = ["Training", "Test", "Learning", "Cost", "None", ""]
-    plots = titlecase.(lowercase.(plots))  # user input doesn't have use perfect case
+    valid_plots = ["train", "test", "learning", "cost", "none", ""]
+    plots = lowercase.(plots)  # user input doesn't have use perfect case
     new_plots = [pl for pl in valid_plots if in(pl, plots)] # both valid and input by the user
     plots = 
         if sort(new_plots) != sort(plots) # the plots list included something not in valid_plots
-            @warn("Plots argument can only include \"Training\", \"Test\", \"Learning\" and \"Cost\" or \"None\" or \"\".
-                \nProceeding no plots [\"None\"].")
-            ["None"]
+            @warn("Plots argument can only include \"train\", \"test\", \"learning\" and \"cost\" or \"none\" or \"\".
+                \nProceeding no plots [\"none\"].")
+            ["none"]
         else
             new_plots
         end
@@ -379,110 +565,6 @@ opt = lowercase(opt)  # match title case for string argument
             @warn("initializer must be \"zero\" or \"xavier\". Setting to default \"xavier\".")
             reg = "xavier"
         end
-
-    !quiet && println("Validation of input parameters completed")
-        
-    run_training(train_x, train_y, test_x, test_y, epochs, n_hid;
-        plots=plots, reg=reg, alpha=alpha, mb_size_in=mb_size_in, lambda=lambda,
-        opt=opt, opt_params=opt_params, classify=classify, dropout=dropout, droplim=droplim,
-        norm_mode=norm_mode, dobatch=dobatch, do_batch_norm=do_batch_norm, units=units, 
-        learn_decay=learn_decay, plot_now=plot_now, initializer=initializer, quiet=quiet,
-        shuffle=shuffle);
-end
-
-
-function train_nn(train_x, train_y, test_x, test_y, argsjsonfile::String, errorcheck::Bool=false)
-
-    ################################################################################
-    #   This method gets input arguments from a JSON file. This method does no
-    #   error checking except, optionally, for valid argnames or missing required args. 
-    #   The front-end method train_nn does error checking on all arg values and types.
-    ################################################################################
-
-    argstxt = read(argsjsonfile, String)
-    argsdict = JSON.parse(argstxt)
-    inputargslist = keys(argsdict)
-
-    if errorcheck
-        validargnames = [
-                         "matfname", "epochs", "n_hid", "alpha", "mb_size_in", "lambda",
-                         "classify", "norm_mode", "opt", "opt_params", "units", "dobatch", "do_batch_norm",
-                         "reg", "dropout", "droplim", "plots", "learn_decay", "plot_now", "sparse",
-                         "initializer", "quiet", "shuffle"
-                         ]
-        requiredargs = ["matfname", "epochs", "n_hid"]
-
-        # check for missing required args
-        errnames = []            
-        for argname in requiredargs
-            if !(argname in inputargslist)
-                push!(errnames, argname)
-            end
-        end
-        if !isempty(errnames)
-            println("Input file missing required arguments:")
-            println(errnames)
-            error("Stopped with invalid inputs")
-        end
-
-        # check for invalid arg names
-        errnames = []
-        for argname in inputargslist
-            if !(argname in validargnames)
-                push!(errnames, argname)
-            end
-        end
-        if !isempty(errnames)
-            println("Input file contained invalid argument names:")
-            println(errnames)
-            println("Valid argument names are:")
-            println(validargnames)
-            error("Stopped with invalid inputs")
-        end
-    end  # errorcheck
-
-    # collect individual required args
-    epochs = pop!(argsdict, "epochs")
-    n_hid = Int64.(pop!(argsdict, "n_hid"))
-
-    # convert  JSON array type Any to appropriate Julia type
-    if "plots" in inputargslist
-        argsdict["plots"] = String.(argsdict["plots"])
-    end
-    if "learn_decay" in inputargslist
-        argsdict["learn_decay"] = Float64.(argsdict["learn_decay"])
-    end
-    if "opt_params" in inputargslist
-        argsdict["opt_params"] = Float64.(argsdict["opt_params"])
-    end
-    if "droplim" in inputargslist
-        argsdict["droplim"] = Float64.(argsdict["droplim"])
-    end
-
-    # return Dict(zip(Symbol.(keys(argsdict)),values(argsdict)))
-
-    train_nn(
-             train_x, train_y, test_x, test_y, epochs, n_hid; 
-             Dict(   zip(Symbol.(keys(argsdict)),values(argsdict))    )...
-             )
-end
-
-
-function run_training(train_x, train_y, test_x, test_y, epochs::Int64, n_hid::Array{Int64,1};
-    plots::Array{String,1}=["Training", "Learning"], reg="L2", alpha=0.35,
-    mb_size_in=0, lambda=0.01, opt="", opt_params=[], dropout=false, droplim=[0.5],
-    classify="softmax", norm_mode="none", dobatch = false, do_batch_norm=false, units="sigmoid",
-    learn_decay::Array{Float64,1}=[1.0, 1.0], plot_now=true, sparse=false, initializer="xavier",
-    quiet=true, shuffle=false)
-
-    !quiet && println("Setting up model beginning")
-    # seed random number generator.  For runs of identical models the same weight initialization
-    # will be used, given the number of parameters to be estimated.  Enables better comparisons.
-    Random.seed!(70653)  # seed int value is meaningless
-
-    ##################################################################################
-    #   setup model: data structs, many control parameters, functions,  memory pre-allocation
-    #################################################################################
 
     hp = Hyper_parameters()  # hyper_parameters constructor:  sets defaults
     # update Hyper_parameters with user inputs; others set in function setup_model!
@@ -506,68 +588,56 @@ function run_training(train_x, train_y, test_x, test_y, epochs::Int64, n_hid::Ar
         hp.initializer = initializer
         hp.quiet = quiet
         hp.shuffle = shuffle
+        hp.plots = plots
 
-    # instantiate data containers
-    !hp.quiet && println("Instantiate data containers")
 
-    train = Model_data()  # train holds all the training data and layer inputs/outputs
-    test = Model_data()   # for test--but there is no training, just prediction
-    mb = Batch_view()  # layer data for mini-batches: as views on training data or arrays
-    nnp = NN_weights()  # neural network trained parameters
-    bn = Batch_norm_params()  # do we always need the data structure to run?  yes--TODO fix this
+    !quiet && println("Validation of input parameters completed")
 
-    !hp.quiet && println("Set input data aliases to model data structures")
-    train.inputs, train.targets, test.inputs, test.targets = train_x, train_y, test_x, test_y
-    !hp.quiet && println("Alias to model data structures completed")
+    return hp
+end
 
-    # set some useful variables
-    train.in_k, train.n = size(train_x)  # number of features in_k (rows) by no. of examples n (columns)
-    train.out_k = size(train_y,1)  # number of output units
-    dotest = size(test_x, 1) > 0  # there is testing data -> true, else false
 
-    #  optimization parameters, minibatch, preallocate data storage
-    setup_model!(mb, hp, nnp, bn, dotest, train, test)
+function check_json_inputs(inputargslist)
 
-    # choose layer functions and cost function based on inputs
-    setup_functions!(hp, train)
+    validargnames = [
+                     "matfname", "epochs", "n_hid", "alpha", "mb_size_in", "lambda",
+                     "classify", "norm_mode", "opt", "opt_params", "units", "dobatch", "do_batch_norm",
+                     "reg", "dropout", "droplim", "plots", "learn_decay", "plot_now", "sparse",
+                     "initializer", "quiet", "shuffle"
+                     ]
+    requiredargs = ["matfname", "epochs", "n_hid"]
 
-    # statistics for plots and history data
-    plotdef = setup_plots(epochs, dotest, plots)
-
-    !hp.quiet && println("Training setup complete")
-    ##########################################################
-    #   neural network training loop
-    ##########################################################
-    
-    if hp.dobatch
-        training_time = training_loop(hp, train, mb, nnp, bn, test, plotdef)
-    else
-        training_time = training_loop(hp, train, nnp, test, plotdef)
+    # check for missing required args
+    errnames = []            
+    for argname in requiredargs
+        if !(argname in inputargslist)
+            push!(errnames, argname)
+        end
     end
-    
-    # save, print and plot training statistics after all epochs
-    output_stats(train, test, nnp, bn, hp, training_time, dotest, plotdef, plot_now)
+    if !isempty(errnames)
+        println("Input file missing required arguments:")
+        println(errnames)
+        error("Stopped with invalid inputs")
+    end
 
-    #  return train inputs, train targets, train predictions, test predictions, trained parameters, batch_norm parms., hyper parms.
-    # this is a hack
-            if dotest
-                test_preds = test.a[nnp.output_layer]
-            else
-                test_preds = zeros(0,0)
-            end
-    return Dict(
-                "train_inputs" => train_x, 
-                "train_targets"=> train_y, 
-                "train_preds" => train.a[nnp.output_layer], 
-                "test_inputs" => test.inputs, 
-                "test_targets" => test.targets, 
-                "test_preds" => test_preds, 
-                "nn_params" => nnp, 
-                "batchnorm_params" => bn, 
-                "hyper_params" => hp
-                );  
-     
-end  # function run_training
+    # check for invalid arg names
+    errnames = []
+    for argname in inputargslist
+        if !(argname in validargnames)
+            push!(errnames, argname)
+        end
+    end
+    if !isempty(errnames)
+        println("Input file contained invalid argument names:")
+        println(errnames)
+        println("Valid argument names are:")
+        println(validargnames)
+        error("Stopped with invalid inputs")
+    end
+
+    println("All input args valid, proceeding...")
+
+end
 
 
 end  # module GeneralNN
