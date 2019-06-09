@@ -35,34 +35,11 @@ end
 
 
 
-
-function dropout!(dat,hp,hl)  # applied per layer
-    @inbounds dat.dropout_random[hl][:] = rand(Float64, size(dat.dropout_random[hl]))
-    @inbounds dat.dropout_mask_units[hl][:] = dat.dropout_random[hl] .< hp.droplim[hl]
-    # choose activations to remain and scale
-    @inbounds dat.a[hl][:] = dat.a[hl] .* (dat.dropout_mask_units[hl] ./ hp.droplim[hl])
-end
-
-
-function step_learn_decay!(hp, ep_i)
-    decay_rate = hp.learn_decay[1]
-    e_steps = hp.learn_decay[2]
-    stepsize = floor(hp.epochs / e_steps)
-    if hp.epochs - ep_i < stepsize
-        return
-    elseif (rem(ep_i,stepsize) == 0.0)
-        hp.alpha *= decay_rate
-        hp.alphaovermb *= decay_rate
-        println("     **** at epoch $ep_i stepping down learning rate to $(hp.alpha)")
-    else
-        return
-    end
-end
-
-
 ###########################################################################
 #  layer functions:  activation and gradients for units of different types
 ###########################################################################
+
+
 
 # two methods for linear layer units, with bias and without
 function affine!(z, a, theta, bias)  # with bias
@@ -168,3 +145,78 @@ function relu_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float64
     end
 end
 
+
+##########################################################################
+# Optimization and Regularization
+##########################################################################
+
+
+
+function dropout!(dat,hp,hl)  # applied per layer
+    @inbounds dat.dropout_random[hl][:] = rand(Float64, size(dat.dropout_random[hl]))
+    @inbounds dat.dropout_mask_units[hl][:] = dat.dropout_random[hl] .< hp.droplim[hl]
+    # choose activations to remain and scale
+    @inbounds dat.a[hl][:] = dat.a[hl] .* (dat.dropout_mask_units[hl] ./ hp.droplim[hl])
+end
+
+
+function step_learn_decay!(hp, ep_i)
+    decay_rate = hp.learn_decay[1]
+    e_steps = hp.learn_decay[2]
+    stepsize = floor(hp.epochs / e_steps)
+    if hp.epochs - ep_i < stepsize
+        return
+    elseif (rem(ep_i,stepsize) == 0.0)
+        hp.alpha *= decay_rate
+        hp.alphaovermb *= decay_rate
+        println("     **** at epoch $ep_i stepping down learning rate to $(hp.alpha)")
+    else
+        return
+    end
+end
+
+
+function momentum!(tp, hp, t)
+    @fastmath for hl = (tp.output_layer - 1):-1:2  # loop over hidden layers
+        @inbounds tp.delta_v_w[hl] .= hp.b1 .* tp.delta_v_w[hl] .+ (1.0 - hp.b1) .* tp.delta_w[hl]  # @inbounds 
+        @inbounds tp.delta_w[hl] .= tp.delta_v_w[hl]
+
+        if !hp.do_batch_norm  # then we need to do bias term
+            @inbounds tp.delta_v_b[hl] .= hp.b1 .* tp.delta_v_b[hl] .+ (1.0 - hp.b1) .* tp.delta_b[hl]  # @inbounds 
+            @inbounds tp.delta_b[hl] .= tp.delta_v_b[hl]
+        end
+    end
+end
+
+
+function adam!(nnp, hp, t)
+    @fastmath for hl = (nnp.output_layer - 1):-1:2  # loop over hidden layers
+        @inbounds nnp.delta_v_w[hl] .= hp.b1 .* nnp.delta_v_w[hl] .+ (1.0 - hp.b1) .* nnp.delta_w[hl]  
+        @inbounds nnp.delta_s_w[hl] .= hp.b2 .* nnp.delta_s_w[hl] .+ (1.0 - hp.b2) .* nnp.delta_w[hl].^2   
+        @inbounds nnp.delta_w[hl] .= (  (nnp.delta_v_w[hl] ./ (1.0 - hp.b1^t)) ./   
+                              sqrt.(nnp.delta_s_w[hl] ./ (1.0 - hp.b2^t) .+ hp.ltl_eps)  )
+
+        if !hp.do_batch_norm  # then we need to do bias term
+            @inbounds nnp.delta_v_b[hl] .= hp.b1 .* nnp.delta_v_b[hl] .+ (1.0 - hp.b1) .* nnp.delta_b[hl]   
+            @inbounds nnp.delta_s_b[hl] .= hp.b2 .* nnp.delta_s_b[hl] .+ (1.0 - hp.b2) .* nnp.delta_b[hl].^2   
+            @inbounds nnp.delta_b[hl] .= (  (nnp.delta_v_b[hl] ./ (1.0 - hp.b1^t)) ./   
+                              sqrt.(nnp.delta_s_b[hl] ./ (1.0 - hp.b2^t) .+ hp.ltl_eps) )  
+        end
+    end
+end
+
+
+function no_optimization(tp, hp, t)
+end
+
+
+function maxnorm_reg!(theta, maxnorm_lim)
+    for i in 1:size(theta,1)  
+        # row i of theta contains weights for output of unit i in current layer
+        # column values in row i multiplied times input values from next lower layer activations
+        norm_of_unit = norm(theta[i,:]) 
+        if norm_of_unit > maxnorm_lim
+            theta[i,:] .= theta[i,:] .* (maxnorm_lim / norm_of_unit)
+        end
+    end
+end

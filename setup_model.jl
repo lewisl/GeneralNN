@@ -65,6 +65,8 @@ function setup_model!(mb, hp, nnp, bn, train)
             hp.mb_size = hp.mb_size_in
         end
         hp.n_mb = ceil(Int, train.n / hp.mb_size)  # number of mini-batches
+        wholebatches = floor(Int, train.n / hp.mb_size)
+        hp.last_batch = hp.n_mb == wholebatches ? hp.mb_size : train.n - (wholebatches * hp.mb_size)
         hp.alphaovermb = hp.alpha / hp.mb_size  # calc once, use in hot loop
         hp.do_batch_norm = hp.n_mb == 1 ? false : hp.do_batch_norm  # no batch normalization for 1 batch
 
@@ -79,10 +81,7 @@ function setup_model!(mb, hp, nnp, bn, train)
             # train.targets[:] = train.targets[:, select_index]
         end
     else
-        hp.alphaovermb = hp.alpha / train.n
-
-        # pre-allocate feedfwd mini-batch training data
-        # preallocate_minibatch!(mb, tp, hp)  
+        hp.alphaovermb = hp.alpha / train.n 
     end
 
     # set parameters for Momentum or Adam optimization
@@ -210,8 +209,8 @@ function preallocate_data!(dat, nnp, n, hp, istrain=true)
             push!(dat.z, spzeros(nnp.layer_units[i], n, 0.1))
             push!(dat.a, spzeros(size(dat.z[i]), 0.1))  #  and up...  ...output layer set after loop
         end
-        push!(dat.z, spzeros(size(nnp.theta[nnp.output_layer],1), n, 0.1))
-        push!(dat.a, zeros(size(nnp.theta[nnp.output_layer],1),n, 0.1))
+        push!(dat.z, spzeros(size(nnp.theta[nnp.output_layer],1), n))
+        push!(dat.a, zeros(size(nnp.theta[nnp.output_layer],1),n))
     else
         for i = 2:nnp.output_layer-1  # hidden layers
             push!(dat.z, zeros(nnp.layer_units[i], n))
@@ -496,12 +495,10 @@ function setup_plots(epochs::Int64, dotest::Bool, plots::Array{String,1})
     plotdef = Dict("plot_switch"=>plot_switch, "plot_labels"=>plot_labels)
 
     if plot_switch["cost"]
-        cost_history = zeros(epochs, size(plot_labels,2))
-        plotdef["cost_history"] = cost_history
+        plotdef["cost_history"] = zeros(epochs, size(plot_labels,2)) # cost history initialized to 0's
     end
     if plot_switch["learning"]
-        fracright_history = zeros(epochs, size(plot_labels,2))
-        plotdef["fracright_history"] = fracright_history
+        plotdef["fracright_history"] = zeros(epochs, size(plot_labels,2))
     end
 
     # set column in cost_history for each data series

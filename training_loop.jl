@@ -7,6 +7,7 @@
 
 
 include("nn_data_structs.jl")
+using StatsBase
 
 # do minibatch training:  this method accepts both train, mb, bn
 function training_loop(hp, datalist, mb, nnp, bn, plotdef)
@@ -21,51 +22,48 @@ function training_loop(hp, datalist, mb, nnp, bn, plotdef)
         error("Datalist contains wrong number of elements.")
     end
 
-training_time = @elapsed begin # start the cpu clock and begin block for training process
-    t = 0  # counter:  number of times parameters will have been updated: minibatches * epochs
+    training_time = @elapsed begin # start the cpu clock and begin block for training process
+        t = 0  # counter:  number of times parameters will have been updated: minibatches * epochs
 
-    for ep_i = 1:hp.epochs  # loop for "epochs" with counter epoch i as ep_i
-        !hp.quiet && println("Start epoch $ep_i")
-        hp.do_learn_decay && step_learn_decay!(hp, ep_i)
+        for ep_i = 1:hp.epochs  # loop for "epochs" with counter epoch i as ep_i
+            !hp.quiet && println("Start epoch $ep_i")
+            hp.do_learn_decay && step_learn_decay!(hp, ep_i)
 
-        # reset for at start of each epoch
-        done = 0 # how many training examples have been trained on in the epoch
-        hp.mb_size = hp.mb_size_in # reset the minibatch size to the input
+            # reset for at start of each epoch
+            done = 0 # how many training examples have been trained on in the epoch
+            hp.mb_size = hp.mb_size_in # reset the minibatch size to the input
 
-        for mb_j = 1:hp.n_mb  # loop for mini-batches 
-            !hp.quiet && println("   Start minibatch $mb_j")
+            for mb_j = 1:hp.n_mb  # loop for mini-batches 
+                !hp.quiet && println("   Start minibatch $mb_j")
 
-            # set size of minibatch:  allows for minibatch size that doesn't divide evenly in no. of examples in data
-            left = train.n - done  
-            hp.mb_size = left > hp.mb_size ? hp.mb_size : left # last minibatch count = left
-            done += hp.mb_size
-            # set the column range of examples to include in the batch
-            first_example = (mb_j - 1) * hp.mb_size + 1  # mini-batch subset for the inputs (layer 1)
-            last_example = first_example + hp.mb_size - 1
-            colrng = first_example:last_example
+                # set size of minibatch:  allows for minibatch size that doesn't divide evenly in no. of examples in data
+                hp.mb_size = mb_j < hp.n_mb ? hp.mb_size : hp.last_batch
+                
+                # set the column range of examples to include in the batch
+                first_example = (mb_j - 1) * hp.mb_size + 1  # mini-batch subset for the inputs (layer 1)
+                last_example = first_example + hp.mb_size - 1
+                colrng = first_example:last_example
 
-            t += 1   # number of executions of minibatch loop
-            update_Batch_views!(mb, train, nnp, hp, colrng)  # select data columns for the minibatch                
+                t += 1   # number of executions of minibatch loop
+                update_Batch_views!(mb, train, nnp, hp, colrng)  # select data columns for the minibatch                
 
-            feedfwd!(mb, nnp, bn,  hp)  # for all layers
+                feedfwd!(mb, nnp, bn,  hp)  # for all layers
 
-            backprop!(nnp, bn, mb, hp, t)  # for all layers
+                backprop!(nnp, bn, mb, hp, t)  # for all layers
 
-            optimization_function!(nnp, hp, t)
+                optimization_function!(nnp, hp, t)
 
-            update_parameters!(nnp, hp, bn)
+                update_parameters!(nnp, hp, bn)
 
-        end # mini-batch loop
+            end # mini-batch loop
 
-        # stats across all mini-batches of one epoch (e.g.--no stats per minibatch)
-        gather_stats!(plotdef, "train", ep_i, train, nnp, bn, cost_function, hp)  
-        dotest && gather_stats!(plotdef, "test", ep_i, test, nnp, cost_function, hp) 
+            # stats across all mini-batches of one epoch (e.g.--no stats per minibatch)
+            gather_stats!(plotdef, "train", ep_i, train, nnp, bn, cost_function, hp)  
+            dotest && gather_stats!(plotdef, "test", ep_i, test, nnp, cost_function, hp) 
+        end # epoch loop
+    end # training_time begin block
 
-
-    end # epoch loop
-end # begin block for timing
-
-return training_time
+    return training_time
 end # function training_loop
 
 
@@ -83,33 +81,33 @@ function training_loop(hp, datalist, nnp, plotdef)
         error("Datalist contains wrong number of elements.")
     end
 
-training_time = @elapsed begin # start the cpu clock and begin block for training process
-    t = 0  # counter:  number of times parameters will have been updated: minibatches * epochs
+    training_time = @elapsed begin # start the cpu clock and begin block for training process
+        t = 0  # counter:  number of times parameters will have been updated: minibatches * epochs
 
 
-    for ep_i = 1:hp.epochs  # loop for "epochs" with counter epoch i as ep_i
-        !hp.quiet && println("Start epoch $ep_i")
-        hp.do_learn_decay && step_learn_decay!(hp, ep_i)
+        for ep_i = 1:hp.epochs  # loop for "epochs" with counter epoch i as ep_i
+            !hp.quiet && println("Start epoch $ep_i")
+            hp.do_learn_decay && step_learn_decay!(hp, ep_i)
 
-        t += 1 
+            t += 1 
 
-        feedfwd!(train, nnp, hp)  # for all layers
+            feedfwd!(train, nnp, hp)  # for all layers
 
-        backprop!(nnp, train, hp, t)  # for all layers
+            backprop!(nnp, train, hp, t)  # for all layers
 
-        optimization_function!(nnp, hp, t)
+            optimization_function!(nnp, hp, t)
 
-        update_parameters!(nnp, hp)
+            update_parameters!(nnp, hp)
 
-        # stats across all mini-batches of one epoch (e.g.--no stats per minibatch)
-        gather_stats!(plotdef, "train", ep_i, train, nnp, cost_function, train.n, hp)  
-        dotest && gather_stats!(plotdef, "test", ep_i, dat, nnp, cost_function, dat.n, hp) 
+            # stats across all mini-batches of one epoch (e.g.--no stats per minibatch)
+            gather_stats!(plotdef, "train", ep_i, train, nnp, cost_function, hp)  
+            dotest && gather_stats!(plotdef, "test", ep_i, test, nnp, cost_function, hp) 
 
-    end # epoch loop
+        end # epoch loop
 
-end # begin block for timing
+    end # begin block for timing
 
-return training_time    # don't think we need to return anything because all key functions update in place
+    return training_time    # don't think we need to return anything because all key functions update in place
 end # function training_loop
 
 
@@ -147,8 +145,10 @@ function feedfwd!(dat::Union{Batch_view,Model_data}, nnp, bn,  hp; istrain=true)
     end
 
     # output layer
-    @fastmath @inbounds dat.z[nnp.output_layer][:] = (nnp.theta[nnp.output_layer] * dat.a[nnp.output_layer-1]
-        .+ nnp.bias[nnp.output_layer])  # TODO use bias in the output layer with no batch norm? @inbounds 
+    # @fastmath @inbounds dat.z[nnp.output_layer][:] = (nnp.theta[nnp.output_layer] * dat.a[nnp.output_layer-1]
+    #     .+ nnp.bias[nnp.output_layer])  # TODO use bias in the output layer with no batch norm? @inbounds 
+    @inbounds affine!(dat.z[nnp.output_layer], dat.a[nnp.output_layer-1], 
+                      nnp.theta[nnp.output_layer], nnp.bias[nnp.output_layer])
 
     classify_function!(dat.a[nnp.output_layer], dat.z[nnp.output_layer])  # a = activations = predictions
 
@@ -288,42 +288,6 @@ function update_parameters!(nnp, hp)
 end
 
 
-function momentum!(tp, hp, t)
-    @fastmath for hl = (tp.output_layer - 1):-1:2  # loop over hidden layers
-        @inbounds tp.delta_v_w[hl] .= hp.b1 .* tp.delta_v_w[hl] .+ (1.0 - hp.b1) .* tp.delta_w[hl]  # @inbounds 
-        @inbounds tp.delta_w[hl] .= tp.delta_v_w[hl]
-
-        if !hp.do_batch_norm  # then we need to do bias term
-            @inbounds tp.delta_v_b[hl] .= hp.b1 .* tp.delta_v_b[hl] .+ (1.0 - hp.b1) .* tp.delta_b[hl]  # @inbounds 
-            @inbounds tp.delta_b[hl] .= tp.delta_v_b[hl]
-        end
-    end
-end
-
-
-function adam!(nnp, hp, t)
-    @fastmath for hl = (nnp.output_layer - 1):-1:2  # loop over hidden layers
-        @inbounds nnp.delta_v_w[hl] .= hp.b1 .* nnp.delta_v_w[hl] .+ (1.0 - hp.b1) .* nnp.delta_w[hl]  
-        @inbounds nnp.delta_s_w[hl] .= hp.b2 .* nnp.delta_s_w[hl] .+ (1.0 - hp.b2) .* nnp.delta_w[hl].^2   
-        @inbounds nnp.delta_w[hl] .= (  (nnp.delta_v_w[hl] ./ (1.0 - hp.b1^t)) ./   
-                              sqrt.(nnp.delta_s_w[hl] ./ (1.0 - hp.b2^t) .+ hp.ltl_eps)  )
-
-        if !hp.do_batch_norm  # then we need to do bias term
-            @inbounds nnp.delta_v_b[hl] .= hp.b1 .* nnp.delta_v_b[hl] .+ (1.0 - hp.b1) .* nnp.delta_b[hl]   
-            @inbounds nnp.delta_s_b[hl] .= hp.b2 .* nnp.delta_s_b[hl] .+ (1.0 - hp.b2) .* nnp.delta_b[hl].^2   
-            @inbounds nnp.delta_b[hl] .= (  (nnp.delta_v_b[hl] ./ (1.0 - hp.b1^t)) ./   
-                              sqrt.(nnp.delta_s_b[hl] ./ (1.0 - hp.b2^t) .+ hp.ltl_eps) )  
-        end
-    end
-end
-
-
-function no_optimization(tp, hp, t)
-end
-
-
-
-
 
 
 function accuracy(targets, preds, i)
@@ -361,6 +325,7 @@ function update_Batch_views!(mb::Batch_view, train::Model_data, nnp::NN_weights,
     n_layers = nnp.output_layer
     mb_cols = 1:hp.mb_size  # only reason for this is that the last minibatch might be smaller
     
+    # TODO this is really bad for sparsearrays and generally results in slow indexing
     colselector = hp.shuffle ? mb.sel[colrng] : colrng # note:  always better to do your shuffle before training
 
     # feedforward:   minibatch views update the underlying data

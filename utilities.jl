@@ -2,6 +2,8 @@ using Plots
 using JLD2
 using Printf
 using LinearAlgebra
+using Random
+using MAT
 
 
 """
@@ -49,6 +51,30 @@ function extract_data(matfname::String)
     end
 
     return inputs, targets, test_inputs, test_targets
+end
+
+
+"""
+    function shuffle_data(x,y)
+
+Use this function to shuffle data once as inputs to training with minibatches.
+The shuffle hyper-parameter of Train\\_nn is OK for small datasets or very
+huge, sparse datasets because it is slow each time a minibatch is selected. 
+Shuffling all of the training data BEFORE training and choosing shuffle=false
+will be much faster.  Actually, that hyper-parameter is no longer supported.
+
+shuffle_data shuffles the arrays in place.
+
+x holds the training examples, assuming columns are examples and rows are features.
+y holds the targets, assuming columns are examples.  y must have one row for 
+  a single category (0,1 or -1, 1 or a float output for regression, etc.) or 
+  mulitple rows for multiple categories, 
+  e.g., one-hot encoding suitable for softmax classification.
+"""
+function shuffle_data!(x,y)
+    randidx = Random.randperm(size(x,2))
+    x[:] = x[:,randidx]
+    y[:] = y[:,randidx]
 end
 
 
@@ -187,7 +213,8 @@ function output_stats(datalist, nnp, bn, hp, training_time, plotdef, plot_now)
     # file for simple training stats
     fname = repr(Dates.now())
     fname = "nnstats-" * replace(fname, r"[.:]" => "-") * ".txt"
-        println(fname)
+    println(fname)
+
     # print to file and console
     open(fname, "w") do stats
         println(stats, "Training time: ",training_time, " seconds")  # cpu time since tic() =>  toq() returns secs without printing
@@ -200,13 +227,13 @@ function output_stats(datalist, nnp, bn, hp, training_time, plotdef, plot_now)
         println(stats, "Final cost training: ", cost_function(train.targets, train.a[nnp.output_layer], train.n,
                         nnp.theta, hp, nnp.output_layer))
 
-        # output improvement of last 10 iterations for training data
+        # output improvement of last few iterations for training data
         if plotdef["plot_switch"]["train"]
             if plotdef["plot_switch"]["learning"]
                 tailcount = min(10, hp.epochs)
                 println(stats, "Training data accuracy in final $tailcount iterations:")
                 printdata = plotdef["fracright_history"][end-tailcount+1:end, plotdef["train"]]
-                for i=1:10
+                for i=1:tailcount
                     @printf(stats, "%0.3f : ", printdata[i])
                 end
                 print("\n\n")
@@ -216,7 +243,7 @@ function output_stats(datalist, nnp, bn, hp, training_time, plotdef, plot_now)
         # output test statistics
         if dotest
             feedfwd!(test, nnp, bn,  hp, istrain=false)
-            println(stats, "Fraction correct labels predicted test: ",
+            println(stats, "\n\nFraction correct labels predicted test: ",
                     hp.classify == "regression" ? r_squared(test.targets, test.a[nnp.output_layer])
                         : accuracy(test.targets, test.a[nnp.output_layer], hp.epochs))
             println(stats, "Final cost test: ", cost_function(test.targets, test.a[nnp.output_layer], test.n,
@@ -229,7 +256,7 @@ function output_stats(datalist, nnp, bn, hp, training_time, plotdef, plot_now)
                 tailcount = min(10, hp.epochs)
                 println(stats, "Test data accuracy in final $tailcount iterations:")
                 printdata = plotdef["fracright_history"][end-tailcount+1:end, plotdef["test"]]
-                for i=1:10
+                for i=1:tailcount
                     @printf(stats, "%0.3f : ", printdata[i])
                 end
                 print("\n\n")
@@ -238,10 +265,10 @@ function output_stats(datalist, nnp, bn, hp, training_time, plotdef, plot_now)
 
         # output number of incorrect predictions
         train_wrongs = GeneralNN.wrong_preds(train.targets, train.a[nnp.output_layer]);
-        println(stats, "There are ", length(train_wrongs), " incorrect training predictions.")
+        println(stats, "\nThere are ", length(train_wrongs), " incorrect training predictions.")
         if dotest
             test_wrongs = GeneralNN.wrong_preds(test.targets, test.a[nnp.output_layer]);
-            println(stats, "\n\nThere are ", length(test_wrongs), " incorrect test predictions.")
+            println(stats, "\nThere are ", length(test_wrongs), " incorrect test predictions.")
         end
 
         # output hyper hyper_parameters

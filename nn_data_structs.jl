@@ -55,6 +55,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
     classify::String            # behavior of output layer: "softmax", "sigmoid", or "regression"
     mb_size::Int64              # minibatch size--calculated; last mini-batch may be smaller
     mb_size_in::Int64           # input of requested minibatch size:  last actual size may be smaller
+    last_batch::Int64           # size of last minibatch
     n_mb::Int64                 # number of minibatches--calculated
     epochs::Int64               # number of "outer" loops of training
     do_learn_decay::Bool        # step down the learning rate across epochs
@@ -85,6 +86,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         "sigmoid",      # classify
         0,              # mb_size
         50,             # mb_size_in  
+        0,              # last_batch
         100,            # n_mb
         30,             # epochs
         false,          # do_learn_decay

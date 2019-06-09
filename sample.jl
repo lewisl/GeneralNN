@@ -29,6 +29,9 @@ function runjob(jsoninputs="nninputs.json", matfname="digits60000by784.mat")
     test_x = convert(Array{Float64,2}, test_x)
     test_y = convert(Array{Float64,2}, test_y)
 
+    # shuffle in advance for training with minibatches and  batchnorm
+    shuffle_data!(train_x, train_y)
+
     # debug
     # println("train_x ", typeof(train_x), " train_y ", typeof(train_y))
 
@@ -74,7 +77,7 @@ function runjob(jsoninputs="nninputs.json", matfname="digits60000by784.mat")
     end  # prompt loop
 
     println("\nThat's all folks!.....")
-
+    return results
 end
 
 ####################################################################

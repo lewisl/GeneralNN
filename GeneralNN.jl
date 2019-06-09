@@ -1,15 +1,22 @@
 #DONE
-#   make test data optional.  don't pre-allocate it or create struct for it
+
 
 #TODO
-#   fix preallocation--use of datalist is breaking array re-use
+#   plots:  labels for test and train switched
+#   plotdef and gather stats: test accuracy calculated wrong
+#   implement RMSProp optimizer
+#   implement max-norm regularization, see hints
 #   don't pre-allocate or create struct for minibatches if not using them
 #   sort out what preallocation is needed for Batch and batch with batchnorm
-#   enable training without the mess of test data
 #   Switch to an explicit layer based approach to allow layers to be different
-#   fix dropout
+#   fix dropout: should delta_theta be averaged using number of included units?
+        #   are we scaling units during training?
 #   set an explicit data size variable for both test and train for preallocation
-#   new minibatch selection is slow because it is non-contiguous
+#   new minibatch selection is slow because it is non-contiguous: elim dynamic
+            # shuffle slicing--require pre-shuffle to enable linear indexing of
+            # views.
+            # Also, preallocation of views no longer typed.
+#   setup separate data structures for sparse and views on sparse?          
 #   accuracy for logistic or other single class classifiers should allow -1 or 0 for "bad"
 #   fix preallocation for test set--no backprop arrays needed
 #   don't pre-allocate inputs--doesn't do anything
@@ -99,6 +106,7 @@ export
     load_params, 
     accuracy,
     extract_data, 
+    shuffle_data!,
     normalize_inputs!, 
     nnpredict,
     display_mnist_digit,
