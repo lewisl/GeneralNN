@@ -55,11 +55,14 @@ function training_loop(hp, datalist, mb, nnp, bn, plotdef)
 
                 update_parameters!(nnp, hp, bn)
 
+                hp.plotperbatch && gather_stats!(plotdef, "train", t, train, nnp, bn, cost_function, hp)  
+                hp.plotperbatch && (dotest && gather_stats!(plotdef, "test", t, test, nnp, cost_function, hp)) 
+
             end # mini-batch loop
 
             # stats across all mini-batches of one epoch (e.g.--no stats per minibatch)
-            gather_stats!(plotdef, "train", ep_i, train, nnp, bn, cost_function, hp)  
-            dotest && gather_stats!(plotdef, "test", ep_i, test, nnp, cost_function, hp) 
+            hp.plotperepoch && gather_stats!(plotdef, "train", ep_i, train, nnp, bn, cost_function, hp)  
+            hp.plotperepoch && (dotest && gather_stats!(plotdef, "test", ep_i, test, nnp, cost_function, hp)) 
         end # epoch loop
     end # training_time begin block
 
@@ -99,7 +102,7 @@ function training_loop(hp, datalist, nnp, plotdef)
 
             update_parameters!(nnp, hp)
 
-            # stats across all mini-batches of one epoch (e.g.--no stats per minibatch)
+            # stats per epoch (e.g.--no stats per minibatch)
             gather_stats!(plotdef, "train", ep_i, train, nnp, cost_function, hp)  
             dotest && gather_stats!(plotdef, "test", ep_i, test, nnp, cost_function, hp) 
 
@@ -256,6 +259,8 @@ function update_parameters!(nnp, hp, bn)
             @inbounds nnp.theta[hl] .= nnp.theta[hl] .+ (hp.alphaovermb .* (hp.lambda .* nnp.theta[hl]))
         elseif hp.reg == "L1"
             @inbounds nnp.theta[hl] .= nnp.theta[hl] .+ (hp.alphaovermb .* (hp.lambda .* sign.(nnp.theta[hl])))
+        elseif hp.reg == "Maxnorm"
+            maxnorm_reg!(nnp.theta[hl], hp.maxnormlim[hl])
         end
         
         if hp.do_batch_norm  # update batch normalization parameters
@@ -398,7 +403,7 @@ function gather_stats!(plotdef, train_or_test, i, dat, nnp, bn, cost_function, h
                 dat.a[nnp.output_layer], dat.n, nnp.theta, hp, nnp.output_layer)
         end
         if plotdef["plot_switch"]["learning"]
-            plotdef["fracright_history"][i, plotdef[train_or_test]] = (  hp.classify == "regression"
+            plotdef["accuracy"][i, plotdef[train_or_test]] = (  hp.classify == "regression"
                     ? r_squared(dat.targets, dat.a[nnp.output_layer])
                     : accuracy(dat.targets, dat.a[nnp.output_layer], i)  )
         end
@@ -412,7 +417,7 @@ function gather_stats!(plotdef, train_or_test, i, dat, nnp, bn, cost_function, h
     #             test.a[nnp.output_layer], test.n, nnp.theta, hp, nnp.output_layer)
     #     end
     #     if plotdef["plot_switch"]["learning"]
-    #         plotdef["fracright_history"][i, plotdef["test"]] = (  hp.classify == "regression"
+    #         plotdef["accuracy"][i, plotdef["test"]] = (  hp.classify == "regression"
     #                 ? r_squared(test.targets, test.a[nnp.output_layer])
     #                 : accuracy(test.targets, test.a[nnp.output_layer], i)  )
     #     end
@@ -432,7 +437,7 @@ function gather_stats!(plotdef, train_or_test, i, dat, nnp, cost_function, hp)
                 dat.a[nnp.output_layer], dat.n, nnp.theta, hp, nnp.output_layer)
         end
         if plotdef["plot_switch"]["learning"]
-            plotdef["fracright_history"][i, plotdef[train_or_test]] = (  hp.classify == "regression"
+            plotdef["accuracy"][i, plotdef[train_or_test]] = (  hp.classify == "regression"
                     ? r_squared(dat.targets, dat.a[nnp.output_layer])
                     : accuracy(dat.targets, dat.a[nnp.output_layer], i)  )
         end

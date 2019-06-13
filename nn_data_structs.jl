@@ -49,7 +49,8 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
     norm_mode::String           # "", "none", "standard", or "minmax"
     dropout::Bool               # true or false to choose dropout network
     droplim::Array{Float64,1}   # the probability a node output is kept
-    reg::String                 # L2 or "none"
+    reg::String                 # L1, L2, maxnorm, or "none"
+    maxnorm_lim::Array{Float64,1}# [] with limits for hidden layers and output layer
     opt::String                 # Adam or momentum or "none" or "" for optimization
     opt_params::Array{Float64,1}# parameters for optimization
     classify::String            # behavior of output layer: "softmax", "sigmoid", or "regression"
@@ -65,6 +66,8 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
     quiet::Bool                 # display progress messages or not
     shuffle::Bool               # for mini-batchs, randomize the order of the training examples
     plots::Array{String, 1}     # not a hyper_parameter, choice of plots to create during training
+    plotperbatch::Bool
+    plotperepoch::Bool
 
     Hyper_parameters() = new(       # constructor with defaults--we use hp as the struct variable
         "sigmoid",      # units
@@ -81,21 +84,24 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         false,          # dropout
         [0.5],          # droplim
         "L2",           # reg
+        Float64[],      # maxnorm_lim
         "",             # opt
         [],             # opt_params
         "sigmoid",      # classify
         0,              # mb_size
         50,             # mb_size_in  
         0,              # last_batch
-        100,            # n_mb
-        30,             # epochs
+        1,            # n_mb
+        1,             # epochs
         false,          # do_learn_decay
         [1.0, 1.0],     # learn_decay
         false,          # sparse
         "xavier",       # initializer
         true,           # quiet
         false,          # shuffle
-        ["None"]        # plots
+        ["None"],       # plots
+        false,          # plotperbatch
+        true            # plotperepoch
     )
 end
 

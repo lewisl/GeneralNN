@@ -55,7 +55,7 @@ end
 
 
 """
-    function shuffle_data(x,y)
+    function shuffle_data(x,y; returnidx = false)
 
 Use this function to shuffle data once as inputs to training with minibatches.
 The shuffle hyper-parameter of Train\\_nn is OK for small datasets or very
@@ -70,11 +70,14 @@ y holds the targets, assuming columns are examples.  y must have one row for
   a single category (0,1 or -1, 1 or a float output for regression, etc.) or 
   mulitple rows for multiple categories, 
   e.g., one-hot encoding suitable for softmax classification.
+
+Setting returnidx parameter to true returns the permuted index so that you can compare the shuffled training data to unshuffled source data.
 """
-function shuffle_data!(x,y)
+function shuffle_data!(x,y;returnidx = false)
     randidx = Random.randperm(size(x,2))
     x[:] = x[:,randidx]
     y[:] = y[:,randidx]
+    returnidx && return randidx # return the permuted indices if true
 end
 
 
@@ -181,7 +184,7 @@ Also pass the dimensions as 2 element vector (default is [28,28]).
 """
 function display_mnist_digit(digit_data, digit_dims=[28,28])
     # plotlyjs(size=(400,400))
-    gr()
+    pyplot()
     clibrary(:misc)  # collection of color palettes
     img = reshape(digit_data, digit_dims...)'
     pldigit = plot(img, seriestype=:heatmap, color=:grays,  
@@ -232,7 +235,7 @@ function output_stats(datalist, nnp, bn, hp, training_time, plotdef, plot_now)
             if plotdef["plot_switch"]["learning"]
                 tailcount = min(10, hp.epochs)
                 println(stats, "Training data accuracy in final $tailcount iterations:")
-                printdata = plotdef["fracright_history"][end-tailcount+1:end, plotdef["train"]]
+                printdata = plotdef["accuracy"][end-tailcount+1:end, plotdef["train"]]
                 for i=1:tailcount
                     @printf(stats, "%0.3f : ", printdata[i])
                 end
@@ -255,7 +258,7 @@ function output_stats(datalist, nnp, bn, hp, training_time, plotdef, plot_now)
             if plotdef["plot_switch"]["learning"]
                 tailcount = min(10, hp.epochs)
                 println(stats, "Test data accuracy in final $tailcount iterations:")
-                printdata = plotdef["fracright_history"][end-tailcount+1:end, plotdef["test"]]
+                printdata = plotdef["accuracy"][end-tailcount+1:end, plotdef["test"]]
                 for i=1:tailcount
                     @printf(stats, "%0.3f : ", printdata[i])
                 end
@@ -303,7 +306,7 @@ function plot_output(plotdef::Dict)
     # plot the progress of training cost and/or learning
     if (plotdef["plot_switch"]["train"] || plotdef["plot_switch"]["test"])
         # plotlyjs(size=(600,400)) # set chart size defaults
-        gr()
+        pyplot()
 
         if plotdef["plot_switch"]["cost"]
             plt_cost = plot(
@@ -319,7 +322,7 @@ function plot_output(plotdef::Dict)
 
         if plotdef["plot_switch"]["learning"]
             plt_learning = plot(
-                plotdef["fracright_history"], 
+                plotdef["accuracy"], 
                 title="Learning Progress",
                 labels=plotdef["plot_labels"], 
                 legend=:bottomright,

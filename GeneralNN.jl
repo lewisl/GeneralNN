@@ -2,10 +2,11 @@
 
 
 #TODO
+#   test maxnorm regularization
 #   plots:  labels for test and train switched
 #   plotdef and gather stats: test accuracy calculated wrong
 #   implement RMSProp optimizer
-#   implement max-norm regularization, see hints
+#   try to simplify function signatures
 #   don't pre-allocate or create struct for minibatches if not using them
 #   sort out what preallocation is needed for Batch and batch with batchnorm
 #   Switch to an explicit layer based approach to allow layers to be different
@@ -128,8 +129,8 @@ using SparseArrays
 # new plotting approach
 using Plots
 # plotlyjs()  # PlotlyJS backend to local electron window
-# pyplot()
-gr()  # gr is default backend for Plots
+pyplot()
+
 import Measures: mm # for some plot dimensioning
 
 include("training_loop.jl")
@@ -192,7 +193,8 @@ all of the input parameters to be read from a JSON file.  This is further explai
         plots           ::= determines training results collected and plotted
                             any choice of ["Learning", "Cost", "Training", "Test"];
                             for no plots use [""] or ["none"]
-        reg             ::= type of regularization, must be one of "L1", "L2", ""
+        reg             ::= type of regularization, must be one of "L1", "L2", "Maxnorm", ""
+        maxnorm_lim     ::= array of limits set for hidden layers + output layer
         dropout         ::= true to use dropout network or false
         droplim         ::= array of values between 0.5 and 1.0 determines how much dropout for
                             hidden layers and input layer (ex: [0.8] or [0.8,0.9, 1.0]).  A single
@@ -245,12 +247,12 @@ function train_nn(train_x, train_y, test_x, test_y, epochs::Int64, n_hid::Array{
     alpha::Float64=0.35, mb_size_in::Int64=0, lambda::Float64=0.01, classify::String="softmax", 
     norm_mode::String="none", opt::String="", opt_params::Array{Float64,1}=[0.9,0.999], 
     units::String="sigmoid", dobatch=false, do_batch_norm::Bool=false, reg::String="L2", 
-    dropout::Bool=false, droplim::Array{Float64,1}=[0.5], 
+    maxnorm_lim::Array{Float64,1}=Float64[], dropout::Bool=false, droplim::Array{Float64,1}=[0.5], 
     plots::Array{String,1}=["Training", "Learning"], learn_decay::Array{Float64,1}=[1.0, 1.0], 
     plot_now::Bool=true, sparse::Bool=false, initializer::String="xavier", quiet=true, shuffle=false)
 
     # validate hyper_parameters and put into struct hp
-    hp = validate_hyper_parameters(units, alpha, lambda, n_hid, reg, classify, dropout,
+    hp = validate_hyper_parameters(units, alpha, lambda, n_hid, reg, maxnorm_lim, classify, dropout,
             droplim, epochs, mb_size_in, norm_mode, opt, opt_params, learn_decay, dobatch,
             do_batch_norm, sparse, initializer, quiet, shuffle, plots)
  
@@ -262,12 +264,12 @@ function train_nn(train_x, train_y, epochs::Int64, n_hid::Array{Int64,1};
     alpha::Float64=0.35, mb_size_in::Int64=0, lambda::Float64=0.01, classify::String="softmax", 
     norm_mode::String="none", opt::String="", opt_params::Array{Float64,1}=[0.9,0.999], 
     units::String="sigmoid", dobatch=false, do_batch_norm::Bool=false, reg::String="L2", 
-    dropout::Bool=false, droplim::Array{Float64,1}=[0.5], 
+    maxnorm_lim::Array{Float64,1}=Float64[], dropout::Bool=false, droplim::Array{Float64,1}=[0.5], 
     plots::Array{String,1}=["Training", "Learning"], learn_decay::Array{Float64,1}=[1.0, 1.0], 
     plot_now::Bool=true, sparse::Bool=false, initializer::String="xavier", quiet=true, shuffle=false)
 
     # validate hyper_parameters and put into struct hp
-    hp = validate_hyper_parameters(units, alpha, lambda, n_hid, reg, classify, dropout,
+    hp = validate_hyper_parameters(units, alpha, lambda, n_hid, reg, maxnorm_lim, classify, dropout,
             droplim, epochs, mb_size_in, norm_mode, opt, opt_params, learn_decay, dobatch,
             do_batch_norm, sparse, initializer, quiet, shuffle, plots)
  
@@ -327,7 +329,12 @@ end
 
 
 
+"""
+function run_training(datalist, hp; plot_now=true)
 
+This is the one function and only method that really does the work.  It runs
+the model training or as many frameworks refer to it, "fits" the model.
+"""
 function run_training(datalist, hp; plot_now=true)
 
     !hp.quiet && println("Setting up model beginning")
@@ -393,7 +400,7 @@ function run_training(datalist, hp; plot_now=true)
     setup_functions!(hp, train)
 
     # statistics for plots and history data
-    plotdef = setup_plots(hp.epochs, dotest, hp.plots)
+    plotdef = setup_plots(hp, dotest)
 
     !hp.quiet && println("Training setup complete")
     ##########################################################
@@ -433,14 +440,14 @@ function run_training(datalist, hp; plot_now=true)
 end # run_training_core, method with test data
 
 
-function validate_hyper_parameters(units, alpha, lambda, n_hid, reg, classify, dropout,
+function validate_hyper_parameters(units, alpha, lambda, n_hid, reg, maxnorm_lim, classify, dropout,
     droplim, epochs, mb_size_in, norm_mode, opt, opt_params, learn_decay, dobatch,
     do_batch_norm, sparse, initializer, quiet, shuffle, plots)
 
     !quiet && println("Validate input parameters")
 
     ################################################################################
-    #   This is a front-end function that verifies all inputs and calls run_training
+    #   This is a front-end function that verifies all inputs and returns the hyper_parameters struct
     ################################################################################
 
     if epochs < 0
@@ -520,8 +527,8 @@ opt = lowercase(opt)  # match title case for string argument
     end
 
     reg = titlecase(lowercase(reg))
-        if !in(reg, ["L1", "L2", ""])
-            @warn("reg must be \"L1\", \"L2\" or \"\" (nothing). Setting to default \"L2\".")
+        if !in(reg, ["L1", "L2", "Maxnorm", ""])
+            @warn("reg must be \"L1\", \"L2\", \"Maxnorm\" or \"\" (nothing). Setting to default \"L2\".")
             reg = "L2"
         end
 
@@ -556,12 +563,12 @@ opt = lowercase(opt)  # match title case for string argument
             [learn_decay[1], floor(learn_decay[2])]
         end
 
-    valid_plots = ["train", "test", "learning", "cost", "none", ""]
+    valid_plots = ["train", "test", "learning", "cost", "none", "", "epoch", "batch"]
     plots = lowercase.(plots)  # user input doesn't have use perfect case
     new_plots = [pl for pl in valid_plots if in(pl, plots)] # both valid and input by the user
     plots = 
         if sort(new_plots) != sort(plots) # the plots list included something not in valid_plots
-            @warn("Plots argument can only include \"train\", \"test\", \"learning\" and \"cost\" or \"none\" or \"\".
+            @warn("Plots argument can only include \"train\", \"test\", \"learning\", \"epoch\", \"batch\" and \"cost\" or \"none\" or \"\".
                 \nProceeding no plots [\"none\"].")
             ["none"]
         else
@@ -581,6 +588,7 @@ opt = lowercase(opt)  # match title case for string argument
         hp.lambda = lambda
         hp.n_hid = n_hid
         hp.reg = reg
+        hp.maxnorm_lim = maxnorm_lim
         hp.classify = classify
         hp.dropout = dropout
         hp.droplim = droplim
@@ -610,8 +618,8 @@ function check_json_inputs(inputargslist)
     validargnames = [
                      "matfname", "epochs", "n_hid", "alpha", "mb_size_in", "lambda",
                      "classify", "norm_mode", "opt", "opt_params", "units", "dobatch", "do_batch_norm",
-                     "reg", "dropout", "droplim", "plots", "learn_decay", "plot_now", "sparse",
-                     "initializer", "quiet", "shuffle"
+                     "reg", "maxnorm_lim", "dropout", "droplim", "plots", "learn_decay", "plot_now", 
+                     "sparse", "initializer", "quiet", "shuffle"
                      ]
     requiredargs = ["matfname", "epochs", "n_hid"]
 
