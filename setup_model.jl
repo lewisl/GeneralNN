@@ -141,6 +141,21 @@ function setup_model!(mb, hp, nnp, bn, train)
         end
     end
 
+    # setup parameters for maxnorm regularization
+    if titlecase(hp.reg) == "Maxnorm"
+        hp.reg = "Maxnorm"
+        if isempty(hp.maxnormlim)
+            @warn("Values in Float64 array must be set for maxnormlim to use Maxnorm Reg, continuing without...")
+            hp.reg = "L2"
+        elseif length(hp.maxnormlim) > length(hp.n_hid) + 1
+            @warn("Too many values in maxnormlim; truncating to hidden and output layers.")
+            hp.maxnormlim = [0.0, hp.maxnormlim[1:length(hp.n_hid)+1]] # truncate and add dummy for input layer
+        else
+            hp.maxnormlim = [0.0, hp.maxnormlim] # add dummy for input layer
+        end
+    end
+
+
     # debug
     # println("opt params: $(hp.b1), $(hp.b2)")
 
@@ -202,7 +217,7 @@ end
 function preallocate_data!(dat, nnp, n, hp, istrain=true)
     # feedforward
 
-    dat.a = [dat.inputs]
+    dat.a = [dat.inputs]  # allocates only tiny memory--it's a reference
     dat.z = [dat.inputs] # not used for input layer  TODO--this permeates the code but not needed
     if hp.sparse
         for i = 2:nnp.output_layer-1  # hidden layers
@@ -442,7 +457,7 @@ end
 
 
 """
-Function setup_plots(epochs::Int64, dotest::Bool, plots::Array{String,1})
+Function setup_plots(hp, dotest::Bool)
 
 Creates data structure to hold everything needed to plot progress of
 neural net training by iteration.
@@ -457,31 +472,46 @@ A plotdef is a dict containing:
         plot legend.
     "cost_history"=>cost_history: an array of calculated cost at each iteration
         with iterations as rows and result types ("Training", "Test") as columns.
-    "fracright_history"=>fracright_history: an array of percentage of correct classification
+    "accuracy"=>accuracy: an array of percentage of correct classification
         at each iteration with iterations as rows and result types as columns ("Training", "Test").
         This plots a so-called learning curve.  Very interesting indeed.
     "col_train"=>col_train: column of the arrays above to be used for Training results
     "col_test"=>col_test: column of the arrays above to be used for Test results
 
 """
-function setup_plots(epochs::Int64, dotest::Bool, plots::Array{String,1})
+function setup_plots(hp, dotest::Bool)
     # set up cost_history to track 1 or 2 data series for plots
     # lots of indirection here:  someday might add "validation"
-    if size(plots,1) > 4
+    if size(hp.plots,1) > 5
         @warn("Only 4 plot requests permitted. Proceeding with up to 4.")
     end
 
-    valid_plots = ["train", "test", "learning", "cost"]
-    if in(plots, ["None", "none", ""])
+    valid_plots = ["train", "test", "learning", "cost", "epoch", "batch"]
+    if in(hp.plots, ["None", "none", ""])
         plot_switch = Dict(pl => false for pl in valid_plots) # set all to false
     else
-        plot_switch = Dict(pl => in(pl, plots) for pl in valid_plots)
+        plot_switch = Dict(pl => in(pl, hp.plots) for pl in valid_plots)
     end
 
+    # determine whether to plot per batch or per epoch
+    if !hp.dobatch # no batches--must plot by epoch
+        hp.plotperbatch = false
+        hp.plotperepoch = true
+    elseif in("epoch", hp.plots) # this is the default and overrides conflicting choice
+        hp.plotperbatch = false
+        hp.plotperepoch = true
+    elseif in("batch", hp.plots)
+        hp.plotperbatch = true
+        hp.plotperepoch = false
+    else # even when NOT plotting we still gather stats in the plotdef for default epoch
+        hp.plotperbatch = false
+        hp.plotperepoch = true
+    end
+
+    pointcnt = hp.plotperepoch ? hp.epochs : hp.n_mb * hp.epochs
+
     # must have test data to plot test results
-    if dotest  # test data is present
-        # nothing to change
-    else
+    if !dotest  # no test data
         if plot_switch["test"]  # input requested plotting test data results
             @warn("Can't plot test data. No test data. Proceeding.")
             plot_switch["test"] = false
@@ -489,16 +519,16 @@ function setup_plots(epochs::Int64, dotest::Bool, plots::Array{String,1})
     end
 
     plot_labels = [pl for pl in keys(plot_switch) if plot_switch[pl] == true &&
-        (pl != "Learning" && pl != "Cost")]  # Cost, Learning are separate plots, not series labels
+        (pl != "learning" && pl != "cost" && pl != "epoch" && pl != "batch")]  # Cost, Learning are separate plots, not series labels
     plot_labels = reshape(plot_labels,1,size(plot_labels,1)) # 1 x N row array required by pyplot
 
     plotdef = Dict("plot_switch"=>plot_switch, "plot_labels"=>plot_labels)
 
     if plot_switch["cost"]
-        plotdef["cost_history"] = zeros(epochs, size(plot_labels,2)) # cost history initialized to 0's
+        plotdef["cost_history"] = zeros(pointcnt, size(plot_labels,2)) # cost history initialized to 0's
     end
     if plot_switch["learning"]
-        plotdef["fracright_history"] = zeros(epochs, size(plot_labels,2))
+        plotdef["accuracy"] = zeros(pointcnt, size(plot_labels,2))
     end
 
     # set column in cost_history for each data series

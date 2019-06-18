@@ -56,13 +56,13 @@ function training_loop(hp, datalist, mb, nnp, bn, plotdef)
                 update_parameters!(nnp, hp, bn)
 
                 hp.plotperbatch && gather_stats!(plotdef, "train", t, train, nnp, bn, cost_function, hp)  
-                hp.plotperbatch && (dotest && gather_stats!(plotdef, "test", t, test, nnp, cost_function, hp)) 
+                hp.plotperbatch && (dotest && gather_stats!(plotdef, "test", t, test, nnp, bn,cost_function, hp)) 
 
             end # mini-batch loop
 
             # stats across all mini-batches of one epoch (e.g.--no stats per minibatch)
             hp.plotperepoch && gather_stats!(plotdef, "train", ep_i, train, nnp, bn, cost_function, hp)  
-            hp.plotperepoch && (dotest && gather_stats!(plotdef, "test", ep_i, test, nnp, cost_function, hp)) 
+            hp.plotperepoch && (dotest && gather_stats!(plotdef, "test", ep_i, test, nnp, bn,cost_function, hp)) 
         end # epoch loop
     end # training_time begin block
 
@@ -293,23 +293,13 @@ function update_parameters!(nnp, hp)
 end
 
 
-
-
-function accuracy(targets, preds, i)
+function accuracy(targets, preds)
     if size(targets,1) > 1
         # targetmax = ind2sub(size(targets),vec(findmax(targets,1)[2]))[1]
         # predmax = ind2sub(size(preds),vec(findmax(preds,1)[2]))[1]
         targetmax = vec(map(x -> x[1], argmax(targets,dims=1)));
         predmax = vec(map(x -> x[1], argmax(preds,dims=1)));
-        try
-            fracright = mean([ii ? 1.0 : 0.0 for ii in (targetmax .== predmax)])
-        catch
-            println("iteration:      ", i)
-            println("targetmax size  ", size(targetmax))
-            println("predmax size    ", size(predmax))
-            println("targets in size ", size(targets))
-            println("preds in size   ", size(preds))
-        end
+        fracright = mean(targetmax .== predmax)
     else
         # works because single output unit is sigmoid
         choices = [j > 0.5 ? 1.0 : 0.0 for j in preds]
@@ -318,6 +308,11 @@ function accuracy(targets, preds, i)
     return fracright
 end
 
+
+function r_squared(targets, preds)
+    ybar = mean(targets)
+    return 1.0 - sum((targets .- preds).^2.) / sum((targets .- ybar).^2.)
+end
 
 """
     Create or update views for the training data in minibatches or one big batch
@@ -405,24 +400,10 @@ function gather_stats!(plotdef, train_or_test, i, dat, nnp, bn, cost_function, h
         if plotdef["plot_switch"]["learning"]
             plotdef["accuracy"][i, plotdef[train_or_test]] = (  hp.classify == "regression"
                     ? r_squared(dat.targets, dat.a[nnp.output_layer])
-                    : accuracy(dat.targets, dat.a[nnp.output_layer], i)  )
+                    : accuracy(dat.targets, dat.a[nnp.output_layer])  )
         end
     end
 
-    # if plotdef["plot_switch"]["test"]
-    #     feedfwd!(test, nnp, bn, hp, istrain=false)
-
-    #     if plotdef["plot_switch"]["cost"]
-    #         plotdef["cost_history"][i, plotdef["test"]] =cost_function(test.targets,
-    #             test.a[nnp.output_layer], test.n, nnp.theta, hp, nnp.output_layer)
-    #     end
-    #     if plotdef["plot_switch"]["learning"]
-    #         plotdef["accuracy"][i, plotdef["test"]] = (  hp.classify == "regression"
-    #                 ? r_squared(test.targets, test.a[nnp.output_layer])
-    #                 : accuracy(test.targets, test.a[nnp.output_layer], i)  )
-    #     end
-    # end
-    
 end
 
 
@@ -439,7 +420,7 @@ function gather_stats!(plotdef, train_or_test, i, dat, nnp, cost_function, hp)
         if plotdef["plot_switch"]["learning"]
             plotdef["accuracy"][i, plotdef[train_or_test]] = (  hp.classify == "regression"
                     ? r_squared(dat.targets, dat.a[nnp.output_layer])
-                    : accuracy(dat.targets, dat.a[nnp.output_layer], i)  )
+                    : accuracy(dat.targets, dat.a[nnp.output_layer])  )
         end
     end
     

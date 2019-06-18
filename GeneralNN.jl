@@ -1,10 +1,11 @@
 #DONE
-
+#   moved r_squared to training_loop file
 
 #TODO
+#   use goodness function to hold either accuracy or r_squared
+#   train and test plot labels reversed
+#   fix preallocation for test set--no backprop arrays needed
 #   test maxnorm regularization
-#   plots:  labels for test and train switched
-#   plotdef and gather stats: test accuracy calculated wrong
 #   implement RMSProp optimizer
 #   try to simplify function signatures
 #   don't pre-allocate or create struct for minibatches if not using them
@@ -19,25 +20,23 @@
             # Also, preallocation of views no longer typed.
 #   setup separate data structures for sparse and views on sparse?          
 #   accuracy for logistic or other single class classifiers should allow -1 or 0 for "bad"
-#   fix preallocation for test set--no backprop arrays needed
-#   don't pre-allocate inputs--doesn't do anything
-#   TODO use bias in the output layer with no batch norm?
+#   TODO use bias in the output layer with no batch norm?  YES
 #   implement precision and recall
-#   implement RNN
 #   stats on individual regression parameters
 #   change to layer based api, with simplified api as alternate front-end
 #   separate reg from the cost calculation and the parameter updates
 #   do check on existence of matfname file and that type is .mat
 #   implement one vs. all for logistic classification with multiple classes
 #   factor out extract data--provide as utility; start process with datafiles
-#   look at performance of staticarrays
-#   is dropout dropping the same units on backprop as feedfwd?
+#   compare performance of views vs slices
+#   is dropout dropping the same units on backprop as feedfwd?  seems like it but results are still poor
 #   set a directory for training stats (keep out of code project directory)
-#   there is no reason for views on backprop data--always the size of minibatch
+#   there is no reason for views on backprop data--always the size of minibatch--is it ok to reuse same
+    #   arrays--e.g., do we need a cache or to have values across the entire dataset?
 #   revise initialization and make it depend on type of layer unit???
 #   try different versions of ensemble predictions_vector
 #   augment MINST data by perturbing the images
-#   don't create plotdef if not plotting
+#   separate plotdef from plot descriptive data
 #   try batch norm with minmax normalization
 #   check for type stability: @code_warntype pisum(500,10000)
 #   still lots of memory allocations despite the pre-allocation
@@ -48,8 +47,10 @@
         # To use an infix operator, you can use \cdot, as in view(A,:,j)⋅r.
 #   figure out memory use between train set and minibatch set
 #   implement a gradient checking function with option to run it
-#   convolutional layers
-#   pooling layers
+#   Convolutional networks
+    #   convolutional layers
+    #   pooling layers
+# Recurrent Neural networks
 #   implement early stopping
 
 
@@ -578,7 +579,7 @@ opt = lowercase(opt)  # match title case for string argument
     initializer = lowercase(initializer)
         if !in(initializer, ["zero", "xavier"])
             @warn("initializer must be \"zero\" or \"xavier\". Setting to default \"xavier\".")
-            reg = "xavier"
+            initializer = "xavier"
         end
 
     hp = Hyper_parameters()  # hyper_parameters constructor:  sets defaults

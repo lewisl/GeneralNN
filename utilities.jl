@@ -226,7 +226,7 @@ function output_stats(datalist, nnp, bn, hp, training_time, plotdef, plot_now)
         feedfwd!(train, nnp, bn, hp, istrain=false)  
         println(stats, "Fraction correct labels predicted training: ",
                 hp.classify == "regression" ? r_squared(train.targets, train.a[nnp.output_layer])
-                    : accuracy(train.targets, train.a[nnp.output_layer],hp.epochs))
+                    : accuracy(train.targets, train.a[nnp.output_layer]))
         println(stats, "Final cost training: ", cost_function(train.targets, train.a[nnp.output_layer], train.n,
                         nnp.theta, hp, nnp.output_layer))
 
@@ -248,7 +248,7 @@ function output_stats(datalist, nnp, bn, hp, training_time, plotdef, plot_now)
             feedfwd!(test, nnp, bn,  hp, istrain=false)
             println(stats, "\n\nFraction correct labels predicted test: ",
                     hp.classify == "regression" ? r_squared(test.targets, test.a[nnp.output_layer])
-                        : accuracy(test.targets, test.a[nnp.output_layer], hp.epochs))
+                        : accuracy(test.targets, test.a[nnp.output_layer]))
             println(stats, "Final cost test: ", cost_function(test.targets, test.a[nnp.output_layer], test.n,
                 nnp.theta, hp, nnp.output_layer))
         end
@@ -402,6 +402,22 @@ function pretty_print_hp(hp)
     end
 end
 
+"""
+    function indmax(arr; dim::Int=1)
+
+Simplifies obtaining index of maximum value:
+
+    dim=1 returns a ROW, index of maximum ROW of each column  
+    dim=2 returns a COL, index of maximum COL of each row  
+
+(Note: like argmax, but extracts single value from CartesianIndex.)
+
+"""
+function indmax(arr; dims::Int=1)
+    ret = findmax(arr,dims=dims)[2]
+    map(x->x[dims],ret)
+end
+
 
 ##############################################################
 #
@@ -432,10 +448,6 @@ function right_preds(targets, preds)
     return wrong_preds(targets, preds, isequal)
 end
 
-function r_squared(targets, preds)
-    ybar = mean(targets)
-    return 1.0 - sum((targets .- preds).^2.) / sum((targets .- ybar).^2.)
-end
 
 
 """
