@@ -1,9 +1,5 @@
 #DONE
-#   matrix size more obvious in data preallocation
-#   eliminate pre_allocate_storage function
-#   fixed plot labels
-#   simplify function signatures
-#   validate sizes of input arrays
+
 
 #TODO
 #   replace datalist with a dict and get rid of duplicate splitting logic
