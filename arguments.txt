@@ -1,0 +1,60 @@
+This is a complete json file containing every input argument:
+{
+    "units":  "relu",
+    "alpha":   0.74,
+    "lambda":  0.000191,
+    "n_hid": [100],
+    "reg":  "L2",
+    "maxnorm_lim": [],
+    "classify": "softmax",
+    "dropout": false,
+    "droplim": [1.0,0.8,1.0],
+    "epochs":  24,
+    "mb_size_in":   50,
+    "norm_mode":   "none",
+    "opt":   "adam",
+    "opt_params": [0.9, 0.999],   
+    "learn_decay": [0.5,4.0],
+    "dobatch": true,
+    "do_batch_norm":  true,
+    "sparse": false,
+    "initializer": "xavier",   
+    "quiet": true,
+    "shuffle": false
+    "plots": ["Train", "Learning", "Test"],
+    "plot_now": true
+}
+
+plot_now is passed separately in the run_training function signature
+
+
+
+This is a Dict constructor containing every input argument:
+Dict(
+    "units"=>  "relu",
+    "alpha"=>   0.74,
+    "lambda"=>  0.000191,
+    "n_hid"=> [100],
+    "reg"=>  "L2",
+    "maxnorm_lim"=> [],
+    "classify"=> "softmax",
+    "dropout"=> false,
+    "droplim"=> [1.0,0.8,1.0],
+    "epochs"=>  24,
+    "mb_size_in"=>   50,
+    "norm_mode"=>   "none",
+    "opt"=>   "adam",
+    "opt_params"=> [0.9, 0.999],   
+    "learn_decay"=> [0.5,4.0],
+    "dobatch"=> true,
+    "do_batch_norm"=>  true,
+    "sparse"=> false,
+    "initializer"=> "xavier",   
+    "quiet"=> true,
+    "shuffle"=> false
+    "plots"=> ["Train", "Learning", "Test"],
+    "plot_now"=> true
+)
+
+plot_now is passed separately in the run_training function signature
+

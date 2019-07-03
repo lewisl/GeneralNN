@@ -13,7 +13,7 @@ mutable struct NN_weights              # we will use nnp as the struct variable
     delta_s_b::Array{Array{Float64,1},1}  # s update term for ADAM
     theta_dims::Array{Tuple{Int64, Int64},1}
     output_layer::Int64
-    layer_units::Array{Int64,1}
+    k::Array{Int64,1}                     # number of output units in each layer (features for input layer)
     norm_factors::Tuple{Any, Any}
 
     NN_weights() = new(               # empty constructor
@@ -26,9 +26,9 @@ mutable struct NN_weights              # we will use nnp as the struct variable
         Array{Array{Float64,2},1}(undef, 0),    # delta_s_w
         Array{Array{Float64,1},1}(undef, 0),    # delta_s_b
         Array{Tuple{Int, Int},1}(undef, 0),     # theta_dims::Array{Array{Int64,2}}
-        3,                               # output_layer
-        Array{Int64,1}(undef, 0),               # layer_units
-        ([0.0 0.0], [1.0 0.0])           # norm_factors (mean, std)
+        3,                                      # output_layer
+        Array{Int64,1}(undef, 0),               # k
+        ([0.0 0.0], [1.0 0.0])                  # norm_factors (mean, std)
     )
 end
 

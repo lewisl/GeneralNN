@@ -1,13 +1,17 @@
 #DONE
-#   moved r_squared to training_loop file
+#   matrix size more obvious in data preallocation
+#   eliminate pre_allocate_storage function
+#   fixed plot labels
+#   simplify function signatures
+#   validate sizes of input arrays
 
 #TODO
+#   replace datalist with a dict and get rid of duplicate splitting logic
 #   use goodness function to hold either accuracy or r_squared
-#   train and test plot labels reversed
 #   fix preallocation for test set--no backprop arrays needed
 #   test maxnorm regularization
 #   implement RMSProp optimizer
-#   try to simplify function signatures
+#   is it worth it to pre-allocate expf when using softmax classification?
 #   don't pre-allocate or create struct for minibatches if not using them
 #   sort out what preallocation is needed for Batch and batch with batchnorm
 #   Switch to an explicit layer based approach to allow layers to be different
@@ -78,7 +82,7 @@ To use, include() the file.  Then enter using .GeneralNN to use the module.
 
 These data structures are used to hold parameters and data:
 
-- NN_weights holds theta, bias, delta_w, delta_b, theta_dims, output_layer, layer_units
+- NN_weights holds theta, bias, delta_w, delta_b, theta_dims, output_layer, k
 - Model_data holds inputs, targets, a, z, z_norm, epsilon, gradient_function
 - Batch_norm_params holds gam (gamma), bet (beta) for batch normalization and intermediate
     data used for backprop with batch normalization: delta_gam, delta_bet, 
@@ -127,7 +131,6 @@ using LinearAlgebra
 using JSON
 using SparseArrays
 
-# new plotting approach
 using Plots
 # plotlyjs()  # PlotlyJS backend to local electron window
 pyplot()
@@ -140,7 +143,7 @@ include("nn_data_structs.jl")
 include("setup_model.jl")
 include("utilities.jl")
 
-const l_relu_neg = .01  # makes the type constant; value can be changed
+const l_relu_neg = .01  # makes the type constant; value can be changed.
 
 # ----------------------------------------------------------------------------------------
 
@@ -207,35 +210,45 @@ all of the input parameters to be read from a JSON file.  This is further explai
                             [1.0, 1.0] signals don't do learning decay
         plot_now        ::Bool.  If true, plot training stats and save the plotdef that contains stats 
                             gathered while running the training.  You can plot the file separately, later.
-        sparse
-        initializer
-        quiet
-        shuffle
+        sparse          ::Bool. If true, input data will be treated and maintained as SparseArrays.
+        initializer     ::= "xavier" or "zero" used to set how weights, not including bias, are initialized.
+        quiet           ::Bool. Suppress progress messages during preparation and training.
+        shuffle         ::Bool. Determines if values are randomized when assigned to minibatches. Very slow!
 
 This method allows all input parameters to be supplied by a JSON file:
 
     function train_nn(argsjsonfile::String, errorcheck::Bool=false)
 
-    Here is an example of a correct json file:
+    The json file need only contain argument values that you desire to set
+    differently than the defaults. Except for the last arguments, all will
+    be set as hyper_parameters.
+
+    Here is an example of a correct json file containing every permitted argument:
 
         {
-            "matfname": "digits60000by784.mat",
-            "epochs":  18,
-            "n_hid": [120,120,120,120],
-            "alpha":   0.74,
-            "reg":  "",
-            "lambda":  0.00026,
-            "learn_decay": [0.52,3.0],
-            "mb_size_in":   50, 
-            "norm_mode":   "none",
-            "do_batch_norm":  true,
-            "opt":   "adam",
-            "opt_params": [0.9, 0.999],
             "units":  "relu",
+            "alpha":   0.74,
+            "lambda":  0.000191,
+            "n_hid": [100],
+            "reg":  "L2",
+            "maxnorm_lim": [],
             "classify": "softmax",
             "dropout": false,
-            "plots": ["Training", "Learning", "Test"],
-            "plot_now": true
+            "droplim": [1.0,0.8,1.0],
+            "epochs":  24,
+            "mb_size_in":   50,
+            "norm_mode":   "none",
+            "opt":   "adam",
+            "opt_params": [0.9, 0.999],   
+            "learn_decay": [0.5,4.0],
+            "dobatch": true,
+            "do_batch_norm":  true,
+            "sparse": false,
+            "initializer": "xavier",   
+            "quiet": true,
+            "shuffle": false
+            "plots": ["Train", "Learning", "Test"],
+            "plot_now": true                    # not a hyper_parameter
         }
 
     If errorcheck is set to true the JSON file is checked:
@@ -244,7 +257,7 @@ This method allows all input parameters to be supplied by a JSON file:
        2) To make sure that all argument names are valid.
     If any errors are found, neural network training is not run.
 """
-function train_nn(train_x, train_y, test_x, test_y, epochs::Int64, n_hid::Array{Int64,1}; 
+function train_nn(datalist, epochs::Int64, n_hid::Array{Int64,1}; 
     alpha::Float64=0.35, mb_size_in::Int64=0, lambda::Float64=0.01, classify::String="softmax", 
     norm_mode::String="none", opt::String="", opt_params::Array{Float64,1}=[0.9,0.999], 
     units::String="sigmoid", dobatch=false, do_batch_norm::Bool=false, reg::String="L2", 
@@ -256,45 +269,19 @@ function train_nn(train_x, train_y, test_x, test_y, epochs::Int64, n_hid::Array{
     hp = validate_hyper_parameters(units, alpha, lambda, n_hid, reg, maxnorm_lim, classify, dropout,
             droplim, epochs, mb_size_in, norm_mode, opt, opt_params, learn_decay, dobatch,
             do_batch_norm, sparse, initializer, quiet, shuffle, plots)
+            
+    validate_datafiles(datalist) # no return; errors out if errors
  
-    run_training([train_x, train_y, test_x, test_y], hp; plot_now=plot_now);
+    run_training(datalist, hp; plot_now=plot_now);
 end
 
 
-function train_nn(train_x, train_y, epochs::Int64, n_hid::Array{Int64,1}; 
-    alpha::Float64=0.35, mb_size_in::Int64=0, lambda::Float64=0.01, classify::String="softmax", 
-    norm_mode::String="none", opt::String="", opt_params::Array{Float64,1}=[0.9,0.999], 
-    units::String="sigmoid", dobatch=false, do_batch_norm::Bool=false, reg::String="L2", 
-    maxnorm_lim::Array{Float64,1}=Float64[], dropout::Bool=false, droplim::Array{Float64,1}=[0.5], 
-    plots::Array{String,1}=["Training", "Learning"], learn_decay::Array{Float64,1}=[1.0, 1.0], 
-    plot_now::Bool=true, sparse::Bool=false, initializer::String="xavier", quiet=true, shuffle=false)
-
-    # validate hyper_parameters and put into struct hp
-    hp = validate_hyper_parameters(units, alpha, lambda, n_hid, reg, maxnorm_lim, classify, dropout,
-            droplim, epochs, mb_size_in, norm_mode, opt, opt_params, learn_decay, dobatch,
-            do_batch_norm, sparse, initializer, quiet, shuffle, plots)
- 
-    run_training([train_x, train_y], hp; plot_now=plot_now);
-end
-
-# no test arrays passed in
-function train_nn(train_x, train_y, argsjsonfile::String, errorcheck::Bool=false)
-    _pass_train_nn([train_x, train_y], argsjsonfile, errorcheck)
-end
-
-# test arrays passed in
-function train_nn(train_x, train_y, test_x, test_y, argsjsonfile::String, errorcheck::Bool=false)
-    _pass_train_nn([train_x, train_y, test_x, test_y], argsjsonfile, errorcheck)
-end
-
-# check the json file and call train_nn with expanded argument list
-function _pass_train_nn(datalist, argsjsonfile::String, errorcheck::Bool=false)
-
-    ################################################################################
-    #   This method gets input arguments from a JSON file. This method does no
-    #   error checking except, optionally, for valid argnames or missing required args. 
-    #   Function validate_hyper_params does error checking on all arg values and types.
-    ################################################################################
+function train_nn(datalist, argsjsonfile::String, errorcheck::Bool=false)
+################################################################################
+#   This method gets input arguments from a JSON file. This method does no
+#   error checking except, optionally, for valid argnames or missing required args. 
+#   This method corrects types that are not passed properly by JSON.
+################################################################################
 
     argstxt = read(argsjsonfile, String)
     argsdict = JSON.parse(argstxt)
@@ -320,11 +307,9 @@ function _pass_train_nn(datalist, argsjsonfile::String, errorcheck::Bool=false)
         argsdict["droplim"] = Float64.(argsdict["droplim"])
     end
 
-    # return Dict(zip(Symbol.(keys(argsdict)),values(argsdict)))
-
-    train_nn(                               # dispatches on number of elements in datalist
-             datalist..., epochs, n_hid; 
-             Dict(   zip(Symbol.(keys(argsdict)),values(argsdict))    )...
+    train_nn( 
+             datalist, epochs, n_hid; 
+             Dict(   zip(Symbol.(keys(argsdict)),values(argsdict))    )... # Don't forget the ... splat!
              )
 end
 
@@ -343,9 +328,6 @@ function run_training(datalist, hp; plot_now=true)
     # will be used, given the number of parameters to be estimated.  Enables better comparisons.
     Random.seed!(70653)  # seed int value is meaningless
 
-    ##################################################################################
-    #   setup model: data structs, many control parameters, functions,  memory pre-allocation
-    #################################################################################
     if size(datalist,1) == 4
         train_x = datalist[1]
         train_y = datalist[2]
@@ -362,6 +344,12 @@ function run_training(datalist, hp; plot_now=true)
     else
         error("Datalist input contained wrong number of inputs")
     end
+
+    ##################################################################################
+    #   setup model: data structs, many control parameters, functions,  memory pre-allocation
+    #################################################################################
+
+
 
     # instantiate data containers
     !hp.quiet && println("Instantiate data containers")
@@ -382,6 +370,7 @@ function run_training(datalist, hp; plot_now=true)
 
     # set some useful variables
     train.in_k, train.n = size(train_x)  # number of features in_k (rows) by no. of examples n (columns)
+    dotest && ((test.in_k, test.n) = size(test_x))
     train.out_k = size(train_y,1)  # number of output units
 
     #  optimization parameters, minibatch, 
@@ -394,8 +383,12 @@ function run_training(datalist, hp; plot_now=true)
     end
 
     # preallocate data storage
-    dotest && preallocate_storage!(hp, nnp, bn, mb, [train, test]) # if dotest
-    dotest || preallocate_storage!(hp, nnp, bn, mb, [train]) # if NOT dotest
+        !hp.quiet && println("Pre-allocate storage starting")
+        preallocate_nn_params!(nnp, hp, train.in_k, train.n, train.out_k)
+        preallocate_data!(train, nnp, train.n, hp)
+        hp.do_batch_norm && preallocate_batchnorm!(bn, mb, nnp.k)
+        dotest && preallocate_data!(test, nnp, test.n, hp, istrain=false)
+        !hp.quiet && println("Pre-allocate storage completed")
 
     # choose layer functions and cost function based on inputs
     setup_functions!(hp, train)
@@ -404,23 +397,21 @@ function run_training(datalist, hp; plot_now=true)
     plotdef = setup_plots(hp, dotest)
 
     !hp.quiet && println("Training setup complete")
+    
+    
     ##########################################################
     #   neural network training loop
     ##########################################################
+    datalist = dotest ? [train, test] : [train]
     
     if hp.dobatch
-        dotest && (training_time = training_loop(hp, [train, test], mb, nnp, bn, plotdef))
-        dotest || (training_time = training_loop(hp, [train], mb, nnp, bn, plotdef))
-
+        training_time = training_loop(hp, datalist, mb, nnp, bn, plotdef)
     else
-        dotest && (training_time = training_loop(hp, [train, test], nnp, plotdef))
-        dotest || (training_time = training_loop(hp, [train], nnp, plotdef))
-
+        training_time = training_loop(hp, datalist, nnp, plotdef)
     end
     
     # save, print and plot training statistics after all epochs
-    dotest && output_stats([train, test], nnp, bn, hp, training_time, plotdef, plot_now)
-    dotest || output_stats([train], nnp, bn, hp, training_time, plotdef, plot_now)
+    output_stats(datalist, nnp, bn, hp, training_time, plotdef, plot_now)
 
     #  return train inputs, train targets, train predictions, test predictions, trained parameters, batch_norm parms., hyper parms.
     ret = Dict(
@@ -439,6 +430,55 @@ function run_training(datalist, hp; plot_now=true)
     return ret
 
 end # run_training_core, method with test data
+
+
+function validate_datafiles(datalist)
+   if size(datalist,1) == 4
+        train_x = datalist[1]
+        train_y = datalist[2]
+        test_x = datalist[3]
+        test_y = datalist[4]
+        dotest = size(test_x, 1) > 0  # there is testing data -> true, else false
+    elseif size(datalist, 1) == 2
+        train_x = datalist[1]
+        train_y = datalist[2]
+        dotest = false
+    else
+        error("Datalist input contained wrong number of input arrays")
+    end
+    
+    # training data
+    (train_m, train_n) = size(train_x)
+    (try_m, try_n) = size(train_y)
+    if train_m >= train_n
+        error("No. of features is greater than no. of samples. Probably the training array must be tranposed.")
+    end
+    if try_m >= try_n
+        error("No. of output labels is greater than no. of samples. Probably the label array must be transposed.")
+    end
+    if try_n != train_n
+        error("No. of training inputs does not match no. of training label outputs.")
+    end
+    
+    # test or validation data
+    if dotest
+        (test_m, test_n) = size(test_x)
+        (testy_m, testy_n) = size(test_y)
+        if test_m >= test_n
+            error("No. of features is greater than no. of samples. Probably the test array must be tranposed.")
+        end
+        if testy_m >= testy_n
+            error("No. of test output labels is greater than no. of samples. Probably the test label array must be transposed.")
+        end
+        if testy_n != test_n
+            error("No. of test inputs does not match no. of test label outputs.")
+        end
+        
+        if train_m != test_m
+            error("No. of training features does not match test features.")
+        end   
+    end
+end
 
 
 function validate_hyper_parameters(units, alpha, lambda, n_hid, reg, maxnorm_lim, classify, dropout,

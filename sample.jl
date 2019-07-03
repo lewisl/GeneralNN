@@ -36,7 +36,7 @@ function runjob(jsoninputs="nninputs.json", matfname="digits60000by784.mat")
     # println("train_x ", typeof(train_x), " train_y ", typeof(train_y))
 
     println("........ Training the neural network ........")
-    results = train_nn(train_x, train_y, test_x, test_y, jsoninputs)
+    results = train_nn([train_x, train_y, test_x, test_y], jsoninputs)
      # train_inputs, train_targets, train_preds, test_inputs, test_targets, test_preds, nn_params, batchnorm_params, 
      # hyper_params
 

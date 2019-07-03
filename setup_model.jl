@@ -74,6 +74,7 @@ function setup_model!(mb, hp, nnp, bn, train)
             # labels in training data often in a block, which will make
             # mini-batch train badly because a batch will not contain mix of target labels
         # this slicing is SLOW AS HELL if data huge. But, repeated view/slicing raises a smaller cost.
+        # randomize as part of the data preparation is better.  then just slice in constant strides.
         # do it this way: b = view(m, :, sel[colrng])
         if hp.mb_size < train.n  && hp.shuffle
             mb.sel = randperm(train.n)
@@ -167,86 +168,40 @@ function setup_model!(mb, hp, nnp, bn, train)
 end
 
 
-function preallocate_storage!(hp, nnp, bn, mb, datalist)
-    ##########################################################################
-    #  pre-allocate data storage
-    ##########################################################################
-    !hp.quiet && println("Pre-allocate storage starting")
-
-    if size(datalist, 1) == 1
-        train = datalist[1]
-        dotest = false
-    elseif size(datalist, 1) == 2
-        train = datalist[1]
-        test = datalist[2]
-        dotest = true
-    else
-        error("Size of datalist must be 1 or 2.")
-    end
-
-    preallocate_nn_params!(nnp, hp, train.in_k, train.n, train.out_k)
-    preallocate_data!(train, nnp, train.n, hp)
-    # batch normalization parameters
-    hp.do_batch_norm && preallocate_batchnorm!(bn, mb, nnp.layer_units)
-
-    # feedfwd test data--if test input found
-    if dotest
-        test.n = size(test.inputs,2)   # TODO move this to be close to where train.n is originally set
-        istrain = false
-        preallocate_data!(test, nnp, test.n, hp, istrain)
-    end
-
-    !hp.quiet && println("Pre-allocate storage completed")
-
-    # debug
-    # verify correct dimensions of dropout filter
-    # for item in mb.dropout_mask_units
-    #     println(size(item))
-    # end
-    # error("that's all folks!....")
-    !hp.quiet && println("Setup model completed")
-end
-
-
-
 ####################################################################
 #  functions to pre-allocate data updated during training loop
 ####################################################################
 
 # use for test and training data
-function preallocate_data!(dat, nnp, n, hp, istrain=true)
-    # feedforward
+function preallocate_data!(dat, nnp, n, hp; istrain=true)
 
+    # feedforward
     dat.a = [dat.inputs]  # allocates only tiny memory--it's a reference
     dat.z = [dat.inputs] # not used for input layer  TODO--this permeates the code but not needed
     if hp.sparse
-        for i = 2:nnp.output_layer-1  # hidden layers
-            push!(dat.z, spzeros(nnp.layer_units[i], n, 0.1))
-            push!(dat.a, spzeros(size(dat.z[i]), 0.1))  #  and up...  ...output layer set after loop
+        for i = 2:nnp.output_layer  
+            push!(dat.z, spzeros(nnp.k[i], n, 0.1))
+            push!(dat.a, spzeros(nnp.k[i], n, 0.1))  #  and up...  ...output layer set after loop
         end
-        push!(dat.z, spzeros(size(nnp.theta[nnp.output_layer],1), n))
-        push!(dat.a, zeros(size(nnp.theta[nnp.output_layer],1),n))
     else
-        for i = 2:nnp.output_layer-1  # hidden layers
-            push!(dat.z, zeros(nnp.layer_units[i], n))
-            push!(dat.a, zeros(size(dat.z[i])))  #  and up...  ...output layer set after loop
+        for i = 2:nnp.output_layer  
+            push!(dat.z, zeros(nnp.k[i], n))
+            push!(dat.a, zeros(nnp.k[i], n))  #  and up...  ...output layer set after loop
         end
-        push!(dat.z, zeros(size(nnp.theta[nnp.output_layer],1),n))
-        push!(dat.a, zeros(size(nnp.theta[nnp.output_layer],1),n))
     end
 
     # training / backprop  -- pre-allocate only minibatch size (except last one, which could be smaller)
     # this doesn't work for test set when not using minibatches (minibatch size on training then > entire test set)
-    if istrain   # e.g., only for training
+    if istrain   # e.g., only for training->no backprop data structures needed for test data
         if hp.dobatch   # TODO  fix this HACK
             dat.epsilon = [i[:,1:hp.mb_size_in] for i in dat.a]
             dat.grad = [i[:,1:hp.mb_size_in] for i in dat.a]
             dat.delta_z = [i[:,1:hp.mb_size_in] for i in dat.a]
-        else
+        else  # this should pick up sparsity
             dat.epsilon = [i for i in dat.a]
             dat.grad = [i for i in dat.a]
             dat.delta_z = [i for i in dat.a]
-
+            println("type of pre-allocated epsilon without batches ", typeof(dat.epsilon[1]))
         end
     end
 
@@ -255,7 +210,7 @@ function preallocate_data!(dat, nnp, n, hp, istrain=true)
         dat.z_norm = deepcopy(dat.z)
         # backprop
         dat.delta_z_norm = [i[:,1:hp.mb_size_in] for i in dat.a]
-        # preallocate_batchnorm!(bn, mb, nnp.layer_units)
+        # preallocate_batchnorm!(bn, mb, nnp.k)
     end
 
     # backprop / training
@@ -281,14 +236,13 @@ function preallocate_nn_params!(nnp, hp, in_k, n, out_k)
 
     # layers
     nnp.output_layer = 2 + size(hp.n_hid, 1) # input layer is 1, output layer is highest value
-    nnp.layer_units = [in_k, hp.n_hid..., out_k]
+    nnp.k = [in_k, hp.n_hid..., out_k]       # no. of output units by layer
 
     # set dimensions of the linear weights for each layer
     push!(nnp.theta_dims, (in_k, 1)) # weight dimensions for the input layer -- if using array, must splat as arg
-    for l = 2:nnp.output_layer-1  # l refers to nn layer so this includes only hidden layers
-        push!(nnp.theta_dims, (nnp.layer_units[l], nnp.layer_units[l-1]))
+    for l = 2:nnp.output_layer  
+        push!(nnp.theta_dims, (nnp.k[l], nnp.k[l-1]))
     end
-    push!(nnp.theta_dims, (out_k, nnp.layer_units[nnp.output_layer - 1]))  # weight dims for output layer: rows = output classes
 
     # initialize the linear weights
     nnp.theta = [zeros(2,2)] # layer 1 not used
@@ -305,7 +259,7 @@ function preallocate_nn_params!(nnp, hp, in_k, n, out_k)
     end
 
     # bias initialization: random non-zero initialization performs worse
-    nnp.bias = [zeros(size(th, 1)) for th in nnp.theta]  # initialize biases to zero
+    nnp.bias = [zeros(i) for i in nnp.k]  # initialize biases to zero
 
     # structure of gradient matches theta
     nnp.delta_w = deepcopy(nnp.theta)
@@ -334,7 +288,7 @@ end
 """
 function preallocate_minibatch!(mb, nnp, hp)
 
-    mb.epsilon = [zeros(nnp.layer_units[l], hp.mb_size) for l in 1:nnp.output_layer]
+    mb.epsilon = [zeros(nnp.k[l], hp.mb_size) for l in 1:nnp.output_layer]
     mb.grad = deepcopy(mb.epsilon)   
 
     if hp.do_batch_norm
@@ -359,21 +313,21 @@ function preallocate_minibatch!(mb, nnp, hp)
 end
 
 
-function preallocate_batchnorm!(bn, mb, layer_units)
+function preallocate_batchnorm!(bn, mb, k)
     # initialize batch normalization parameters gamma and beta
     # vector at each layer corresponding to no. of inputs from preceding layer, roughly "features"
     # gamma = scaling factor for normalization standard deviation
     # beta = bias, or new mean instead of zero
     # should batch normalize for relu, can do for other unit functions
     # note: beta and gamma are reserved keywords, using bet and gam
-    bn.gam = [ones(i) for i in layer_units]  # gamma is a builtin function
-    bn.bet = [zeros(i) for i in layer_units] # beta is a builtin function
-    bn.delta_gam = [zeros(i) for i in layer_units]
-    bn.delta_bet = [zeros(i) for i in layer_units]
-    bn.mu = [zeros(i) for i in layer_units]  # same size as bias = no. of layer units
-    bn.mu_run = [zeros(i) for i in layer_units]
-    bn.stddev = [zeros(i) for i in layer_units]
-    bn.std_run = [zeros(i) for i in layer_units]
+    bn.gam = [ones(i) for i in k]  # gamma is a builtin function
+    bn.bet = [zeros(i) for i in k] # beta is a builtin function
+    bn.delta_gam = [zeros(i) for i in k]
+    bn.delta_bet = [zeros(i) for i in k]
+    bn.mu = [zeros(i) for i in k]  # same size as bias = no. of layer units
+    bn.mu_run = [zeros(i) for i in k]
+    bn.stddev = [zeros(i) for i in k]
+    bn.std_run = [zeros(i) for i in k]
 
 end
 
@@ -518,8 +472,7 @@ function setup_plots(hp, dotest::Bool)
         end
     end
 
-    plot_labels = [pl for pl in keys(plot_switch) if plot_switch[pl] == true &&
-        (pl != "learning" && pl != "cost" && pl != "epoch" && pl != "batch")]  # Cost, Learning are separate plots, not series labels
+    plot_labels = dotest ? ["Train", "Test"] : ["Train"]
     plot_labels = reshape(plot_labels,1,size(plot_labels,1)) # 1 x N row array required by pyplot
 
     plotdef = Dict("plot_switch"=>plot_switch, "plot_labels"=>plot_labels)

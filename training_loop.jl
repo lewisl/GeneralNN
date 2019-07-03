@@ -31,16 +31,15 @@ function training_loop(hp, datalist, mb, nnp, bn, plotdef)
 
             # reset for at start of each epoch
             done = 0 # how many training examples have been trained on in the epoch
-            hp.mb_size = hp.mb_size_in # reset the minibatch size to the input
 
             for mb_j = 1:hp.n_mb  # loop for mini-batches 
                 !hp.quiet && println("   Start minibatch $mb_j")
 
                 # set size of minibatch:  allows for minibatch size that doesn't divide evenly in no. of examples in data
-                hp.mb_size = mb_j < hp.n_mb ? hp.mb_size : hp.last_batch
+                hp.mb_size = mb_j < hp.n_mb ? hp.mb_size_in : hp.last_batch
                 
                 # set the column range of examples to include in the batch
-                first_example = (mb_j - 1) * hp.mb_size + 1  # mini-batch subset for the inputs (layer 1)
+                first_example = (mb_j - 1) * hp.mb_size_in + 1  # mini-batch subset for the inputs (layer 1)
                 last_example = first_example + hp.mb_size - 1
                 colrng = first_example:last_example
 
