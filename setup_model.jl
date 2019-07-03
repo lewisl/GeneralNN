@@ -45,7 +45,7 @@ function normalize_inputs!(inputs, norm_factors, norm_mode)
     end
 end
 
-
+# method dispatches on presence of mb argument
 function setup_model!(mb, hp, nnp, bn, train)
     !hp.quiet && println("Setup_model beginning")
 
@@ -168,6 +168,101 @@ function setup_model!(mb, hp, nnp, bn, train)
 end
 
 
+# method dispatches on not including argument mb
+function setup_model!(hp, nnp, bn, train)
+    !hp.quiet && println("Setup_model beginning")
+
+    # debug
+    # println("norm_factors ", typeof(norm_factors))
+    # println(norm_factors)
+
+    
+    hp.alphaovermb = hp.alpha / train.n 
+
+
+    # set parameters for Momentum or Adam optimization
+    if hp.opt == "momentum" || hp.opt == "adam"
+        if !(hp.opt_params == [])  # use inputs for opt_params
+            # set b1 for Momentum and Adam
+            if hp.opt_params[1] > 1.0 || hp.opt_params[1] < 0.5
+                @warn("First opt_params for momentum or adam should be between 0.5 and 0.999. Using default")
+                # nothing to do:  hp.b1 = 0.9 and hp.b2 = 0.999 and hp.ltl_eps = 1e-8
+            else
+                hp.b1 = hp.opt_params[1] # use the passed parameter
+            end
+            # set b2 for Adam
+            if length(hp.opt_params) > 1
+                if hp.opt_params[2] > 1.0 || hp.opt_params[2] < 0.9
+                    @warn("second opt_params for adam should be between 0.9 and 0.999. Using default")
+                else
+                    hp.b2 = hp.opt_params[2]
+                end
+            end
+        end
+    else
+        hp.opt = ""
+    end
+
+    hp.do_learn_decay = 
+        if hp.learn_decay == [1.0, 1.0]
+            false
+        elseif hp.learn_decay == []
+            false
+        else
+            true
+        end
+
+    # dropout parameters: droplim is in hp (Hyper_parameters),
+    #    dropout_random and dropout_mask_units are in mb or train (Model_data)
+    # set a droplim for each layer 
+    if hp.dropout
+        if length(hp.droplim) == length(hp.n_hid) + 2
+            # droplim supplied for every layer
+            if hp.droplim[end] != 1.0
+                @warn("Poor performance when dropping units from output layer, continuing.")
+            end
+        elseif length(hp.droplim) == length(hp.n_hid) + 1
+            # droplim supplied for input layer and hidden layers
+            hp.droplim = [hp.droplim..., 1.0]  # keep all units in output layer
+        elseif length(hp.droplim) < length(hp.n_hid)
+            # pad to provide same droplim for all hidden layers
+            for i = 1:length(hp.n_hid)-length(hp.droplim)
+                push!(hp.droplim,hp.droplim[end]) 
+            end
+            hp.droplim = [1.0, hp.droplim..., 1.0] # use all units for input and output layers
+        else
+            @warn("More drop limits provided than total network layers, use limits ONLY for hidden layers.")
+            hp.droplim = hp.droplim[1:length(hp.n_hid)]  # truncate
+            hp.droplim = [1.0, hp.droplim..., 1.0] # placeholders for input and output layers
+        end
+    end
+
+    # setup parameters for maxnorm regularization
+    if titlecase(hp.reg) == "Maxnorm"
+        hp.reg = "Maxnorm"
+        if isempty(hp.maxnormlim)
+            @warn("Values in Float64 array must be set for maxnormlim to use Maxnorm Reg, continuing without...")
+            hp.reg = "L2"
+        elseif length(hp.maxnormlim) > length(hp.n_hid) + 1
+            @warn("Too many values in maxnormlim; truncating to hidden and output layers.")
+            hp.maxnormlim = [0.0, hp.maxnormlim[1:length(hp.n_hid)+1]] # truncate and add dummy for input layer
+        else
+            hp.maxnormlim = [0.0, hp.maxnormlim] # add dummy for input layer
+        end
+    end
+
+
+    # debug
+    # println("opt params: $(hp.b1), $(hp.b2)")
+
+    # DEBUG see if hyper_parameters set correctly
+    # for sym in fieldnames(hp)
+    #    println(sym," ",getfield(hp,sym), " ", typeof(getfield(hp,sym)))
+    # end
+
+end
+
+
 ####################################################################
 #  functions to pre-allocate data updated during training loop
 ####################################################################
@@ -201,7 +296,6 @@ function preallocate_data!(dat, nnp, n, hp; istrain=true)
             dat.epsilon = [i for i in dat.a]
             dat.grad = [i for i in dat.a]
             dat.delta_z = [i for i in dat.a]
-            println("type of pre-allocated epsilon without batches ", typeof(dat.epsilon[1]))
         end
     end
 
@@ -209,7 +303,7 @@ function preallocate_data!(dat, nnp, n, hp; istrain=true)
         # feedforward
         dat.z_norm = deepcopy(dat.z)
         # backprop
-        dat.delta_z_norm = [i[:,1:hp.mb_size_in] for i in dat.a]
+        dat.delta_z_norm = deepcopy(dat.z)
         # preallocate_batchnorm!(bn, mb, nnp.k)
     end
 
@@ -283,13 +377,50 @@ end
     Arrays: epsilon, grad, delta_z_norm, delta_z, dropout_random, dropout_mask_units
 
 
-    NOT USED  -- PROBABLY WON'T WORK AS IS WHEN GOING BACK TO SLICE APPROACH INSTEAD OF VIEW APPROACH
+    Methods are provided for using views (much faster) or slices
 
 """
-function preallocate_minibatch!(mb, nnp, hp)
+function preallocate_minibatch!(mb::Batch_view, nnp, hp)
 
     mb.epsilon = [zeros(nnp.k[l], hp.mb_size) for l in 1:nnp.output_layer]
     mb.grad = deepcopy(mb.epsilon)   
+
+    if hp.do_batch_norm
+        mb.delta_z_norm = deepcopy(mb.epsilon)  # similar z
+        mb.delta_z = deepcopy(mb.epsilon)       # similar z
+    end
+
+    #    #debug
+    # println("size of pre-allocated mb.delta_z_norm $(size(mb.delta_z_norm))")
+    # for i in 1:size(mb.delta_z_norm,1)
+    #     println("$i size: $(size(mb.delta_z_norm[i]))")
+    # end
+    # error("that's all folks....")
+
+    if hp.dropout
+        mb.dropout_random = deepcopy(mb.epsilon)
+        push!(mb.dropout_mask_units,fill(true,(2,2))) # for input layer, not used
+        for item in mb.dropout_random[2:end]
+            push!(mb.dropout_mask_units,fill(true,size(item)))
+        end
+    end
+end
+
+
+# method that works with slices
+function preallocate_minibatch!(mb::Batch_slice, nnp, hp)
+    ncols = hp.mb_size_in
+
+    mb.a = [zeros(nnp.k[i],ncols) for i in 1:nnp.output_layer]  
+    mb.targets = zeros(nnp.k[nnp.output_layer], ncols)
+    mb.z = [zeros(nnp.k[i],ncols) for i in 1:nnp.output_layer]
+    mb.z_norm  = [zeros(nnp.k[i],ncols) for i in 1:nnp.output_layer]
+    mb.delta_z_norm  = [zeros(nnp.k[i],ncols) for i in 1:nnp.output_layer]
+    mb.delta_z  = [zeros(nnp.k[i],ncols) for i in 1:nnp.output_layer]
+    mb.grad  = [zeros(nnp.k[i],ncols) for i in 1:nnp.output_layer]
+    mb.epsilon  = [zeros(nnp.k[i],ncols) for i in 1:nnp.output_layer]
+    mb.dropout_random  = [zeros(nnp.k[i],ncols) for i in 1:nnp.output_layer]
+    mb.dropout_mask_units  = [zeros(nnp.k[i],ncols) for i in 1:nnp.output_layer]
 
     if hp.do_batch_norm
         mb.delta_z_norm = deepcopy(mb.epsilon)  # similar z

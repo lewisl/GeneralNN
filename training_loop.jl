@@ -125,7 +125,7 @@ function feedfwd!(dat, nnp, bn, do_batch_norm; istrain)
 
     feed forward from inputs to output layer predictions
 """
-function feedfwd!(dat::Union{Batch_view,Model_data}, nnp, bn,  hp; istrain=true)
+function feedfwd!(dat::Union{Batch_view,Batch_slice,Model_data}, nnp, bn,  hp; istrain=true)
     # dropout for input layer (if probability < 1.0)
     if istrain && hp.dropout && (hp.droplim[1] < 1.0)
         dropout!(dat, hp, 1)
@@ -313,9 +313,47 @@ function r_squared(targets, preds)
     return 1.0 - sum((targets .- preds).^2.) / sum((targets .- ybar).^2.)
 end
 
+
+# This method dispatches on minibatches that are slices
+function update_Batch_views!(mb::Batch_slice, train::Model_data, nnp::NN_weights, 
+    hp::Hyper_parameters, colrng::UnitRange{Int64})
+
+    # colrng refers to the set of training examples included in the minibatch
+    n_layers = nnp.output_layer
+    mb_cols = 1:hp.mb_size  # only reason for this is that the last minibatch might be smaller
+    
+    # TODO this is really bad for sparsearrays and generally results in slow indexing
+    colselector = hp.shuffle ? mb.sel[colrng] : colrng # note:  always better to do your shuffle before training
+
+    # feedforward:   minibatch slices update the underlying data
+    @inbounds for i = 1:n_layers
+        mb.a[i][:] = train.a[i][:,colselector]
+        mb.targets[:] = train.targets[:,colselector]  
+        mb.z[i][:] = train.z[i][:,colselector]
+
+        # training / backprop:  don't need this data and only use minibatch size
+        mb.epsilon[i][:] = train.epsilon[i][:, mb_cols]
+        mb.grad[i][:] = train.grad[i][:, mb_cols]
+        mb.delta_z[i][:] = train.delta_z[i][:, mb_cols]
+
+        if hp.do_batch_norm
+            # feedforward
+            mb.z_norm[i][:] = train.z_norm[i][:, colselector]
+            # backprop
+            mb.delta_z_norm[i][:] = train.delta_z_norm[i][:, mb_cols]
+        end
+
+        if hp.dropout
+            # training:  applied to feedforward, but only for training
+            mb.dropout_random[i][:] = train.dropout_random[i][:, mb_cols]
+            mb.dropout_mask_units[i][:] = train.dropout_mask_units[i][:, mb_cols]
+        end
+    end
+end
+
+
 """
-    Create or update views for the training data in minibatches or one big batch
-        Arrays: a, z, z_norm, targets  are all fields of struct mb
+    Create views for the training data in minibatches
 """
 function update_Batch_views!(mb::Batch_view, train::Model_data, nnp::NN_weights, 
     hp::Hyper_parameters, colrng::UnitRange{Int64})

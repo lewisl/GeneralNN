@@ -2,13 +2,13 @@
 
 
 #TODO
+#   simplify use of input parameters for minibatch training
 #   replace datalist with a dict and get rid of duplicate splitting logic
 #   use goodness function to hold either accuracy or r_squared
 #   fix preallocation for test set--no backprop arrays needed
 #   test maxnorm regularization
 #   implement RMSProp optimizer
 #   is it worth it to pre-allocate expf when using softmax classification?
-#   don't pre-allocate or create struct for minibatches if not using them
 #   sort out what preallocation is needed for Batch and batch with batchnorm
 #   Switch to an explicit layer based approach to allow layers to be different
 #   fix dropout: should delta_theta be averaged using number of included units?
@@ -352,7 +352,7 @@ function run_training(datalist, hp; plot_now=true)
 
     train = Model_data()  # train holds all the training data and layer inputs/outputs
     dotest && (test = Model_data())   # for test--but there is no training, just prediction
-    mb = Batch_view()  # layer data for mini-batches: as views on training data or arrays
+    hp.dobatch && (mb = Batch_view())  # layer data for mini-batches: = Batch_slice()    or  = Batch_view
     nnp = NN_weights()  # neural network trained parameters
     bn = Batch_norm_params()  # do we always need the data structure to run?  yes--TODO fix this
 
@@ -370,7 +370,8 @@ function run_training(datalist, hp; plot_now=true)
     train.out_k = size(train_y,1)  # number of output units
 
     #  optimization parameters, minibatch, 
-    setup_model!(mb, hp, nnp, bn, train)
+    hp.dobatch && setup_model!(mb, hp, nnp, bn, train)
+    hp.dobatch || setup_model!(hp, nnp, bn, train)
 
     # normalize data
     if !(hp.norm_mode == "" || lowercase(hp.norm_mode) == "none")
@@ -382,6 +383,7 @@ function run_training(datalist, hp; plot_now=true)
         !hp.quiet && println("Pre-allocate storage starting")
         preallocate_nn_params!(nnp, hp, train.in_k, train.n, train.out_k)
         preallocate_data!(train, nnp, train.n, hp)
+        hp.dobatch && preallocate_minibatch!(mb, nnp, hp)
         hp.do_batch_norm && preallocate_batchnorm!(bn, mb, nnp.k)
         dotest && preallocate_data!(test, nnp, test.n, hp, istrain=false)
         !hp.quiet && println("Pre-allocate storage completed")
