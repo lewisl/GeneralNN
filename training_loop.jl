@@ -259,7 +259,7 @@ function update_parameters!(nnp, hp, bn)
         elseif hp.reg == "L1"
             @inbounds nnp.theta[hl] .= nnp.theta[hl] .+ (hp.alphaovermb .* (hp.lambda .* sign.(nnp.theta[hl])))
         elseif hp.reg == "Maxnorm"
-            maxnorm_reg!(nnp.theta[hl], hp.maxnormlim[hl])
+            maxnorm_reg!(nnp.theta[hl], hp.maxnorm_lim[hl])
         end
         
         if hp.do_batch_norm  # update batch normalization parameters

@@ -69,6 +69,7 @@ function setup_model!(mb, hp, nnp, bn, train)
         hp.last_batch = hp.n_mb == wholebatches ? hp.mb_size : train.n - (wholebatches * hp.mb_size)
         hp.alphaovermb = hp.alpha / hp.mb_size  # calc once, use in hot loop
         hp.do_batch_norm = hp.n_mb == 1 ? false : hp.do_batch_norm  # no batch normalization for 1 batch
+        hp.dobatch = hp.n_mb == 1 ? false : hp.do_batch_norm  # no minibatch training for 1 batch
 
         # randomize order of all training samples:
             # labels in training data often in a block, which will make
@@ -145,14 +146,19 @@ function setup_model!(mb, hp, nnp, bn, train)
     # setup parameters for maxnorm regularization
     if titlecase(hp.reg) == "Maxnorm"
         hp.reg = "Maxnorm"
-        if isempty(hp.maxnormlim)
+        if isempty(hp.maxnorm_lim)
             @warn("Values in Float64 array must be set for maxnormlim to use Maxnorm Reg, continuing without...")
             hp.reg = "L2"
-        elseif length(hp.maxnormlim) > length(hp.n_hid) + 1
-            @warn("Too many values in maxnormlim; truncating to hidden and output layers.")
-            hp.maxnormlim = [0.0, hp.maxnormlim[1:length(hp.n_hid)+1]] # truncate and add dummy for input layer
-        else
-            hp.maxnormlim = [0.0, hp.maxnormlim] # add dummy for input layer
+        elseif length(hp.maxnorm_lim) == length(hp.n_hid) + 1
+            hp.maxnorm_lim = append!([0.0], hp.maxnorm_lim) # add dummy for input layer
+        elseif length(hp.maxnorm_lim) > length(hp.n_hid) + 1
+            @warn("Too many values in maxnorm_lim; truncating to hidden and output layers.")
+            hp.maxnorm_lim = append!([0.0], hp.maxnorm_lim[1:length(hp.n_hid)+1]) # truncate and add dummy for input layer
+        elseif length(hp.maxnorm_lim) < length(hp.n_hid) + 1
+            for i = 1:length(hp.n_hid)-length(hp.maxnorm_lim) + 1
+                push!(hp.maxnorm_lim,hp.maxnorm_lim[end]) 
+            end
+            hp.maxnorm_lim = append!([0.0], hp.maxnorm_lim) # add dummy for input layer
         end
     end
 

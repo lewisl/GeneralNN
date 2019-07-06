@@ -3,17 +3,15 @@
 
 #TODO
 #   simplify use of input parameters for minibatch training
-#   replace datalist with a dict and get rid of duplicate splitting logic
+#   replace datalist with a dict and get rid of duplicate splitting logic?
 #   use goodness function to hold either accuracy or r_squared
-#   fix preallocation for test set--no backprop arrays needed
-#   test maxnorm regularization
-#   implement RMSProp optimizer
+#   fix preallocation for test set--no backprop arrays needed?
 #   is it worth it to pre-allocate expf when using softmax classification?
 #   sort out what preallocation is needed for Batch and batch with batchnorm
 #   Switch to an explicit layer based approach to allow layers to be different
 #   fix dropout: should delta_theta be averaged using number of included units?
         #   are we scaling units during training?
-#   set an explicit data size variable for both test and train for preallocation
+#   set an explicit data size variable for both test and train for preallocation?
 #   new minibatch selection is slow because it is non-contiguous: elim dynamic
             # shuffle slicing--require pre-shuffle to enable linear indexing of
             # views.
@@ -28,7 +26,6 @@
 #   do check on existence of matfname file and that type is .mat
 #   implement one vs. all for logistic classification with multiple classes
 #   factor out extract data--provide as utility; start process with datafiles
-#   compare performance of views vs slices
 #   is dropout dropping the same units on backprop as feedfwd?  seems like it but results are still poor
 #   set a directory for training stats (keep out of code project directory)
 #   there is no reason for views on backprop data--always the size of minibatch--is it ok to reuse same
@@ -37,7 +34,6 @@
 #   try different versions of ensemble predictions_vector
 #   augment MINST data by perturbing the images
 #   separate plotdef from plot descriptive data
-#   try batch norm with minmax normalization
 #   check for type stability: @code_warntype pisum(500,10000)
 #   still lots of memory allocations despite the pre-allocation
         # You can devectorize r -= d[j]*A[:,j] with r .= -.(r,d[j]*A[:.j]) 
@@ -182,9 +178,9 @@ all of the input parameters to be read from a JSON file.  This is further explai
                             use [0] to indicate no hidden layer (typically for linear regression)
         norm_mode       ::= "standard", "minmax" or false => normalize inputs
         do_batch_norm   ::= true or false => normalize each linear layer outputs
-        opt             ::= one of "Momentum", "Adam" or "".  default is blank string "".
-        opt_params      ::= parameters used by Momentum or Adam
-                           Momentum: one floating point value as [.9] (showing default)
+        opt             ::= one of "Momentum", "RMSProp", "Adam" or "".  default is blank string "".
+        opt_params      ::= parameters used by Momentum, RMSProp, or Adam
+                           Momentum, RMSProp: one floating point value as [.9] (showing default)
                            Adam: 2 floating point values as [.9, .999] (showing defaults)
                            Note that epsilon is ALWAYS set to 1e-8
                            To accept defaults, don't input this parameter or use []
@@ -301,6 +297,9 @@ function train_nn(datalist, argsjsonfile::String, errorcheck::Bool=false)
     end
     if "droplim" in inputargslist
         argsdict["droplim"] = Float64.(argsdict["droplim"])
+    end
+    if "maxnorm_lim" in inputargslist
+        argsdict["maxnorm_lim"] = Float64.(argsdict["maxnorm_lim"])
     end
 
     train_nn( 
@@ -544,15 +543,15 @@ function validate_hyper_parameters(units, alpha, lambda, n_hid, reg, maxnorm_lim
     end
 
 opt = lowercase(opt)  # match title case for string argument
-    if !in(opt, ["momentum", "adam", ""])
-        @warn("opt must be \"momentum\" or \"adam\" or \"\" (nothing).  Setting to \"\" (nothing).")
+    if !in(opt, ["momentum", "adam", "rmsprop", ""])
+        @warn("opt must be \"momentum\", \"rmpsprop\" or \"adam\" or \"\" (nothing).  Setting to \"\" (nothing).")
         opt = ""
     end
 
-    if in(opt, ["momentum", "adam"])
+    if in(opt, ["momentum", "adam", "rmsprop"])
         if size(opt_params) == (2,)
             if opt_params[1] > 1.0 || opt_params[1] < 0.5
-                @warn("First opt_params for momentum or adam should be between 0.5 and 0.999. Using default")
+                @warn("First opt_params for momentum, rmsprop or adam should be between 0.5 and 0.999. Using default")
                 opt_params = [0.9, opt_params[2]]
             end
             if opt_params[2] > 1.0 || opt_params[2] < 0.8

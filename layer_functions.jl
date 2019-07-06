@@ -176,14 +176,29 @@ function step_learn_decay!(hp, ep_i)
 end
 
 
-function momentum!(tp, hp, t)
-    @fastmath for hl = (tp.output_layer - 1):-1:2  # loop over hidden layers
-        @inbounds tp.delta_v_w[hl] .= hp.b1 .* tp.delta_v_w[hl] .+ (1.0 - hp.b1) .* tp.delta_w[hl]  # @inbounds 
-        @inbounds tp.delta_w[hl] .= tp.delta_v_w[hl]
+function momentum!(nnp, hp, t)
+    @fastmath for hl = (nnp.output_layer - 1):-1:2  # loop over hidden layers
+        @inbounds nnp.delta_v_w[hl] .= hp.b1 .* nnp.delta_v_w[hl] .+ (1.0 - hp.b1) .* nnp.delta_w[hl]  # @inbounds 
+        @inbounds nnp.delta_w[hl] .= nnp.delta_v_w[hl]
 
         if !hp.do_batch_norm  # then we need to do bias term
-            @inbounds tp.delta_v_b[hl] .= hp.b1 .* tp.delta_v_b[hl] .+ (1.0 - hp.b1) .* tp.delta_b[hl]  # @inbounds 
-            @inbounds tp.delta_b[hl] .= tp.delta_v_b[hl]
+            @inbounds nnp.delta_v_b[hl] .= hp.b1 .* nnp.delta_v_b[hl] .+ (1.0 - hp.b1) .* nnp.delta_b[hl]  # @inbounds 
+            @inbounds nnp.delta_b[hl] .= nnp.delta_v_b[hl]
+        end
+    end
+end
+
+
+function rmsprop!(nnp, hp, t)
+    @fastmath for hl = (nnp.output_layer - 1):-1:2  # loop over hidden layers
+        @inbounds nnp.delta_v_w[hl] .= hp.b1 .* nnp.delta_v_w[hl] .+ (1.0 - hp.b1) .* nnp.delta_w[hl].^2   
+        @inbounds nnp.delta_w[hl] .=  (nnp.delta_w[hl]  ./   
+                              (sqrt.(nnp.delta_v_w[hl]) .+ hp.ltl_eps)  )
+
+        if !hp.do_batch_norm  # then we need to do bias term
+            @inbounds nnp.delta_v_b[hl] .= hp.b1 .* nnp.delta_v_b[hl] .+ (1.0 - hp.b1) .* nnp.delta_b[hl].^2   
+            @inbounds nnp.delta_b[hl] .= (nnp.delta_b[hl]  ./   
+                              (sqrt.(nnp.delta_v_b[hl]) .+ hp.ltl_eps)  )
         end
     end
 end
@@ -206,7 +221,7 @@ function adam!(nnp, hp, t)
 end
 
 
-function no_optimization(tp, hp, t)
+function no_optimization(nnp, hp, t)
 end
 
 

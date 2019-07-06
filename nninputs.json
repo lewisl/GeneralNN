@@ -1,8 +1,9 @@
 {
     "epochs":  24,
-    "n_hid": [60],
+    "n_hid": [80],
     "alpha":   0.74,
-    "reg":  "L2",
+    "reg":  "Maxnorm",
+    "maxnorm_lim": [4.0],
     "lambda":  0.000191,
     "learn_decay": [0.5,4.0],
     "mb_size_in":   50, 
