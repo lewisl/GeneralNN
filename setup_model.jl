@@ -30,7 +30,7 @@ function normalize_inputs!(inputs, norm_mode="none")
     return norm_factors
 end
 
-
+# apply previously used training normalization to a validation or test data set
 function normalize_inputs!(inputs, norm_factors, norm_mode)
     if norm_mode == "standard"
         x_mu = norm_factors[1]

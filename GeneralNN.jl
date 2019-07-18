@@ -1,11 +1,19 @@
 #DONE
 
+#BRANCH TODO: layer-based API
+#   change to layer based api, with simplified api as alternate front-end
+#   Convolutional networks
+    #   convolutional layers
+    #   pooling layers
+# Recurrent Neural networks
+    #   implement early stopping
 
 #TODO
 #   simplify use of input parameters for minibatch training
 #   replace datalist with a dict and get rid of duplicate splitting logic?
 #   use goodness function to hold either accuracy or r_squared
 #   fix preallocation for test set--no backprop arrays needed?
+#   is it worth implementing non-preallocated path?
 #   is it worth it to pre-allocate expf when using softmax classification?
 #   sort out what preallocation is needed for Batch and batch with batchnorm
 #   Switch to an explicit layer based approach to allow layers to be different
@@ -21,7 +29,6 @@
 #   TODO use bias in the output layer with no batch norm?  YES
 #   implement precision and recall
 #   stats on individual regression parameters
-#   change to layer based api, with simplified api as alternate front-end
 #   separate reg from the cost calculation and the parameter updates
 #   do check on existence of matfname file and that type is .mat
 #   implement one vs. all for logistic classification with multiple classes
@@ -43,11 +50,7 @@
         # To use an infix operator, you can use \cdot, as in view(A,:,j)⋅r.
 #   figure out memory use between train set and minibatch set
 #   implement a gradient checking function with option to run it
-#   Convolutional networks
-    #   convolutional layers
-    #   pooling layers
-# Recurrent Neural networks
-#   implement early stopping
+
 
 
 """
@@ -343,8 +346,6 @@ function run_training(datalist, hp; plot_now=true)
     ##################################################################################
     #   setup model: data structs, many control parameters, functions,  memory pre-allocation
     #################################################################################
-
-
 
     # instantiate data containers
     !hp.quiet && println("Instantiate data containers")
