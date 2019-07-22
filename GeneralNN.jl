@@ -1,5 +1,6 @@
 #DONE
 
+
 #BRANCH TODO: layer-based API
 #   change to layer based api, with simplified api as alternate front-end
 #   Convolutional networks
@@ -9,6 +10,8 @@
     #   implement early stopping
 
 #TODO
+#   apply optimization to weights--essential when not using batch normalization
+#   ONE setup_model method
 #   simplify use of input parameters for minibatch training
 #   replace datalist with a dict and get rid of duplicate splitting logic?
 #   use goodness function to hold either accuracy or r_squared
@@ -206,7 +209,8 @@ all of the input parameters to be read from a JSON file.  This is further explai
         plot_now        ::Bool.  If true, plot training stats and save the plotdef that contains stats 
                             gathered while running the training.  You can plot the file separately, later.
         sparse          ::Bool. If true, input data will be treated and maintained as SparseArrays.
-        initializer     ::= "xavier" or "zero" used to set how weights, not including bias, are initialized.
+        initializer     ::= "xavier", "uniform", "normal" or "zero" used to set how weights, not including bias, are initialized.
+        scale_init      ::= Float64. Scale the initialization values for the parameters.
         quiet           ::Bool. Suppress progress messages during preparation and training.
         shuffle         ::Bool. Determines if values are randomized when assigned to minibatches. Very slow!
 
@@ -239,7 +243,8 @@ This method allows all input parameters to be supplied by a JSON file:
             "dobatch": true,
             "do_batch_norm":  true,
             "sparse": false,
-            "initializer": "xavier",   
+            "initializer": "xavier",  
+            "scale_init": 2.0, 
             "quiet": true,
             "shuffle": false
             "plots": ["Train", "Learning", "Test"],
@@ -258,12 +263,13 @@ function train_nn(datalist, epochs::Int64, n_hid::Array{Int64,1};
     units::String="sigmoid", dobatch=false, do_batch_norm::Bool=false, reg::String="L2", 
     maxnorm_lim::Array{Float64,1}=Float64[], dropout::Bool=false, droplim::Array{Float64,1}=[0.5], 
     plots::Array{String,1}=["Training", "Learning"], learn_decay::Array{Float64,1}=[1.0, 1.0], 
-    plot_now::Bool=true, sparse::Bool=false, initializer::String="xavier", quiet=true, shuffle=false)
+    plot_now::Bool=true, sparse::Bool=false, initializer::String="xavier", scale_init::Float64=2.0,
+    quiet=true, shuffle=false)
 
     # validate hyper_parameters and put into struct hp
     hp = validate_hyper_parameters(units, alpha, lambda, n_hid, reg, maxnorm_lim, classify, dropout,
             droplim, epochs, mb_size_in, norm_mode, opt, opt_params, learn_decay, dobatch,
-            do_batch_norm, sparse, initializer, quiet, shuffle, plots)
+            do_batch_norm, sparse, initializer, scale_init, quiet, shuffle, plots)
             
     validate_datafiles(datalist) # no return; errors out if errors
  
@@ -352,7 +358,7 @@ function run_training(datalist, hp; plot_now=true)
 
     train = Model_data()  # train holds all the training data and layer inputs/outputs
     dotest && (test = Model_data())   # for test--but there is no training, just prediction
-    hp.dobatch && (mb = Batch_view())  # layer data for mini-batches: = Batch_slice()    or  = Batch_view
+    mb = Batch_view()  # even if not used, initialization is empty
     nnp = NN_weights()  # neural network trained parameters
     bn = Batch_norm_params()  # do we always need the data structure to run?  yes--TODO fix this
 
@@ -370,8 +376,7 @@ function run_training(datalist, hp; plot_now=true)
     train.out_k = size(train_y,1)  # number of output units
 
     #  optimization parameters, minibatch, 
-    hp.dobatch && setup_model!(mb, hp, nnp, bn, train)
-    hp.dobatch || setup_model!(hp, nnp, bn, train)
+    setup_model!(mb, hp, nnp, bn, train)
 
     # normalize data
     if !(hp.norm_mode == "" || lowercase(hp.norm_mode) == "none")
@@ -481,7 +486,7 @@ end
 
 function validate_hyper_parameters(units, alpha, lambda, n_hid, reg, maxnorm_lim, classify, dropout,
     droplim, epochs, mb_size_in, norm_mode, opt, opt_params, learn_decay, dobatch,
-    do_batch_norm, sparse, initializer, quiet, shuffle, plots)
+    do_batch_norm, sparse, initializer, scale_init, quiet, shuffle, plots)
 
     !quiet && println("Validate input parameters")
 
@@ -552,12 +557,12 @@ opt = lowercase(opt)  # match title case for string argument
     if in(opt, ["momentum", "adam", "rmsprop"])
         if size(opt_params) == (2,)
             if opt_params[1] > 1.0 || opt_params[1] < 0.5
-                @warn("First opt_params for momentum, rmsprop or adam should be between 0.5 and 0.999. Using default")
-                opt_params = [0.9, opt_params[2]]
+                @warn("First opt_params for momentum, rmsprop or adam should be between 0.5 and 0.999. Using inputs...")
+                # opt_params = [0.9, opt_params[2]]
             end
             if opt_params[2] > 1.0 || opt_params[2] < 0.8
-                @warn("second opt_params for adam should be between 0.8 and 0.999. Using default")
-                opt_params = [opt_params[1], 0.999]
+                @warn("second opt_params for adam should be between 0.8 and 0.999. Using inputs...")
+                # opt_params = [opt_params[1], 0.999]
             end
         else
             @warn("opt_params must be 2 element array with values between 0.9 and 0.999. Using default")
@@ -615,8 +620,8 @@ opt = lowercase(opt)  # match title case for string argument
         end
 
     initializer = lowercase(initializer)
-        if !in(initializer, ["zero", "xavier"])
-            @warn("initializer must be \"zero\" or \"xavier\". Setting to default \"xavier\".")
+        if !in(initializer, ["zero", "xavier", "uniform", "normal"])
+            @warn("initializer must be \"xavier,\" \"uniform,\" \"normal\" or \"zero\". Setting to default \"xavier\".")
             initializer = "xavier"
         end
 
@@ -641,6 +646,7 @@ opt = lowercase(opt)  # match title case for string argument
         hp.do_batch_norm = do_batch_norm
         hp.sparse = sparse
         hp.initializer = initializer
+        hp.scale_init = scale_init
         hp.quiet = quiet
         hp.shuffle = shuffle
         hp.plots = plots
@@ -658,7 +664,7 @@ function check_json_inputs(inputargslist)
                      "matfname", "epochs", "n_hid", "alpha", "mb_size_in", "lambda",
                      "classify", "norm_mode", "opt", "opt_params", "units", "dobatch", "do_batch_norm",
                      "reg", "maxnorm_lim", "dropout", "droplim", "plots", "learn_decay", "plot_now", 
-                     "sparse", "initializer", "quiet", "shuffle"
+                     "sparse", "initializer", "scale_init", "quiet", "shuffle"
                      ]
     requiredargs = ["matfname", "epochs", "n_hid"]
 

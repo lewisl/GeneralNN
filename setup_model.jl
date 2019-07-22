@@ -45,7 +45,7 @@ function normalize_inputs!(inputs, norm_factors, norm_mode)
     end
 end
 
-# method dispatches on presence of mb argument
+
 function setup_model!(mb, hp, nnp, bn, train)
     !hp.quiet && println("Setup_model beginning")
 
@@ -86,28 +86,6 @@ function setup_model!(mb, hp, nnp, bn, train)
         hp.alphaovermb = hp.alpha / train.n 
     end
 
-    # set parameters for Momentum or Adam optimization
-    if hp.opt == "momentum" || hp.opt == "adam"
-        if !(hp.opt_params == [])  # use inputs for opt_params
-            # set b1 for Momentum and Adam
-            if hp.opt_params[1] > 1.0 || hp.opt_params[1] < 0.5
-                @warn("First opt_params for momentum or adam should be between 0.5 and 0.999. Using default")
-                # nothing to do:  hp.b1 = 0.9 and hp.b2 = 0.999 and hp.ltl_eps = 1e-8
-            else
-                hp.b1 = hp.opt_params[1] # use the passed parameter
-            end
-            # set b2 for Adam
-            if length(hp.opt_params) > 1
-                if hp.opt_params[2] > 1.0 || hp.opt_params[2] < 0.9
-                    @warn("second opt_params for adam should be between 0.9 and 0.999. Using default")
-                else
-                    hp.b2 = hp.opt_params[2]
-                end
-            end
-        end
-    else
-        hp.opt = ""
-    end
 
     hp.do_learn_decay = 
         if hp.learn_decay == [1.0, 1.0]
@@ -161,110 +139,6 @@ function setup_model!(mb, hp, nnp, bn, train)
             hp.maxnorm_lim = append!([0.0], hp.maxnorm_lim) # add dummy for input layer
         end
     end
-
-
-    # debug
-    # println("opt params: $(hp.b1), $(hp.b2)")
-
-    # DEBUG see if hyper_parameters set correctly
-    # for sym in fieldnames(hp)
-    #    println(sym," ",getfield(hp,sym), " ", typeof(getfield(hp,sym)))
-    # end
-
-end
-
-
-# method dispatches on not including argument mb
-function setup_model!(hp, nnp, bn, train)
-    !hp.quiet && println("Setup_model beginning")
-
-    # debug
-    # println("norm_factors ", typeof(norm_factors))
-    # println(norm_factors)
-
-    
-    hp.alphaovermb = hp.alpha / train.n 
-
-
-    # set parameters for Momentum or Adam optimization
-    if hp.opt == "momentum" || hp.opt == "adam"
-        if !(hp.opt_params == [])  # use inputs for opt_params
-            # set b1 for Momentum and Adam
-            if hp.opt_params[1] > 1.0 || hp.opt_params[1] < 0.5
-                @warn("First opt_params for momentum or adam should be between 0.5 and 0.999. Using default")
-                # nothing to do:  hp.b1 = 0.9 and hp.b2 = 0.999 and hp.ltl_eps = 1e-8
-            else
-                hp.b1 = hp.opt_params[1] # use the passed parameter
-            end
-            # set b2 for Adam
-            if length(hp.opt_params) > 1
-                if hp.opt_params[2] > 1.0 || hp.opt_params[2] < 0.9
-                    @warn("second opt_params for adam should be between 0.9 and 0.999. Using default")
-                else
-                    hp.b2 = hp.opt_params[2]
-                end
-            end
-        end
-    else
-        hp.opt = ""
-    end
-
-    hp.do_learn_decay = 
-        if hp.learn_decay == [1.0, 1.0]
-            false
-        elseif hp.learn_decay == []
-            false
-        else
-            true
-        end
-
-    # dropout parameters: droplim is in hp (Hyper_parameters),
-    #    dropout_random and dropout_mask_units are in mb or train (Model_data)
-    # set a droplim for each layer 
-    if hp.dropout
-        if length(hp.droplim) == length(hp.n_hid) + 2
-            # droplim supplied for every layer
-            if hp.droplim[end] != 1.0
-                @warn("Poor performance when dropping units from output layer, continuing.")
-            end
-        elseif length(hp.droplim) == length(hp.n_hid) + 1
-            # droplim supplied for input layer and hidden layers
-            hp.droplim = [hp.droplim..., 1.0]  # keep all units in output layer
-        elseif length(hp.droplim) < length(hp.n_hid)
-            # pad to provide same droplim for all hidden layers
-            for i = 1:length(hp.n_hid)-length(hp.droplim)
-                push!(hp.droplim,hp.droplim[end]) 
-            end
-            hp.droplim = [1.0, hp.droplim..., 1.0] # use all units for input and output layers
-        else
-            @warn("More drop limits provided than total network layers, use limits ONLY for hidden layers.")
-            hp.droplim = hp.droplim[1:length(hp.n_hid)]  # truncate
-            hp.droplim = [1.0, hp.droplim..., 1.0] # placeholders for input and output layers
-        end
-    end
-
-    # setup parameters for maxnorm regularization
-    if titlecase(hp.reg) == "Maxnorm"
-        hp.reg = "Maxnorm"
-        if isempty(hp.maxnormlim)
-            @warn("Values in Float64 array must be set for maxnormlim to use Maxnorm Reg, continuing without...")
-            hp.reg = "L2"
-        elseif length(hp.maxnormlim) > length(hp.n_hid) + 1
-            @warn("Too many values in maxnormlim; truncating to hidden and output layers.")
-            hp.maxnormlim = [0.0, hp.maxnormlim[1:length(hp.n_hid)+1]] # truncate and add dummy for input layer
-        else
-            hp.maxnormlim = [0.0, hp.maxnormlim] # add dummy for input layer
-        end
-    end
-
-
-    # debug
-    # println("opt params: $(hp.b1), $(hp.b2)")
-
-    # DEBUG see if hyper_parameters set correctly
-    # for sym in fieldnames(hp)
-    #    println(sym," ",getfield(hp,sym), " ", typeof(getfield(hp,sym)))
-    # end
 
 end
 
@@ -349,9 +223,11 @@ function preallocate_nn_params!(nnp, hp, in_k, n, out_k)
 
     # Xavier initialization--current best practice for relu
     if hp.initializer == "xavier"
-        for l = 2:nnp.output_layer
-            push!(nnp.theta, randn(nnp.theta_dims[l]) .* sqrt(2.0/nnp.theta_dims[l][2])) # sqrt of no. of input units
-        end
+        xavier_initialize!(nnp)
+    elseif hp.initializer == "uniform"
+        uniform_initialize!(nnp)
+    elseif hp.initializer == "normal"
+        normal_initialize!(nnp)
     else
         for l = 2:nnp.output_layer
             push!(nnp.theta, zeros(nnp.theta_dims[l])) # sqrt of no. of input units
@@ -376,6 +252,28 @@ function preallocate_nn_params!(nnp, hp, in_k, n, out_k)
     end
 
 end
+
+
+function xavier_initialize!(nnp, scale=2.0)
+    for l = 2:nnp.output_layer
+        push!(nnp.theta, randn(nnp.theta_dims[l]...) .* sqrt(scale/nnp.theta_dims[l][2])) # sqrt of no. of input units
+    end
+end
+
+
+function uniform_initialize!(nnp, scale=0.15)
+    for l = 2:nnp.output_layer
+        push!(nnp.theta, (rand(nnp.theta_dims[l]...) .- 0.5) .* (scale/.5)) # sqrt of no. of input units
+    end        
+end
+
+
+function normal_initialize!(nnp, scale=0.15)
+    for l = 2:nnp.output_layer
+        push!(nnp.theta, randn(nnp.theta_dims[l]...) .* scale) # sqrt of no. of input units
+    end
+end
+
 
 
 """
