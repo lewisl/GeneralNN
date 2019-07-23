@@ -26,7 +26,7 @@ function training_loop(hp, datalist, mb, nnp, bn, plotdef)
             hp.do_learn_decay && step_learn_decay!(hp, ep_i)
 
             if hp.dobatch
-                t = minibatch_loop!(mb, train, nnp, hp, bn, plotdef, t)
+                t = minibatch_loop!(mb, train, test, nnp, hp, bn, plotdef, t, dotest)
             else
                 train_one_step!(train, nnp, bn, hp, t)
             end
@@ -41,7 +41,7 @@ function training_loop(hp, datalist, mb, nnp, bn, plotdef)
 end # function training_loop
 
 
-function minibatch_loop!(mb, train, nnp, hp, bn, plotdef, t)
+function minibatch_loop!(mb, train, test, nnp, hp, bn, plotdef, t, dotest)
 
     for mb_j = 1:hp.n_mb  # loop for mini-batches 
         !hp.quiet && println("   Start minibatch $mb_j")
@@ -77,51 +77,6 @@ function train_one_step!(dat, nnp, bn, hp, t)
 
 end
 
-
-
-# this method works for full data training (no minibatches)
-# dispatch by removing the mb, bn arguments
-# function training_loop(hp, datalist, nnp, plotdef)
-# !hp.quiet && println("training_loop(hp, datalist, nnp, plotdef)")
-#     if size(datalist, 1) == 1
-#         train = datalist[1]
-#         dotest = false
-#     elseif size(datalist,1) == 2
-#         train = datalist[1]
-#         test = datalist[2]
-#         dotest = true
-#     else
-#         error("Datalist contains wrong number of elements.")
-#     end
-
-#     training_time = @elapsed begin # start the cpu clock and begin block for training process
-#         t = 0  # counter:  number of times parameters will have been updated: minibatches * epochs
-
-
-#         for ep_i = 1:hp.epochs  # loop for "epochs" with counter epoch i as ep_i
-#             !hp.quiet && println("Start epoch $ep_i")
-#             hp.do_learn_decay && step_learn_decay!(hp, ep_i)
-
-#             t += 1 
-
-#             feedfwd!(train, nnp, hp)  # for all layers
-
-#             backprop!(nnp, train, hp, t)  # for all layers
-
-#             optimization_function!(nnp, hp, t)
-
-#             update_parameters!(nnp, hp)
-
-#             # stats per epoch (e.g.--no stats per minibatch)
-#             gather_stats!(plotdef, "train", ep_i, train, nnp, cost_function, hp)  
-#             dotest && gather_stats!(plotdef, "test", ep_i, test, nnp, cost_function, hp) 
-
-#         end # epoch loop
-
-#     end # begin block for timing
-
-#     return training_time    # don't think we need to return anything because all key functions update in place
-# end # function training_loop
 
 
 #########################################################
@@ -210,13 +165,16 @@ function backprop!(nnp, bn, dat, hp)
 
     # for output layer if cross_entropy_cost or mean squared error???
     dat.epsilon[nnp.output_layer][:] = dat.a[nnp.output_layer] .- dat.targets  
+    !hp.quiet && println("What is epsilon of output layer? ", mean(dat.epsilon[nnp.output_layer]))
     @fastmath nnp.delta_w[nnp.output_layer][:] = dat.epsilon[nnp.output_layer] * dat.a[nnp.output_layer-1]' # 2nd term is effectively the grad for error   
     @fastmath nnp.delta_b[nnp.output_layer][:] = sum(dat.epsilon[nnp.output_layer],dims=2)  
 
     # loop over hidden layers
     @fastmath for hl = (nnp.output_layer - 1):-1:2  
         gradient_function!(dat.grad[hl], dat.z[hl])
+        !hp.quiet && println("What is gradient $hl? ", mean(dat.grad[hl]))
         @inbounds dat.epsilon[hl][:] = nnp.theta[hl+1]' * dat.epsilon[hl+1] .* dat.grad[hl] 
+        !hp.quiet && println("what is epsilon $hl? ", mean(dat.epsilon[hl]))
 
         if hp.dropout && (hp.droplim[hl] < 1.0)
             @inbounds dat.epsilon[hl][:] = dat.epsilon[hl] .* dat.dropout_mask_units[hl]
@@ -224,12 +182,15 @@ function backprop!(nnp, bn, dat, hp)
 
         if hp.do_batch_norm
             batch_norm_back!(nnp, dat, bn, hl, hp)
-            @inbounds nnp.delta_w[hl][:] = dat.delta_z[hl] * dat.a[hl-1]'   
+            @inbounds nnp.delta_w[hl][:] = dat.delta_z[hl] * dat.a[hl-1]'  
+
         else
-            println("what is epsilon $hl? ", sum(dat.epsilon[hl]))
             @inbounds nnp.delta_w[hl][:] = dat.epsilon[hl] * dat.a[hl-1]'  
             @inbounds nnp.delta_b[hl][:] = sum(dat.epsilon[hl],dims=2)  #  times a column of 1's = sum(row)
         end
+
+        !hp.quiet && println("what is delta_w $hl? ", mean(nnp.delta_w[hl]))
+        !hp.quiet && println("what is delta_b $hl? ", mean(nnp.delta_w[hl]))
 
     end
 
