@@ -79,7 +79,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         0.999,          # b2
         1e-8,           # ltl_eps
         0.35,           # alphaovermb -- calculated->not a valid default
-        false,
+        false,          # dobatch
         false,          # do_batch_norm
         "none",         # norm_mode
         false,          # dropout

@@ -328,6 +328,7 @@ the model training or as many frameworks refer to it, "fits" the model.
 function run_training(datalist, hp; plot_now=true)
 
     !hp.quiet && println("Setting up model beginning")
+    !hp.quiet && println("dobatch: ", hp.dobatch)
     # seed random number generator.  For runs of identical models the same weight initialization
     # will be used, given the number of parameters to be estimated.  Enables better comparisons.
     Random.seed!(70653)  # seed int value is meaningless
@@ -407,11 +408,13 @@ function run_training(datalist, hp; plot_now=true)
     ##########################################################
     datalist = dotest ? [train, test] : [train]
     
-    if hp.dobatch
-        training_time = training_loop(hp, datalist, mb, nnp, bn, plotdef)
-    else
-        training_time = training_loop(hp, datalist, nnp, plotdef)
-    end
+!hp.quiet && println("dobatch at line 411: ", hp.dobatch)    
+    training_time = training_loop(hp, datalist, mb, nnp, bn, plotdef)
+    # if hp.dobatch
+    #     training_time = training_loop(hp, datalist, mb, nnp, bn, plotdef)
+    # else
+    #     training_time = training_loop(hp, datalist, nnp, plotdef)
+    # end
     
     # save, print and plot training statistics after all epochs
     output_stats(datalist, nnp, bn, hp, training_time, plotdef, plot_now)

@@ -48,6 +48,7 @@ end
 
 function setup_model!(mb, hp, nnp, bn, train)
     !hp.quiet && println("Setup_model beginning")
+    !hp.quiet && println("hp.dobatch: ", hp.dobatch)
 
     # debug
     # println("norm_factors ", typeof(norm_factors))
@@ -69,7 +70,7 @@ function setup_model!(mb, hp, nnp, bn, train)
         hp.last_batch = hp.n_mb == wholebatches ? hp.mb_size : train.n - (wholebatches * hp.mb_size)
         hp.alphaovermb = hp.alpha / hp.mb_size  # calc once, use in hot loop
         hp.do_batch_norm = hp.n_mb == 1 ? false : hp.do_batch_norm  # no batch normalization for 1 batch
-        hp.dobatch = hp.n_mb == 1 ? false : hp.do_batch_norm  # no minibatch training for 1 batch
+        hp.dobatch = hp.n_mb == 1 ? false : hp.dobatch  # no minibatch training for 1 batch
 
         # randomize order of all training samples:
             # labels in training data often in a block, which will make
@@ -139,6 +140,8 @@ function setup_model!(mb, hp, nnp, bn, train)
             hp.maxnorm_lim = append!([0.0], hp.maxnorm_lim) # add dummy for input layer
         end
     end
+
+!hp.quiet && println("end of setup_model: hp.dobatch: ", hp.dobatch)
 
 end
 
