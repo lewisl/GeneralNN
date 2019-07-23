@@ -15,6 +15,7 @@ function normalize_inputs!(inputs, norm_mode="none")
         # normalize training data
         x_max = maximum(inputs, dims=2)
         x_min = minimum(inputs, dims=2)
+        println("Minmax normalization: min: ", x_min, " max: ", x_max)
         inputs[:] = (inputs .- x_min) ./ (x_max .- x_min .+ 1e-08)
         norm_factors = (x_min, x_max) # tuple of Array{Float64,2}
     else  # handles case of "", "none" or really any crazy string
@@ -226,11 +227,11 @@ function preallocate_nn_params!(nnp, hp, in_k, n, out_k)
 
     # Xavier initialization--current best practice for relu
     if hp.initializer == "xavier"
-        xavier_initialize!(nnp)
+        xavier_initialize!(nnp, hp.scale_init)
     elseif hp.initializer == "uniform"
-        uniform_initialize!(nnp)
+        uniform_initialize!(nnp. hp.scale_init)
     elseif hp.initializer == "normal"
-        normal_initialize!(nnp)
+        normal_initialize!(nnp, hp.scale_init)
     else
         for l = 2:nnp.output_layer
             push!(nnp.theta, zeros(nnp.theta_dims[l])) # sqrt of no. of input units

@@ -36,7 +36,7 @@ end
 
 
 ###########################################################################
-#  layer functions:  activation and gradients for units of different types
+#  layer functions:  activation 
 ###########################################################################
 
 
@@ -68,6 +68,50 @@ end
 function relu!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
     a[:] = max.(z, 0.0)
 end
+
+
+###########################################################################
+#  layer functions:  gradient 
+###########################################################################
+
+
+# two methods for gradient of linear layer units:  without bias and with
+# not using this yet
+function affine_gradient(data, layer)  # no bias
+    return data.a[layer-1]'
+end
+
+
+function sigmoid_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
+    sigmoid!(z, grad)
+    @fastmath grad[:] = grad .* (1.0 .- grad)
+end
+
+
+function tanh_act_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
+    @fastmath grad[:] = 1.0 .- tanh.(z).^2
+end
+
+
+function l_relu_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
+    grad[:] = map(j -> j > 0.0 ? 1.0 : l_relu_neg, z);
+end
+
+
+# function relu_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
+#     grad[:] = map(j -> j > 0.0 ? 1.0 : 0.0, z);
+# end
+
+# optimized? relu_gradient!
+function relu_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
+    grad[:] .= 0.0
+    for i = 1:length(z)
+        if z[i] > 0.0
+            grad[i] = 1.0
+        end
+    end
+end
+
 
 #############################################################################
 # Classifiers
@@ -107,43 +151,6 @@ function multiclass_pred(preds::AbstractArray{Float64,2})
 end
 
 
-
-# two methods for gradient of linear layer units:  without bias and with
-# not using this yet
-function affine_gradient(data, layer)  # no bias
-    return data.a[layer-1]'
-end
-
-
-function sigmoid_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
-    sigmoid!(z, grad)
-    @fastmath grad[:] = grad .* (1.0 .- grad)
-end
-
-
-function tanh_act_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
-    @fastmath grad[:] = 1.0 .- tanh.(z).^2
-end
-
-
-function l_relu_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
-    grad[:] = map(j -> j > 0.0 ? 1.0 : l_relu_neg, z);
-end
-
-
-# function relu_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
-#     grad[:] = map(j -> j > 0.0 ? 1.0 : 0.0, z);
-# end
-
-# optimized? relu_gradient!
-function relu_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
-    grad[:] .= 0.0
-    for i = 1:length(z)
-        if z[i] > 0.0
-            grad[i] = 1.0
-        end
-    end
-end
 
 
 ##########################################################################
