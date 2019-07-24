@@ -1,6 +1,4 @@
 #DONE
-#   One setup_model! method
-#   one training_loop! method
 
 #BRANCH TODO: layer-based API
 #   change to layer based api, with simplified api as alternate front-end
@@ -214,6 +212,7 @@ all of the input parameters to be read from a JSON file.  This is further explai
         sparse          ::Bool. If true, input data will be treated and maintained as SparseArrays.
         initializer     ::= "xavier", "uniform", "normal" or "zero" used to set how weights, not including bias, are initialized.
         scale_init      ::= Float64. Scale the initialization values for the parameters.
+        bias_initializer::= Float64. 0.0, 1.0 or float inbetween. Initial value for bias terms.
         quiet           ::Bool. Suppress progress messages during preparation and training.
         shuffle         ::Bool. Determines if values are randomized when assigned to minibatches. Very slow!
 
@@ -248,6 +247,7 @@ This method allows all input parameters to be supplied by a JSON file:
             "sparse": false,
             "initializer": "xavier",  
             "scale_init": 2.0, 
+            "bias_initializer" : 0.0,
             "quiet": true,
             "shuffle": false
             "plots": ["Train", "Learning", "Test"],
@@ -269,13 +269,13 @@ function train_nn(datalist, epochs::Int64, n_hid::Array{Int64,1};
     maxnorm_lim::Array{Float64,1}=Float64[], dropout::Bool=false, droplim::Array{Float64,1}=[0.5], 
     plots::Array{String,1}=["Training", "Learning"], 
     learn_decay::Array{Float64,1}=[1.0, 1.0], plot_now::Bool=true, 
-    sparse::Bool=false, initializer::String="xavier", scale_init::Float64=2.0,
-    quiet=true, shuffle=false)
+    sparse::Bool=false, initializer::String="xavier", scale_init::Float64=2.0, 
+    bias_initializer::Float64=1.0, quiet=true, shuffle=false)
 
     # validate hyper_parameters and put into struct hp
     hp = validate_hyper_parameters(units, alpha, lambda, n_hid, reg, maxnorm_lim, classify, dropout,
             droplim, epochs, mb_size_in, norm_mode, opt, opt_params, learn_decay, dobatch,
-            do_batch_norm, sparse, initializer, scale_init, quiet, shuffle, plots)
+            do_batch_norm, sparse, initializer, scale_init, bias_initializer, quiet, shuffle, plots)
             
     validate_datafiles(datalist) # no return; errors out if errors
  
@@ -495,7 +495,7 @@ end
 
 function validate_hyper_parameters(units, alpha, lambda, n_hid, reg, maxnorm_lim, classify, dropout,
     droplim, epochs, mb_size_in, norm_mode, opt, opt_params, learn_decay, dobatch,
-    do_batch_norm, sparse, initializer, scale_init, quiet, shuffle, plots)
+    do_batch_norm, sparse, initializer, scale_init, bias_initializer, quiet, shuffle, plots)
 
     !quiet && println("Validate input parameters")
 
@@ -634,6 +634,12 @@ opt = lowercase(opt)  # match title case for string argument
             initializer = "xavier"
         end
 
+    # bias_initializer
+    if !(0.0 <= bias_initializer <= 1.0)
+        @warn("bias_initializer must be a floating point value in 0.0 to 1.0. Setting to 0.0.")
+        bias_initializer = 0.0
+    end
+
     hp = Hyper_parameters()  # hyper_parameters constructor:  sets defaults
     # update Hyper_parameters with user inputs; others set in function setup_model!
         hp.units = units
@@ -656,6 +662,7 @@ opt = lowercase(opt)  # match title case for string argument
         hp.sparse = sparse
         hp.initializer = initializer
         hp.scale_init = scale_init
+        hp.bias_initializer = bias_initializer
         hp.quiet = quiet
         hp.shuffle = shuffle
         hp.plots = plots
