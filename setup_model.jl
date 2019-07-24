@@ -15,7 +15,6 @@ function normalize_inputs!(inputs, norm_mode="none")
         # normalize training data
         x_max = maximum(inputs, dims=2)
         x_min = minimum(inputs, dims=2)
-        println("Minmax normalization: min: ", x_min, " max: ", x_max)
         inputs[:] = (inputs .- x_min) ./ (x_max .- x_min .+ 1e-08)
         norm_factors = (x_min, x_max) # tuple of Array{Float64,2}
     else  # handles case of "", "none" or really any crazy string
@@ -239,7 +238,16 @@ function preallocate_nn_params!(nnp, hp, in_k, n, out_k)
     end
 
     # bias initialization: random non-zero initialization performs worse
-    nnp.bias = [zeros(i) for i in nnp.k]  # initialize biases to zero
+    nnp.bias = 
+        if hp.bias_initializer == 0.0
+            bias_zeros(nnp.k)  
+        elseif hp.bias_initializer == 1.0
+            bias_ones(nnp.k)
+        elseif 0.0 < hp.bias_initializer < 1.0
+            bias_val(hp.bias_initializer, nnp.k)
+        else
+            bias_zeros(nnp.k)
+        end
 
     # structure of gradient matches theta
     nnp.delta_w = deepcopy(nnp.theta)
@@ -276,6 +284,19 @@ function normal_initialize!(nnp, scale=0.15)
     for l = 2:nnp.output_layer
         push!(nnp.theta, randn(nnp.theta_dims[l]...) .* scale) # sqrt of no. of input units
     end
+end
+
+
+function bias_zeros(k)
+    [zeros(i) for i in k]
+end
+
+function bias_ones(k)
+    [ones(i) for i in k]
+end
+
+function bias_val(val,k)
+    [fill(val, i) for i in k]
 end
 
 
@@ -434,6 +455,8 @@ function setup_functions!(hp, train)
             momentum!
         elseif hp.opt == "adam"
             adam!
+        elseif hp.opt == "rmsprop"
+            rmsprop!
         else
             no_optimization
         end

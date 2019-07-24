@@ -64,6 +64,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
     sparse::Bool
     initializer::String         # "xavier" or "zero"
     scale_init::Float64         # varies with initializer method: 2.0 for xavier, around .15 for others
+    bias_initializer::Float64   # 0.0, 1.0, between them
     quiet::Bool                 # display progress messages or not
     shuffle::Bool               # for mini-batchs, randomize the order of the training examples
     plots::Array{String, 1}     # not a hyper_parameter, choice of plots to create during training
@@ -99,6 +100,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         false,          # sparse
         "xavier",       # initializer
         2.0,            # scale_init
+        0.0,            # bias_initializer
         true,           # quiet
         false,          # shuffle
         ["None"],       # plots
