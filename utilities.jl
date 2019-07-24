@@ -55,7 +55,7 @@ end
 
 
 """
-    function shuffle_data(x,y; returnidx = false)
+    function shuffle_data!(x,y; returnidx = false)
 
 Use this function to shuffle data once as inputs to training with minibatches.
 The shuffle hyper-parameter of Train\\_nn is OK for small datasets or very
