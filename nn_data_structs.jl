@@ -63,6 +63,8 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
     learn_decay::Array{Float64,1}  # reduction factor (fraction) and number of steps
     sparse::Bool
     initializer::String         # "xavier" or "zero"
+    scale_init::Float64         # varies with initializer method: 2.0 for xavier, around .15 for others
+    bias_initializer::Float64   # 0.0, 1.0, between them
     quiet::Bool                 # display progress messages or not
     shuffle::Bool               # for mini-batchs, randomize the order of the training examples
     plots::Array{String, 1}     # not a hyper_parameter, choice of plots to create during training
@@ -78,7 +80,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         0.999,          # b2
         1e-8,           # ltl_eps
         0.35,           # alphaovermb -- calculated->not a valid default
-        false,
+        false,          # dobatch
         false,          # do_batch_norm
         "none",         # norm_mode
         false,          # dropout
@@ -97,6 +99,8 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         [1.0, 1.0],     # learn_decay
         false,          # sparse
         "xavier",       # initializer
+        2.0,            # scale_init
+        0.0,            # bias_initializer
         true,           # quiet
         false,          # shuffle
         ["None"],       # plots
