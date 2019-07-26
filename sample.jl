@@ -13,12 +13,11 @@ println("........ Loading code ........")
 println("\n........ enter runjob() -> code compiles the first time ........")
 
 using Printf
-using JSON
 include("GeneralNN.jl")
 using .GeneralNN
 
 
-function runjob(jsoninputs="nninputs.json", matfname="digits60000by784.mat")
+function runjob(argfile="nninputs.json", matfname="digits60000by784.mat")
 
     println("........ Loading training and test data ........")
     train_x, train_y, test_x, test_y = extract_data(matfname);
@@ -36,7 +35,8 @@ function runjob(jsoninputs="nninputs.json", matfname="digits60000by784.mat")
     # println("train_x ", typeof(train_x), " train_y ", typeof(train_y))
 
     println("........ Training the neural network ........")
-    results = train_nn([train_x, train_y, test_x, test_y], jsoninputs)
+    results = train_nn([train_x, train_y, test_x, test_y], argfile)
+
      # train_inputs, train_targets, train_preds, test_inputs, test_targets, test_preds, nn_params, batchnorm_params, 
      # hyper_params
 

@@ -105,14 +105,14 @@ export
     test_score, 
     save_params, 
     load_params, 
-    accuracy,
+    accuracy
     extract_data, 
-    shuffle_data!,
+    shuffle_data!
     normalize_inputs!, 
-    nnpredict,
-    display_mnist_digit,
-    wrong_preds,
-    right_preds,
+    nnpredict
+    display_mnist_digit
+    wrong_preds
+    right_preds
     plot_output
 
 using MAT
@@ -123,7 +123,6 @@ using Random
 using Printf
 using Dates
 using LinearAlgebra
-using JSON
 using SparseArrays
 
 using Plots
@@ -135,8 +134,12 @@ import Measures: mm # for some plot dimensioning
 include("training_loop.jl")
 include("layer_functions.jl")
 include("nn_data_structs.jl")
-include("setup_model.jl")
+include("setup.jl")
 include("utilities.jl")
+
+# for TOML support for arguments file
+include("/Users/lewislevin/Dropbox/TOML_julia/Pkg_TOML.jl/ext/TOML/src/TOML.jl")
+using .TOML
 
 const l_relu_neg = .01  # makes the type constant; value can be changed.
 
@@ -144,19 +147,20 @@ const l_relu_neg = .01  # makes the type constant; value can be changed.
 
 
 """
-function train_nn(train_x, train_y, test_x, test_y, epochs::Int64, n_hid::Array{Int64,1}; alpha::Float64=0.35,
-    mb_size::Int64=0, lambda::Float64=0.01, classify::String="softmax", norm_mode::String="none",
-    opt::String="", opt_params::Array{Float64,1}=[0.9,0.999], units::String="sigmoid", do_batch_norm::Bool=false,
-    reg::String="L2", dropout::Bool=false, droplim::Array{Float64,1}=[0.5], plots::Array{String,1}=["Training", "Learning"],
+function train_nn(datalist, epochs::Int64, n_hid::Array{Int64,1}; alpha::Float64=0.35
+    mb_size_in::Int64=0, lambda::Float64=0.01, classify::String="softmax", norm_mode::String="none"
+    opt::String="", opt_params::Array{Float64,1}=[0.9,0.999], units::String="sigmoid", do_batch_norm::Bool=false
+    reg::String="L2", dropout::Bool=false, droplim::Array{Float64,1}=[0.5], plots::Array{String,1}=["Training", "Learning"]
     learn_decay::Array{Float64,1}=[1.0, 1.0])
 
 Train sigmoid/softmax neural networks up to 11 layers.  Detects
 number of output labels from data. Detects number of features from data for input units.
-Enables any size mini-batch (last batch will be smaller if minibatch size doesn't divide evenly
-into number of examples).  Plots learning and cost outcomes by epoch for training and test data.
+Enables any size minibatch (last batch will be smaller if minibatch size doesn't divide evenly
+into number of examples).  Plots learning and cost outcomes by epoch for training and test data--or by
+minibatch, but this is VERY slow.
 
-This is a front-end function that verifies all inputs and calls run_training(). A convenience method allows 
-all of the input parameters to be read from a JSON file.  This is further explained below.
+This is a front-end function that verifies all inputs and calls _run_training(). A convenience method allows 
+all of the input parameters to be read from a TOML file.  This is further explained below.
 
 
     returns a dict containing these keys:  
@@ -172,17 +176,21 @@ all of the input parameters to be read from a JSON file.  This is further explai
         test_targets      ::= matches original inputs
         test_preds        ::= using final values of trained parameters
 
+    required inputs:
+        datalist
+        epochs
+        n_hid
 
-    inputs:
+    optional named parameters:
         alpha           ::= learning rate
         lambda          ::= regularization rate
-        mb_size         ::= mini-batch size=>integer, use 0 to run 1 batch of all examples,
-                            otherwise must be an even divisor of the number of examples
+        dobatch         ::=Bool, true to use minibatch training
+        mb_size_in      ::= minibatch size=>integer
         n_hid           ::= array of Int containing number of units in each hidden layer;
                             make sure to use an array even with 1 hidden layer as in [40];
                             use [0] to indicate no hidden layer (typically for linear regression)
-        norm_mode       ::= "standard", "minmax" or false => normalize inputs
-        do_batch_norm   ::= true or false => normalize each linear layer outputs
+        norm_mode       ::= "standard", "minmax" or "" => normalize inputs
+        do_batch_norm   ::= true or false => normalize each hidden layers linear outputs
         opt             ::= one of "Momentum", "RMSProp", "Adam" or "".  default is blank string "".
         opt_params      ::= parameters used by Momentum, RMSProp, or Adam
                            Momentum, RMSProp: one floating point value as [.9] (showing default)
@@ -192,8 +200,10 @@ all of the input parameters to be read from a JSON file.  This is further explai
         classify        ::= "softmax", "sigmoid", or "regression" for only the output layer
         units           ::= "sigmoid", "l_relu", "relu", "tanh" for non-linear activation of all hidden layers
         plots           ::= determines training results collected and plotted
-                            any choice of ["Learning", "Cost", "Training", "Test"];
+                            any choice of ["learning", "cost", "train", "test"];
                             for no plots use [""] or ["none"]
+                            include "batch" to plot each minibatch and/or "epoch" (the default) to plot each epoch
+                            warning:  plotting results of every batch is SLOW
         reg             ::= type of regularization, must be one of "L1", "L2", "Maxnorm", ""
         maxnorm_lim     ::= array of limits set for hidden layers + output layer
         dropout         ::= true to use dropout network or false
@@ -201,59 +211,58 @@ all of the input parameters to be read from a JSON file.  This is further explai
                             hidden layers and input layer (ex: [0.8] or [0.8,0.9, 1.0]).  A single
                             value will be applied to all hidden layers.  If fewer values than layers, then the
                             last value extends to remaining layers.
-        learn_decay     ::= array of 2 float values:  first is > 0.0 and <= 1.0 which is pct. reduction of 
+        learn_decay     ::= array of 2 float values:  first is > 0.0 and <= 1.0 which is factor to reduce 
                             learning rate; second is >= 1.0 and <= 10.0 for number of times to 
-                            reduce learning decay_rate
+                            reduce learning rate (alpha).  Ex: [.5, 2.0] reduces alpha in 1/2 after 1/2 of the
+                            epochs.
                             [1.0, 1.0] signals don't do learning decay
-        plot_now        ::Bool.  If true, plot training stats and save the plotdef that contains stats 
+        plot_now        ::Bool.  If true, plot training stats immediately and save the plotdef that contains stats 
                             gathered while running the training.  You can plot the file separately, later.
         sparse          ::Bool. If true, input data will be treated and maintained as SparseArrays.
         initializer     ::= "xavier", "uniform", "normal" or "zero" used to set how weights, not including bias, are initialized.
         scale_init      ::= Float64. Scale the initialization values for the parameters.
         bias_initializer::= Float64. 0.0, 1.0 or float inbetween. Initial value for bias terms.
-        quiet           ::Bool. Suppress progress messages during preparation and training.
+        quiet           ::Bool. true is default to suppress progress messages during preparation and training.
         shuffle         ::Bool. Determines if values are randomized when assigned to minibatches. Very slow!
 
-This method allows all input parameters to be supplied by a JSON file:
+The following method allows all input parameters to be supplied by a TOML file:
 
-    function train_nn(argsjsonfile::String, errorcheck::Bool=false)
+    function train_nn(datalist, argsfile::String, errorcheck::Bool=false)
 
-    The json file need only contain argument values that you desire to set
+    The TOML file need only contain argument values that you desire to set
     differently than the defaults. 
 
-    Here is an example of a correct json file containing every permitted argument:
+    Here is an example of a correct TOML file containing every permitted argument:
 
-        {
-            "units":  "relu",
-            "alpha":   0.74,
-            "lambda":  0.000191,
-            "n_hid": [100],
-            "reg":  "L2",
-            "maxnorm_lim": [],
-            "classify": "softmax",
-            "dropout": false,
-            "droplim": [1.0,0.8,1.0],
-            "epochs":  24,
-            "mb_size_in":   50,
-            "norm_mode":   "none",
-            "opt":   "adam",
-            "opt_params": [0.9, 0.999],   
-            "learn_decay": [0.5,4.0],
-            "dobatch": true,
-            "do_batch_norm":  true,
-            "sparse": false,
-            "initializer": "xavier",  
-            "scale_init": 2.0, 
-            "bias_initializer" : 0.0,
-            "quiet": true,
-            "shuffle": false
-            "plots": ["Train", "Learning", "Test"],           
-            "plot_now": true                    
-        }
+        "units" =  "relu"
+        "alpha" =   0.74
+        "lambda" =  0.000191
+        "n_hid" = [100]
+        "reg" =  "L2"
+        "maxnorm_lim" = []
+        "classify" = "softmax"
+        "dropout" = false
+        "droplim" = [1.0,0.8,1.0]
+        "epochs" =  24
+        "mb_size_in" =   50
+        "norm_mode" =   "none"
+        "opt" =   "adam"
+        "opt_params" = [0.9, 0.999]  
+        "learn_decay" = [0.5,4.0]
+        "dobatch" = true
+        "do_batch_norm" =  true
+        "sparse" = false
+        "initializer" = "xavier" 
+        "scale_init" = 2.0, 
+        "bias_initializer"  = 0.0
+        "quiet" = true
+        "shuffle" = false
+        "plots" = ["Train", "Learning", "Test"]           
+        "plot_now" = true                    
 
         The last 4 items are not training hyperparameters, but control plotting and the process.
 
-    If errorcheck is set to true the JSON file is checked:
+    If errorcheck is set to true the TOML file is checked:
        1) To make sure all required arguments are present; this is true even
           though the function that will be called provides valid defaults.
        2) To make sure that all argument names are valid.
@@ -270,52 +279,38 @@ function train_nn(datalist, epochs::Int64, n_hid::Array{Int64,1};
     bias_initializer::Float64=1.0, quiet=true, shuffle=false)
 
     # this method serves to validate the input parameters and populate struct hp
-    # for convenience use the json file input method
+    # for convenience use the TOML file input method
 
     # validate hyper_parameters and put into struct hp
-    hp = validate_hyper_parameters(units, alpha, lambda, n_hid, reg, maxnorm_lim, classify, dropout,
-            droplim, epochs, mb_size_in, norm_mode, opt, opt_params, learn_decay, dobatch,
+    hp = validate_hyper_parameters(units, alpha, lambda, n_hid, reg, maxnorm_lim, classify, dropout
+            droplim, epochs, mb_size_in, norm_mode, opt, opt_params, learn_decay, dobatch
             do_batch_norm, sparse, initializer, scale_init, bias_initializer, quiet, shuffle, plots)
             
     validate_datafiles(datalist) # no return; errors out if errors
  
-    run_training(datalist, hp; plot_now=plot_now);
+    _run_training(datalist, hp; plot_now=plot_now);
 end
 
 
-function train_nn(datalist, argsjsonfile::String, errorcheck::Bool=false)
+function train_nn(datalist, argsfile::String, errorcheck::Bool=false)
 ################################################################################
-#   This method gets input arguments from a JSON file. This method does no
+#   This method gets input arguments from a TOML file. This method does no
 #   error checking except, optionally, for valid argnames or missing required args. 
-#   This method corrects types that are not passed properly by JSON.
 ################################################################################
 
-    argstxt = read(argsjsonfile, String)
-    argsdict = JSON.parse(argstxt)
-    inputargslist = keys(argsdict)
+    argstxt = read(argsfile, String)
 
-    errorcheck && check_json_inputs(inputargslist)
+    if splitext(argsfile)[end] == ".toml"
+        argsdict = TOML.parse(argstxt)
+        inputargslist = keys(argsdict)
+        errorcheck && check_argsfile_inputs(inputargslist)
+    else
+        error("Filetype, based on extension, must be .toml")
+    end
 
     # collect individual required args
     epochs = pop!(argsdict, "epochs", 2)
-    n_hid = Int64.(pop!(argsdict, "n_hid", [10]))
-
-    # convert  JSON array type Any to appropriate Julia type
-    if "plots" in inputargslist
-        argsdict["plots"] = String.(argsdict["plots"])
-    end
-    if "learn_decay" in inputargslist
-        argsdict["learn_decay"] = Float64.(argsdict["learn_decay"])
-    end
-    if "opt_params" in inputargslist
-        argsdict["opt_params"] = Float64.(argsdict["opt_params"])
-    end
-    if "droplim" in inputargslist
-        argsdict["droplim"] = Float64.(argsdict["droplim"])
-    end
-    if "maxnorm_lim" in inputargslist
-        argsdict["maxnorm_lim"] = Float64.(argsdict["maxnorm_lim"])
-    end
+    n_hid = pop!(argsdict, "n_hid", [10])
 
     train_nn( 
              datalist, epochs, n_hid; 
@@ -324,16 +319,15 @@ function train_nn(datalist, argsjsonfile::String, errorcheck::Bool=false)
 end
 
 
-
 """
-function run_training(datalist, hp; plot_now=true)
+function _run_training(datalist, hp; plot_now=true)
 
 This is the one function and only method that really does the work.  It runs
 the model training or as many frameworks refer to it, "fits" the model.
 """
-function run_training(datalist, hp; plot_now=true)
+function _run_training(datalist, hp; plot_now=true)
 
-    !hp.quiet && println("Setting up model beginning")
+    !hp.quiet && println("Training setup beginning")
     !hp.quiet && println("dobatch: ", hp.dobatch)
     # seed random number generator.  For runs of identical models the same weight initialization
     # will be used, given the number of parameters to be estimated.  Enables better comparisons.
@@ -396,7 +390,7 @@ function run_training(datalist, hp; plot_now=true)
         preallocate_nn_params!(nnp, hp, train.in_k, train.n, train.out_k)
         preallocate_data!(train, nnp, train.n, hp)
         # hp.dobatch && preallocate_minibatch!(mb, nnp, hp) Not needed for views
-        hp.do_batch_norm && preallocate_batchnorm!(bn, mb, nnp.k)
+        hp.do_batch_norm && preallocate_batchnorm!(bn, mb, nnp.ks)
         dotest && preallocate_data!(test, nnp, test.n, hp, istrain=false)
         !hp.quiet && println("Pre-allocate storage completed")
 
@@ -437,7 +431,7 @@ function run_training(datalist, hp; plot_now=true)
 
     return ret
 
-end # run_training_core, method with test data
+end # _run_training_core, method with test data
 
 
 function validate_datafiles(datalist)
@@ -489,8 +483,8 @@ function validate_datafiles(datalist)
 end
 
 
-function validate_hyper_parameters(units, alpha, lambda, n_hid, reg, maxnorm_lim, classify, dropout,
-    droplim, epochs, mb_size_in, norm_mode, opt, opt_params, learn_decay, dobatch,
+function validate_hyper_parameters(units, alpha, lambda, n_hid, reg, maxnorm_lim, classify, dropout
+    droplim, epochs, mb_size_in, norm_mode, opt, opt_params, learn_decay, dobatch
     do_batch_norm, sparse, initializer, scale_init, bias_initializer, quiet, shuffle, plots)
 
     !quiet && println("Validate input parameters")
@@ -671,11 +665,11 @@ opt = lowercase(opt)  # match title case for string argument
 end
 
 
-function check_json_inputs(inputargslist)
+function check_argsfile_inputs(inputargslist)
 
     validargnames = [
-                     "matfname", "epochs", "n_hid", "alpha", "mb_size_in", "lambda",
-                     "classify", "norm_mode", "opt", "opt_params", "units", "dobatch", "do_batch_norm",
+                     "matfname", "epochs", "n_hid", "alpha", "mb_size_in", "lambda"
+                     "classify", "norm_mode", "opt", "opt_params", "units", "dobatch", "do_batch_norm"
                      "reg", "maxnorm_lim", "dropout", "droplim", "plots",  "learn_decay", "plot_now", 
                      "sparse", "initializer", "scale_init", "quiet", "shuffle"
                      ]

@@ -94,10 +94,12 @@ function feedfwd!(dat, nnp, bn, do_batch_norm; istrain)
 """
 function feedfwd!(dat::Union{Batch_view,Batch_slice,Model_data}, nnp, bn,  hp; istrain=true)
 !hp.quiet && println("feedfwd!(dat::Union{Batch_view,Batch_slice,Model_data}, nnp, bn,  hp; istrain=true)")
+
     # dropout for input layer (if probability < 1.0)
     if istrain && hp.dropout && (hp.droplim[1] < 1.0)
         dropout!(dat, hp, 1)
     end
+
     # hidden layers
     @fastmath for hl = 2:nnp.output_layer-1  
         if hp.do_batch_norm 

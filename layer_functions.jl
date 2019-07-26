@@ -1,5 +1,7 @@
 
-
+###############################################################################
+#  cost functions
+###############################################################################
 
 function cross_entropy_cost(targets, predictions, n, theta, hp, output_layer)
     # n is count of all samples in data set--use with regularization term
@@ -7,13 +9,6 @@ function cross_entropy_cost(targets, predictions, n, theta, hp, output_layer)
     # these may be equal
     cost = (-1.0 / n) * (dot(targets,log.(predictions .+ 1e-50)) +
         dot((1.0 .- targets), log.(1.0 .- predictions .+ 1e-50)))
-
-    # debug cost calc
-    # if isnan(cost)
-    #    println("predictions <= 0? ",any(predictions .== 0.0))
-    #    println("log 1 - predictions? ", any(isinf.(log.(1.0 .- predictions))))
-    #    error("problem with cost function")
-    # end
 
     @fastmath if hp.reg == "L2"  # set reg="" if not using regularization
         # regterm = hp.lambda/(2.0 * n) .* sum([sum(th .* th) for th in theta[2:output_layer]])
@@ -109,7 +104,7 @@ end
 
 
 #############################################################################
-# Classifiers
+#  Classifiers
 #############################################################################
 
 function softmax!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})

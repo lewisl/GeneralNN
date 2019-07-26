@@ -13,7 +13,7 @@ mutable struct NN_weights              # we will use nnp as the struct variable
     delta_s_b::Array{Array{Float64,1},1}  # s update term for ADAM
     theta_dims::Array{Tuple{Int64, Int64},1}
     output_layer::Int64
-    k::Array{Int64,1}                     # number of output units in each layer (features for input layer)
+    ks::Array{Int64,1}                     # number of output units in each layer (features for input layer)
     norm_factors::Tuple{Any, Any}
 
     NN_weights() = new(               # empty constructor
@@ -203,7 +203,7 @@ end
 
 
 """
-Struct Batch_slice holds slices of model data that will be broken into minibatches
+Experimental: Struct Batch_slice holds slices of model data that will be broken into minibatches
 """
 mutable struct Batch_slice               # we will use mb for as the variable for minibatches
     # array of views

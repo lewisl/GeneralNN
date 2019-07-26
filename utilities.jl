@@ -144,9 +144,11 @@ function load_params(jld_fname)
 end
 
 
-function save_plotdef(plotdef)
-    fname = repr(Dates.now())
-    fname = "plotdef-" * replace(fname, r"[.:]" => "-") * ".jld2"
+function save_plotdef(plotdef; fname="")
+    if fname == ""  # build a filename
+        fname = repr(Dates.now())
+        fname = "plotdef-" * replace(fname, r"[.:]" => "-") * ".jld2"
+    end
     jldopen(fname, "w") do f
         f["plotdef"] = plotdef
     end
@@ -355,8 +357,8 @@ end
 
 
 """
-    function onehot(vect, cnt)
-    function onehot(vect, cnt, result_type)
+    function onehot(vect, cnt; dim=1)
+    function onehot(vect, cnt, result_type; dim=1)
 
 Create a matrix of onehot vectors with cnt categories from a vector that
 contains the category number from 1 to cnt.
@@ -417,6 +419,12 @@ function indmax(arr; dims::Int=1)
     ret = findmax(arr,dims=dims)[2]
     map(x->x[dims],ret)
 end
+
+
+function toml_test(fn)
+    return TOML.parsefile(fn)
+end
+
 
 
 ##############################################################
