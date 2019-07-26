@@ -26,7 +26,6 @@ function training_loop(hp, datalist, mb, nnp, bn, plotdef)
             hp.do_learn_decay && step_learn_decay!(hp, ep_i)
 
             if hp.dobatch
-                            # t = minibatch_loop!(mb, train, test, nnp, hp, bn, plotdef, t, dotest)
                 for mb_j = 1:hp.n_mb  # loop for mini-batches 
                     !hp.quiet && println("   Start minibatch $mb_j")
 
@@ -43,9 +42,12 @@ function training_loop(hp, datalist, mb, nnp, bn, plotdef)
 
                     train_one_step!(mb, nnp, bn, hp, t)
 
-                    # stats for each minibatch--expensive!
-                    hp.plotperbatch && gather_stats!(plotdef, "train", t, train, nnp, bn, cost_function, hp)  
-                    hp.plotperbatch && (dotest && gather_stats!(plotdef, "test", t, test, nnp, bn, cost_function, hp)) 
+                    # stats for each minibatch--expensive!!!
+                    hp.plotperbatch && begin
+                        gather_stats!(plotdef, "train", t, train, nnp, bn, cost_function, hp)  
+                        (dotest && gather_stats!(plotdef, "test", t, test, nnp, bn, cost_function, hp)) 
+                    end
+
                 end # mini-batch loop
 
             else
@@ -55,8 +57,11 @@ function training_loop(hp, datalist, mb, nnp, bn, plotdef)
             end
 
             # stats across all mini-batches of one epoch (e.g.--no stats per minibatch)
-            hp.plotperepoch && gather_stats!(plotdef, "train", ep_i, train, nnp, bn, cost_function, hp)  
-            hp.plotperepoch && (dotest && gather_stats!(plotdef, "test", ep_i, test, nnp, bn,cost_function, hp)) 
+            hp.plotperepoch && begin
+                gather_stats!(plotdef, "train", ep_i, train, nnp, bn, cost_function, hp)  
+                (dotest && gather_stats!(plotdef, "test", ep_i, test, nnp, bn,cost_function, hp)) 
+            end
+
         end # epoch loop
     end # training_time begin block
 
@@ -76,7 +81,7 @@ end
 
 
 #########################################################
-#  methods for functions inside the training loop
+#  functions inside the training loop
 #########################################################
 
 
@@ -110,8 +115,6 @@ function feedfwd!(dat::Union{Batch_view,Batch_slice,Model_data}, nnp, bn,  hp; i
     end
 
     # output layer
-    # @fastmath @inbounds dat.z[nnp.output_layer][:] = (nnp.theta[nnp.output_layer] * dat.a[nnp.output_layer-1]
-    #     .+ nnp.bias[nnp.output_layer])  # TODO use bias in the output layer with no batch norm? @inbounds 
     @inbounds affine!(dat.z[nnp.output_layer], dat.a[nnp.output_layer-1], 
                       nnp.theta[nnp.output_layer], nnp.bias[nnp.output_layer])
 
@@ -236,15 +239,16 @@ function update_Batch_views!(mb::Batch_view, train::Model_data, nnp::NN_weights,
 
     # training / backprop:  don't need this data and only use minibatch size
     # TEST
-    # @inbounds mb.epsilon = [view(train.epsilon[i], :, mb_cols) for i = 1:n_layers]
-    # @inbounds mb.grad = [view(train.grad[i], :, mb_cols) for i = 1:n_layers]
-    # @inbounds mb.delta_z = [view(train.delta_z[i], :, mb_cols) for i = 1:n_layers]
+    @inbounds mb.epsilon = [view(train.epsilon[i], :, mb_cols) for i = 1:n_layers]
+    @inbounds mb.grad = [view(train.grad[i], :, mb_cols) for i = 1:n_layers]
+    
 
     if hp.do_batch_norm
         # feedforward
         @inbounds mb.z_norm = [view(train.z_norm[i],:, colselector) for i = 1:n_layers]
         # backprop
         @inbounds mb.delta_z_norm = [view(train.delta_z_norm[i], :, mb_cols) for i = 1:n_layers]
+        @inbounds mb.delta_z = [view(train.delta_z[i], :, mb_cols) for i = 1:n_layers]
     end
 
     if hp.dropout

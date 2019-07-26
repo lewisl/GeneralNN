@@ -98,11 +98,6 @@ function l_relu_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float
 end
 
 
-# function relu_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
-#     grad[:] = map(j -> j > 0.0 ? 1.0 : 0.0, z);
-# end
-
-# optimized? relu_gradient!
 function relu_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
     grad[:] .= 0.0
     for i = 1:length(z)

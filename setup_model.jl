@@ -182,7 +182,7 @@ function preallocate_data!(dat, nnp, n, hp; istrain=true)
         end
     end
 
-    if hp.dobatch  # required for full pass performance stats  TODO: really? or only for batch_norm
+    if hp.do_batch_norm  # required for full pass performance stats  TODO: really? or only for batch_norm
         # feedforward
         dat.z_norm = deepcopy(dat.z)
         # backprop
@@ -301,39 +301,25 @@ end
 
 
 
-"""
-    Pre-allocate these arrays for the training batch--either minibatches or one big batch
-    Arrays: epsilon, grad, delta_z_norm, delta_z, dropout_random, dropout_mask_units
+### This is really not needed when using views--accomplishes nothing
+# function preallocate_minibatch!(mb::Batch_view, nnp, hp)
 
+#     mb.epsilon = [zeros(nnp.k[l], hp.mb_size) for l in 1:nnp.output_layer]
+#     mb.grad = deepcopy(mb.epsilon)   
 
-    Methods are provided for using views (much faster) or slices
+#     if hp.do_batch_norm
+#         mb.delta_z_norm = deepcopy(mb.epsilon)  # similar z
+#         mb.delta_z = deepcopy(mb.epsilon)       # similar z
+#     end
 
-"""
-function preallocate_minibatch!(mb::Batch_view, nnp, hp)
-
-    mb.epsilon = [zeros(nnp.k[l], hp.mb_size) for l in 1:nnp.output_layer]
-    mb.grad = deepcopy(mb.epsilon)   
-
-    if hp.do_batch_norm
-        mb.delta_z_norm = deepcopy(mb.epsilon)  # similar z
-        mb.delta_z = deepcopy(mb.epsilon)       # similar z
-    end
-
-    #    #debug
-    # println("size of pre-allocated mb.delta_z_norm $(size(mb.delta_z_norm))")
-    # for i in 1:size(mb.delta_z_norm,1)
-    #     println("$i size: $(size(mb.delta_z_norm[i]))")
-    # end
-    # error("that's all folks....")
-
-    if hp.dropout
-        mb.dropout_random = deepcopy(mb.epsilon)
-        push!(mb.dropout_mask_units,fill(true,(2,2))) # for input layer, not used
-        for item in mb.dropout_random[2:end]
-            push!(mb.dropout_mask_units,fill(true,size(item)))
-        end
-    end
-end
+#     if hp.dropout
+#         mb.dropout_random = deepcopy(mb.epsilon)
+#         push!(mb.dropout_mask_units,fill(true,(2,2))) # for input layer, not used
+#         for item in mb.dropout_random[2:end]
+#             push!(mb.dropout_mask_units,fill(true,size(item)))
+#         end
+#     end
+# end
 
 
 # method that works with slices
@@ -510,7 +496,10 @@ function setup_plots(hp, dotest::Bool)
     end
 
     # determine whether to plot per batch or per epoch
-    if !hp.dobatch # no batches--must plot by epoch
+    if in(hp.plots, ["None", "none", ""])
+        hp.plotperbatch = false
+        hp.plotperepoch = false        
+    elseif !hp.dobatch # no batches--must plot by epoch
         hp.plotperbatch = false
         hp.plotperepoch = true
     elseif in("epoch", hp.plots) # this is the default and overrides conflicting choice
