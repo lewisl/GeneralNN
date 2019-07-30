@@ -57,20 +57,16 @@ function setup_model!(mb, hp, nnp, bn, train)
     #setup mini-batch
     if hp.dobatch
         if hp.mb_size_in < 1
-            hp.mb_size_in = train.n  # use 1 (mini-)batch with all of the examples
-            hp.mb_size = train.n
+            hp.mb_size = hp.mb_size_in = train.n  
+            hp.dobatch = false    # user provided incompatible inputs
         elseif hp.mb_size_in >= train.n
-            hp.mb_size_in = train.n
-            hp.mb_size = train.n
+            hp.mb_size = hp.mb_size_in = train.n
+            hp.dobatch = false   # user provided incompatible inputs
         else 
             hp.mb_size = hp.mb_size_in
         end
-        hp.n_mb = ceil(Int, train.n / hp.mb_size)  # number of mini-batches
-        wholebatches = floor(Int, train.n / hp.mb_size)
-        hp.last_batch = hp.n_mb == wholebatches ? hp.mb_size : train.n - (wholebatches * hp.mb_size)
         hp.alphaovermb = hp.alpha / hp.mb_size  # calc once, use in hot loop
-        hp.do_batch_norm = hp.n_mb == 1 ? false : hp.do_batch_norm  # no batch normalization for 1 batch
-        hp.dobatch = hp.n_mb == 1 ? false : hp.dobatch  # no minibatch training for 1 batch
+        hp.do_batch_norm = hp.dobatch ? hp.do_batch_norm : false  
 
         # randomize order of all training samples:
             # labels in training data often in a block, which will make
@@ -158,13 +154,13 @@ function preallocate_data!(dat, nnp, n, hp; istrain=true)
     dat.z = [dat.inputs] # not used for input layer  TODO--this permeates the code but not needed
     if hp.sparse
         for i = 2:nnp.output_layer  
-            push!(dat.z, spzeros(nnp.k[i], n, 0.1))
-            push!(dat.a, spzeros(nnp.k[i], n, 0.1))  #  and up...  ...output layer set after loop
+            push!(dat.z, spzeros(nnp.ks[i], n, 0.1))
+            push!(dat.a, spzeros(nnp.ks[i], n, 0.1))  #  and up...  ...output layer set after loop
         end
     else
         for i = 2:nnp.output_layer  
-            push!(dat.z, zeros(nnp.k[i], n))
-            push!(dat.a, zeros(nnp.k[i], n))  #  and up...  ...output layer set after loop
+            push!(dat.z, zeros(nnp.ks[i], n))
+            push!(dat.a, zeros(nnp.ks[i], n))  #  and up...  ...output layer set after loop
         end
     end
 
@@ -187,7 +183,7 @@ function preallocate_data!(dat, nnp, n, hp; istrain=true)
         dat.z_norm = deepcopy(dat.z)
         # backprop
         dat.delta_z_norm = deepcopy(dat.z)
-        # preallocate_batchnorm!(bn, mb, nnp.k)
+        # preallocate_batchnorm!(bn, mb, nnp.ks)
     end
 
     # backprop / training
@@ -213,12 +209,12 @@ function preallocate_nn_params!(nnp, hp, in_k, n, out_k)
 
     # layers
     nnp.output_layer = 2 + size(hp.n_hid, 1) # input layer is 1, output layer is highest value
-    nnp.k = [in_k, hp.n_hid..., out_k]       # no. of output units by layer
+    nnp.ks = [in_k, hp.n_hid..., out_k]       # no. of output units by layer
 
     # set dimensions of the linear weights for each layer
     push!(nnp.theta_dims, (in_k, 1)) # weight dimensions for the input layer -- if using array, must splat as arg
     for l = 2:nnp.output_layer  
-        push!(nnp.theta_dims, (nnp.k[l], nnp.k[l-1]))
+        push!(nnp.theta_dims, (nnp.ks[l], nnp.ks[l-1]))
     end
 
     # initialize the linear weights
@@ -231,22 +227,24 @@ function preallocate_nn_params!(nnp, hp, in_k, n, out_k)
         uniform_initialize!(nnp. hp.scale_init)
     elseif hp.initializer == "normal"
         normal_initialize!(nnp, hp.scale_init)
-    else
+    else # using zeros generally produces poor results
         for l = 2:nnp.output_layer
             push!(nnp.theta, zeros(nnp.theta_dims[l])) # sqrt of no. of input units
         end
     end
 
-    # bias initialization: random non-zero initialization performs worse
+    # bias initialization: small positive values can improve convergence
     nnp.bias = 
         if hp.bias_initializer == 0.0
-            bias_zeros(nnp.k)  
+            bias_zeros(nnp.ks)  
         elseif hp.bias_initializer == 1.0
-            bias_ones(nnp.k)
+            bias_ones(nnp.ks)
         elseif 0.0 < hp.bias_initializer < 1.0
-            bias_val(hp.bias_initializer, nnp.k)
+            bias_val(hp.bias_initializer, nnp.ks)
+        elseif np.bias_initializer == 99.9
+            bias_rand(nnp.ks)
         else
-            bias_zeros(nnp.k)
+            bias_zeros(nnp.ks)
         end
 
     # structure of gradient matches theta
@@ -287,24 +285,29 @@ function normal_initialize!(nnp, scale=0.15)
 end
 
 
-function bias_zeros(k)
-    [zeros(i) for i in k]
+function bias_zeros(ks)
+    [zeros(i) for i in ks]
 end
 
-function bias_ones(k)
-    [ones(i) for i in k]
+function bias_ones(ks)
+    [ones(i) for i in ks]
 end
 
-function bias_val(val,k)
-    [fill(val, i) for i in k]
+function bias_val(val,ks)
+    [fill(val, i) for i in ks]
+end
+
+function bias_rand(ks)
+    [rand(i) .* .1 for i in ks]
 end
 
 
 
 ### This is really not needed when using views--accomplishes nothing
+###    also doesn't create arrays of subarrays, so wouldn't even work
 # function preallocate_minibatch!(mb::Batch_view, nnp, hp)
 
-#     mb.epsilon = [zeros(nnp.k[l], hp.mb_size) for l in 1:nnp.output_layer]
+#     mb.epsilon = [zeros(nnp.ks[l], hp.mb_size) for l in 1:nnp.output_layer]
 #     mb.grad = deepcopy(mb.epsilon)   
 
 #     if hp.do_batch_norm
@@ -322,20 +325,20 @@ end
 # end
 
 
-# method that works with slices
+# method that MIGHT work with slices?
 function preallocate_minibatch!(mb::Batch_slice, nnp, hp)
     ncols = hp.mb_size_in
 
-    mb.a = [zeros(nnp.k[i],ncols) for i in 1:nnp.output_layer]  
-    mb.targets = zeros(nnp.k[nnp.output_layer], ncols)
-    mb.z = [zeros(nnp.k[i],ncols) for i in 1:nnp.output_layer]
-    mb.z_norm  = [zeros(nnp.k[i],ncols) for i in 1:nnp.output_layer]
-    mb.delta_z_norm  = [zeros(nnp.k[i],ncols) for i in 1:nnp.output_layer]
-    mb.delta_z  = [zeros(nnp.k[i],ncols) for i in 1:nnp.output_layer]
-    mb.grad  = [zeros(nnp.k[i],ncols) for i in 1:nnp.output_layer]
-    mb.epsilon  = [zeros(nnp.k[i],ncols) for i in 1:nnp.output_layer]
-    mb.dropout_random  = [zeros(nnp.k[i],ncols) for i in 1:nnp.output_layer]
-    mb.dropout_mask_units  = [zeros(nnp.k[i],ncols) for i in 1:nnp.output_layer]
+    mb.a = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]  
+    mb.targets = zeros(nnp.ks[nnp.output_layer], ncols)
+    mb.z = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]
+    mb.z_norm  = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]
+    mb.delta_z_norm  = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]
+    mb.delta_z  = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]
+    mb.grad  = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]
+    mb.epsilon  = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]
+    mb.dropout_random  = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]
+    mb.dropout_mask_units  = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]
 
     if hp.do_batch_norm
         mb.delta_z_norm = deepcopy(mb.epsilon)  # similar z
@@ -386,14 +389,12 @@ function setup_functions!(hp, train)
     # make these function variables module level 
         # the layer functions they point to are all module level (in file layer_functions.jl)
         # these are just substitute names or aliases
-        # don't freak out about the word global
+        # don't freak out about the word global--makes the aliases module level, too.
     global unit_function!
     global gradient_function!
     global classify_function!
-    global batch_norm_fwd!
-    global batch_norm_back!
-    global cost_function
     global optimization_function!
+    global cost_function
 
     unit_function! =
         if hp.units == "sigmoid"

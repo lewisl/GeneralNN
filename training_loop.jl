@@ -1,11 +1,8 @@
 
-
-
-include("nn_data_structs.jl")
 using StatsBase
 
 # do minibatch training:  this method accepts both train, mb, bn
-function training_loop(hp, datalist, mb, nnp, bn, plotdef)
+function training_loop!(hp, datalist, mb, nnp, bn, plotdef)
 !hp.quiet && println("training_loop(hp, datalist, mb, nnp, bn, plotdef)")
     if size(datalist, 1) == 1
         train = datalist[1]
@@ -20,26 +17,23 @@ function training_loop(hp, datalist, mb, nnp, bn, plotdef)
 
     training_time = @elapsed begin # start the cpu clock and begin block for training process
         t = 0  # counter:  number of times parameters will have been updated: minibatches * epochs
+        mbzi = hp.mb_size_in
 
         for ep_i = 1:hp.epochs  # loop for "epochs" with counter epoch i as ep_i
             !hp.quiet && println("Start epoch $ep_i")
             hp.do_learn_decay && step_learn_decay!(hp, ep_i)
 
             if hp.dobatch
-                for mb_j = 1:hp.n_mb  # loop for mini-batches 
-                    !hp.quiet && println("   Start minibatch $mb_j")
 
-                    # set size of minibatch:  allows for minibatch size that doesn't divide evenly in no. of examples in data
-                    hp.mb_size = mb_j < hp.n_mb ? hp.mb_size_in : hp.last_batch
+                for (b,l) in zip(Iterators.countfrom(1,mbzi),Iterators.countfrom(mbzi,mbzi))
+                    b > train.n && break
+                    colrng = b:(l < train.n ? l : train.n)
+                    hp.mb_size = colrng[end] - b + 1     
+                    !hp.quiet && println("   Start minibatch for ", colrng)           
                     
-                    # set the column range of examples to include in the batch
-                    first_example = (mb_j - 1) * hp.mb_size_in + 1  # mini-batch subset for the inputs (layer 1)
-                    last_example = first_example + hp.mb_size - 1
-                    colrng = first_example:last_example
-
-                    t += 1   # number of executions of minibatch loop
                     update_Batch_views!(mb, train, nnp, hp, colrng)  # select data columns for the minibatch   
 
+                    t += 1   # number of executions of minibatch loop
                     train_one_step!(mb, nnp, bn, hp, t)
 
                     # stats for each minibatch--expensive!!!
@@ -52,6 +46,7 @@ function training_loop(hp, datalist, mb, nnp, bn, plotdef)
 
             else
 
+                t += 1
                 train_one_step!(train, nnp, bn, hp, t)
 
             end
@@ -185,8 +180,8 @@ function update_parameters!(nnp, hp, bn)
         end
         
         if hp.do_batch_norm  # update batch normalization parameters
-            @inbounds bn.gam[hl][:] -= hp.alphaovermb .* bn.delta_gam[hl]
-            @inbounds bn.bet[hl][:] -= hp.alphaovermb .* bn.delta_bet[hl]
+            @inbounds bn.gam[hl][:] .= bn.gam[hl][:] .- (hp.alphaovermb .* bn.delta_gam[hl])
+            @inbounds bn.bet[hl][:] .= bn.bet[hl][:] .- (hp.alphaovermb .* bn.delta_bet[hl])
         else  # update bias
             @inbounds nnp.bias[hl] .= nnp.bias[hl] .- (hp.alphaovermb .* nnp.delta_b[hl])
         end

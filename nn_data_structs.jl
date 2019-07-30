@@ -1,3 +1,47 @@
+"""
+Struct Batch_view holds views on all model data that will be broken into minibatches
+"""
+mutable struct Batch_view               # we will use mb for as the variable for minibatches
+    # array of views
+    a::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    targets::SubArray{}  #::SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true}
+    z::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    z_norm::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    delta_z_norm::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    delta_z::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    grad::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    epsilon::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    dropout_random::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    dropout_mask_units::Array{SubArray{}}  #::Array{SubArray{Bool,2,BitArray{2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    sel
+
+    Batch_view() = new(                      # empty constructor
+        Array{SubArray{}}[],  # a
+        view([0.0],1:1),                 # targets
+        Array{SubArray{}}[],  # z
+        Array{SubArray{}}[],  # z_norm
+        Array{SubArray{}}[],  # delta_z_norm
+        Array{SubArray{}}[],  # delta_z
+        Array{SubArray{}}[],  # grad
+        Array{SubArray{}}[],  # epsilon
+        Array{SubArray{}}[],  # dropout_random
+        Array{SubArray{}}[],  # dropout_mask_units  
+        Array{SubArray{}}[]
+        )
+
+        # [view(zeros(2,2),:,1:2) for i in 1:2],  # a
+        # view(zeros(2,2),:,1:2),                 # targets
+        # [view(zeros(2,2),:,1:2) for i in 1:2],  # z
+        # [view(zeros(2,2),:,1:2) for i in 1:2],  # z_norm
+        # [view(zeros(2,2),:,1:2) for i in 1:2],  # delta_z_norm
+        # [view(zeros(2,2),:,1:2) for i in 1:2],  # delta_z
+        # [view(zeros(2,2),:,1:2) for i in 1:2],  # grad
+        # [view(zeros(2,2),:,1:2) for i in 1:2],  # epsilon
+        # [view(zeros(2,2),:,1:2) for i in 1:2],  # dropout_random
+        # [view(BitArray([1 1; 1 1]),:,1:2) for i in 1:2]   # dropout_mask_units     
+end
+
+
 
 """
 struct NN_weights holds model parameters learned by training and model metadata
@@ -56,8 +100,6 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
     classify::String            # behavior of output layer: "softmax", "sigmoid", or "regression"
     mb_size::Int64              # minibatch size--calculated; last mini-batch may be smaller
     mb_size_in::Int64           # input of requested minibatch size:  last actual size may be smaller
-    last_batch::Int64           # size of last minibatch
-    n_mb::Int64                 # number of minibatches--calculated
     epochs::Int64               # number of "outer" loops of training
     do_learn_decay::Bool        # step down the learning rate across epochs
     learn_decay::Array{Float64,1}  # reduction factor (fraction) and number of steps
@@ -92,9 +134,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         "sigmoid",      # classify
         0,              # mb_size
         50,             # mb_size_in  
-        0,              # last_batch
-        1,            # n_mb
-        1,             # epochs
+        1,              # epochs
         false,          # do_learn_decay
         [1.0, 1.0],     # learn_decay
         false,          # sparse
@@ -157,49 +197,6 @@ mutable struct Model_data               # we will use train for inputs and test 
 end
 
 
-"""
-Struct Batch_view holds views on all model data that will be broken into minibatches
-"""
-mutable struct Batch_view               # we will use mb for as the variable for minibatches
-    # array of views
-    a  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    targets  #::SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true}
-    z  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    z_norm  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    delta_z_norm  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    delta_z  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    grad  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    epsilon  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    dropout_random  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    dropout_mask_units  #::Array{SubArray{Bool,2,BitArray{2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    sel::AbstractArray{Int64}
-
-    Batch_view() = new(                      # empty constructor
-        [],  # a
-        [],                 # targets
-        [],  # z
-        [],  # z_norm
-        [],  # delta_z_norm
-        [],  # delta_z
-        [],  # grad
-        [],  # epsilon
-        [],  # dropout_random
-        [],  # dropout_mask_units  
-        []
-
-        # [view(zeros(2,2),:,1:2) for i in 1:2],  # a
-        # view(zeros(2,2),:,1:2),                 # targets
-        # [view(zeros(2,2),:,1:2) for i in 1:2],  # z
-        # [view(zeros(2,2),:,1:2) for i in 1:2],  # z_norm
-        # [view(zeros(2,2),:,1:2) for i in 1:2],  # delta_z_norm
-        # [view(zeros(2,2),:,1:2) for i in 1:2],  # delta_z
-        # [view(zeros(2,2),:,1:2) for i in 1:2],  # grad
-        # [view(zeros(2,2),:,1:2) for i in 1:2],  # epsilon
-        # [view(zeros(2,2),:,1:2) for i in 1:2],  # dropout_random
-        # [view(BitArray([1 1; 1 1]),:,1:2) for i in 1:2]   # dropout_mask_units     
-    )
-
-end
 
 
 """

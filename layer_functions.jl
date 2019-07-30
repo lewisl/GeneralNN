@@ -38,12 +38,12 @@ end
 
 # two methods for linear layer units, with bias and without
 function affine!(z, a, theta, bias)  # with bias
-    @fastmath z[:] = theta * a .+ bias
+    @inbounds z[:] = theta * a .+ bias
 end
 
 
 function affine!(z, a, theta)  # no bias
-    @fastmath z[:] = theta * a
+    @inbounds z[:] = theta * a
 end
 
 
@@ -95,7 +95,7 @@ end
 
 function relu_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
     grad[:] .= 0.0
-    for i = 1:length(z)
+    @simd for i = 1:length(z)
         if z[i] > 0.0
             grad[i] = 1.0
         end
@@ -109,13 +109,13 @@ end
 
 function softmax!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
     expf = similar(a)
-    @fastmath expf[:] = exp.(z .- maximum(z,dims=1))
-    @fastmath a[:] = expf ./ sum(expf, dims=1)
+    @fastmath expf .= exp.(z .- maximum(z,dims=1))
+    @fastmath a .= expf ./ sum(expf, dims=1)
 end
 
 
 function logistic!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
-    @fastmath a[:] = 1.0 ./ (1.0 .+ exp.(.-z))  
+    @fastmath a .= 1.0 ./ (1.0 .+ exp.(.-z))  
 end
 
 

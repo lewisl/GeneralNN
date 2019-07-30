@@ -13,11 +13,10 @@ println("........ Loading code ........")
 println("\n........ enter runjob() -> code compiles the first time ........")
 
 using Printf
-include("GeneralNN.jl")
-using .GeneralNN
+using GeneralNN
 
 
-function runjob(argfile="nninputs.json", matfname="digits60000by784.mat")
+function runjob(argfile="nninputs.toml", matfname="digits60000by784.mat")
 
     println("........ Loading training and test data ........")
     train_x, train_y, test_x, test_y = extract_data(matfname);
@@ -44,8 +43,8 @@ function runjob(argfile="nninputs.json", matfname="digits60000by784.mat")
     predmax = vec(map(x -> x[1], argmax(results["test_preds"],dims=1)));
 
     # which predictions are wrong?
-    test_wrongs = GeneralNN.wrong_preds(results["test_targets"], results["test_preds"]);
-    train_wrongs = GeneralNN.wrong_preds(results["train_targets"], results["train_preds"]);
+    test_wrongs = wrong_preds(results["test_targets"], results["test_preds"]);
+    train_wrongs = wrong_preds(results["train_targets"], results["train_preds"]);
 
     println("\n\nThere are ", length(test_wrongs), " incorrect test predictions.")
     println("There are ", length(train_wrongs), " incorrect training predictions.")
@@ -70,7 +69,7 @@ function runjob(argfile="nninputs.json", matfname="digits60000by784.mat")
                 println("Oops, try again...")
                 continue
             else
-                GeneralNN.dodigit(n, test_wrongs, results["test_inputs"], results["test_targets"], predmax)
+                dodigit(n, test_wrongs, results["test_inputs"], results["test_targets"], predmax)
                 continue
             end # response case: display a wrong prediction
         end  # response cases
