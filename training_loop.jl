@@ -37,7 +37,7 @@ function training_loop!(hp, datalist, mb, nnp, bn, plotdef)
                     # stats for each minibatch--expensive!!!
                     hp.plotperbatch && begin
                         gather_stats!(plotdef, "train", t, train, nnp, bn, cost_function, hp)  
-                        (dotest && gather_stats!(plotdef, "test", t, test, nnp, bn, cost_function, hp)) 
+                        dotest && gather_stats!(plotdef, "test", t, test, nnp, bn, cost_function, hp) 
                     end
 
                 end # mini-batch loop
@@ -52,7 +52,7 @@ function training_loop!(hp, datalist, mb, nnp, bn, plotdef)
             # stats across all mini-batches of one epoch (e.g.--no stats per minibatch)
             hp.plotperepoch && begin
                 gather_stats!(plotdef, "train", ep_i, train, nnp, bn, cost_function, hp)  
-                (dotest && gather_stats!(plotdef, "test", ep_i, test, nnp, bn,cost_function, hp)) 
+                dotest && gather_stats!(plotdef, "test", ep_i, test, nnp, bn,cost_function, hp) 
             end
 
         end # epoch loop
@@ -168,15 +168,9 @@ function update_parameters!(nnp, hp, bn)
     # update weights, bias, and batch_norm parameters
     @fastmath for hl = 2:nnp.output_layer       
         @inbounds nnp.theta[hl] .= nnp.theta[hl] .- (hp.alphaovermb .* nnp.delta_w[hl])
-
-        if hp.reg == "L2"  # regularization term  opposite sign of gradient?
-            @inbounds nnp.theta[hl] .= nnp.theta[hl] .+ (hp.alphaovermb .* (hp.lambda .* nnp.theta[hl]))
-        elseif hp.reg == "L1"
-            @inbounds nnp.theta[hl] .= nnp.theta[hl] .+ (hp.alphaovermb .* (hp.lambda .* sign.(nnp.theta[hl])))
-        elseif hp.reg == "Maxnorm"
-            maxnorm_reg!(nnp.theta[hl], hp.maxnorm_lim[hl])
-        end
         
+        reg_function!(nnp, hp, hl)  # regularize function per setup.jl setup_functions!
+
         if hp.do_batch_norm  # update batch normalization parameters
             @inbounds bn.gam[hl][:] .= bn.gam[hl][:] .- (hp.alphaovermb .* bn.delta_gam[hl])
             @inbounds bn.bet[hl][:] .= bn.bet[hl][:] .- (hp.alphaovermb .* bn.delta_bet[hl])

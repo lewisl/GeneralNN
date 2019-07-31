@@ -318,7 +318,7 @@ function plot_output(plotdef::Dict)
                 legend=:bottomright,
                 ylims=(0.0, Inf), 
                 bottom_margin=7mm, 
-                size=(400,400))
+                size=(600,400))
             display(plt_cost)  # or can use gui()
         end
 
@@ -329,7 +329,8 @@ function plot_output(plotdef::Dict)
                 labels=plotdef["plot_labels"], 
                 legend=:bottomright,
                 ylims=(0.0, 1.05), 
-                bottom_margin=7mm) 
+                bottom_margin=7mm,
+                size=(600,400)) 
             display(plt_learning)
         end
 

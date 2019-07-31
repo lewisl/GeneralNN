@@ -400,6 +400,7 @@ function setup_functions!(hp, train)
     global classify_function!
     global optimization_function!
     global cost_function
+    global reg_function!
 
     unit_function! =
         if hp.units == "sigmoid"
@@ -440,6 +441,17 @@ function setup_functions!(hp, train)
             else
                 error("Function to classify output must be \"sigmoid\", \"logistic\" or \"regression\".")
             end
+        end
+
+    reg_function! =
+        if hp.reg == "L2"
+            l2_reg!
+        elseif hp.reg == "L1"
+            l1_reg!
+        elseif hp.reg == "Maxnorm"
+            maxnorm_reg!
+        else
+            no_reg
         end
 
     optimization_function! = 

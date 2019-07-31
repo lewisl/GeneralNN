@@ -7,18 +7,16 @@
     #   pooling layers
 # Recurrent Neural networks
     #   implement early stopping
+# LSTM networks
 
 #TODO
+#   digit plots fail unless cost or learning plotted first
 #   try to speed up saving the plot stats
 #   use goodness function to hold either accuracy or r_squared
-#   is it worth implementing non-preallocated path?
+#   implement incremental load and train for massive datasets?
 #   fix dropout: should delta_theta be averaged using number of included units?
         #   are we scaling units during training?
 #   set an explicit data size variable for both test and train for preallocation?
-#   new minibatch selection is slow because it is non-contiguous: elim dynamic
-            # shuffle slicing--require pre-shuffle to enable linear indexing of
-            # views.
-            # Also, preallocation of views no longer typed.
 #   accuracy for logistic or other single class classifiers should allow -1 or 0 for "bad"
 #   TODO use bias in the output layer with no batch norm?  YES
 #   implement precision and recall
@@ -31,7 +29,7 @@
 #   set a directory for training stats (keep out of code project directory)
 #   try different versions of ensemble predictions_vector
 #   augment MINST data by perturbing the images
-#   separate plotdef from plot descriptive data
+#   separate plotdef from plot descriptive data?
 #   check for type stability: @code_warntype pisum(500,10000)
 #   still lots of memory allocations despite the pre-allocation
         # You can devectorize r -= d[j]*A[:,j] with r .= -.(r,d[j]*A[:.j]) 

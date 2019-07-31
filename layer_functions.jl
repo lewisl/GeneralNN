@@ -144,9 +144,8 @@ end
 
 
 ##########################################################################
-# Optimization and Regularization
+# Optimization
 ##########################################################################
-
 
 
 function dropout!(dat,hp,hl)  # applied per layer
@@ -222,7 +221,13 @@ function no_optimization(nnp, hp, t)
 end
 
 
-function maxnorm_reg!(theta, maxnorm_lim)
+##########################################################################
+# Regularization
+##########################################################################
+
+function maxnorm_reg!(nnp, hp, hl)    # (theta, maxnorm_lim)
+    theta = nnp.theta[hl]
+    maxnorm_lim = hp.maxnorm_lim[hl]
     for i in 1:size(theta,1)  
         # row i of theta contains weights for output of unit i in current layer
         # column values in row i multiplied times input values from next lower layer activations
@@ -231,4 +236,15 @@ function maxnorm_reg!(theta, maxnorm_lim)
             theta[i,:] .= theta[i,:] .* (maxnorm_lim / norm_of_unit)
         end
     end
+end
+
+function l2_reg!(nnp, hp, hl)
+    @inbounds nnp.theta[hl] .= nnp.theta[hl] .+ (hp.alphaovermb .* (hp.lambda .* nnp.theta[hl]))
+end
+
+function l1_reg!(nnp, hp, hl)
+    @inbounds nnp.theta[hl] .= nnp.theta[hl] .+ (hp.alphaovermb .* (hp.lambda .* sign.(nnp.theta[hl])))
+end
+
+function no_reg(nnp, hp, hl)
 end
