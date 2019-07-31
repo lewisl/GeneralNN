@@ -223,14 +223,11 @@ function update_Batch_views!(mb::Batch_view, train::Model_data, nnp::NN_weights,
     # colrng refers to the set of training examples included in the minibatch
     n_layers = nnp.output_layer
     mb_cols = 1:hp.mb_size  # only reason for this is that the last minibatch might be smaller
-    
-    # TODO this is really bad for sparsearrays and generally results in slow indexing
-    colselector = hp.shuffle ? mb.sel[colrng] : colrng # note:  always better to do your shuffle before training
 
     # feedforward:   minibatch views update the underlying data
-    @inbounds mb.a = [view(train.a[i],:,colselector) for i = 1:n_layers]  # sel is random order of example indices
-    @inbounds mb.targets = view(train.targets,:,colselector)  # only at the output layer
-    @inbounds mb.z = [view(train.z[i],:,colselector) for i = 1:n_layers]
+    @inbounds mb.a = [view(train.a[i],:,colrng) for i = 1:n_layers]  # sel is random order of example indices
+    @inbounds mb.targets = view(train.targets,:,colrng)  # only at the output layer
+    @inbounds mb.z = [view(train.z[i],:,colrng) for i = 1:n_layers]
 
     # training / backprop:  don't need this data and only use minibatch size
     # TEST
@@ -240,7 +237,7 @@ function update_Batch_views!(mb::Batch_view, train::Model_data, nnp::NN_weights,
 
     if hp.do_batch_norm
         # feedforward
-        @inbounds mb.z_norm = [view(train.z_norm[i],:, colselector) for i = 1:n_layers]
+        @inbounds mb.z_norm = [view(train.z_norm[i],:, colrng) for i = 1:n_layers]
         # backprop
         @inbounds mb.delta_z_norm = [view(train.delta_z_norm[i], :, mb_cols) for i = 1:n_layers]
         @inbounds mb.delta_z = [view(train.delta_z[i], :, mb_cols) for i = 1:n_layers]
@@ -323,15 +320,12 @@ end
 #     # colrng refers to the set of training examples included in the minibatch
 #     n_layers = nnp.output_layer
 #     mb_cols = 1:hp.mb_size  # only reason for this is that the last minibatch might be smaller
-    
-#     # TODO this is really bad for sparsearrays and generally results in slow indexing
-#     colselector = hp.shuffle ? mb.sel[colrng] : colrng # note:  always better to do your shuffle before training
 
 #     # feedforward:   minibatch slices update the underlying data
 #     @inbounds for i = 1:n_layers
-#         mb.a[i][:] = train.a[i][:,colselector]
-#         mb.targets[:] = train.targets[:,colselector]  
-#         mb.z[i][:] = train.z[i][:,colselector]
+#         mb.a[i][:] = train.a[i][:,colrng]
+#         mb.targets[:] = train.targets[:,colrng]  
+#         mb.z[i][:] = train.z[i][:,colrng]
 
 #         # training / backprop:  don't need this data and only use minibatch size
 #         mb.epsilon[i][:] = train.epsilon[i][:, mb_cols]
@@ -340,7 +334,7 @@ end
 
 #         if hp.do_batch_norm
 #             # feedforward
-#             mb.z_norm[i][:] = train.z_norm[i][:, colselector]
+#             mb.z_norm[i][:] = train.z_norm[i][:, colrng]
 #             # backprop
 #             mb.delta_z_norm[i][:] = train.delta_z_norm[i][:, mb_cols]
 #         end

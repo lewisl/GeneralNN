@@ -20,7 +20,6 @@
     "initializer": "xavier",
     "scale_init": 2.0,
     "bias_initializer": 0.3,
-    "shuffle": false,
     "plots": ["None"],
     "plot_now": false
 }

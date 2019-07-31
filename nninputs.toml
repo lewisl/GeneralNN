@@ -22,4 +22,3 @@ quiet = true
 initializer = "xavier"
 scale_init = 2.2
 bias_initializer = 0.3
-shuffle = false

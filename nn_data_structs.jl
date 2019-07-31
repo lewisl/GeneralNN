@@ -13,7 +13,6 @@ mutable struct Batch_view               # we will use mb for as the variable for
     epsilon::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     dropout_random::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     dropout_mask_units::Array{SubArray{}}  #::Array{SubArray{Bool,2,BitArray{2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    sel
 
     Batch_view() = new(                      # empty constructor
         Array{SubArray{}}[],  # a
@@ -25,8 +24,7 @@ mutable struct Batch_view               # we will use mb for as the variable for
         Array{SubArray{}}[],  # grad
         Array{SubArray{}}[],  # epsilon
         Array{SubArray{}}[],  # dropout_random
-        Array{SubArray{}}[],  # dropout_mask_units  
-        Array{SubArray{}}[]
+        Array{SubArray{}}[]  # dropout_mask_units  
         )
 
         # [view(zeros(2,2),:,1:2) for i in 1:2],  # a
@@ -108,7 +106,6 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
     scale_init::Float64         # varies with initializer method: 2.0 for xavier, around .15 for others
     bias_initializer::Float64   # 0.0, 1.0, between them
     quiet::Bool                 # display progress messages or not
-    shuffle::Bool               # for mini-batchs, randomize the order of the training examples
     plots::Array{String, 1}     # not a hyper_parameter, choice of plots to create during training
     plotperbatch::Bool
     plotperepoch::Bool
@@ -142,7 +139,6 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         2.0,            # scale_init
         0.0,            # bias_initializer
         true,           # quiet
-        false,          # shuffle
         ["None"],       # plots
         false,          # plotperbatch
         true            # plotperepoch

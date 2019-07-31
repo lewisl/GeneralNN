@@ -56,6 +56,7 @@ function setup_model!(mb, hp, nnp, bn, train)
 
     #setup mini-batch
     if hp.dobatch
+        @warn("Be sure to shuffle training data when using minibatches.  Use utility function shuffle_data! or your own.")
         if hp.mb_size_in < 1
             hp.mb_size = hp.mb_size_in = train.n  
             hp.dobatch = false    # user provided incompatible inputs
@@ -68,17 +69,6 @@ function setup_model!(mb, hp, nnp, bn, train)
         hp.alphaovermb = hp.alpha / hp.mb_size  # calc once, use in hot loop
         hp.do_batch_norm = hp.dobatch ? hp.do_batch_norm : false  
 
-        # randomize order of all training samples:
-            # labels in training data often in a block, which will make
-            # mini-batch train badly because a batch will not contain mix of target labels
-        # this slicing is SLOW AS HELL if data huge. But, repeated view/slicing raises a smaller cost.
-        # randomize as part of the data preparation is better.  then just slice in constant strides.
-        # do it this way: b = view(m, :, sel[colrng])
-        if hp.mb_size < train.n  && hp.shuffle
-            mb.sel = randperm(train.n)
-            # train.inputs[:] = train.inputs[:, select_index]
-            # train.targets[:] = train.targets[:, select_index]
-        end
     else
         hp.alphaovermb = hp.alpha / train.n 
     end
