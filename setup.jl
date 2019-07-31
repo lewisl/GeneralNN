@@ -142,6 +142,21 @@ function setup_model!(mb, hp, nnp, bn, train)
 end
 
 
+# iterate across training examples for batch training
+struct MBrng
+    cnt::Int
+    incr::Int
+end
+
+function mbiter(mb::MBrng, state)
+    up = state + mb.incr
+    hi = up - 1 < mb.cnt ? up - 1 : mb.cnt
+    ret = state < mb.cnt ? (state:hi, up) : nothing # return a range and next state or nothing
+    return ret
+end
+
+Base.iterate(mb::MBrng, state=1) = mbiter(mb::MBrng, state)
+
 ####################################################################
 #  functions to pre-allocate data updated during training loop
 ####################################################################

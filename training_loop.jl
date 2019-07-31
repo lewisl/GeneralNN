@@ -17,7 +17,7 @@ function training_loop!(hp, datalist, mb, nnp, bn, plotdef)
 
     training_time = @elapsed begin # start the cpu clock and begin block for training process
         t = 0  # counter:  number of times parameters will have been updated: minibatches * epochs
-        mbzi = hp.mb_size_in
+        mbszin = hp.mb_size_in
 
         for ep_i = 1:hp.epochs  # loop for "epochs" with counter epoch i as ep_i
             !hp.quiet && println("Start epoch $ep_i")
@@ -25,10 +25,8 @@ function training_loop!(hp, datalist, mb, nnp, bn, plotdef)
 
             if hp.dobatch
 
-                for (b,l) in zip(Iterators.countfrom(1,mbzi),Iterators.countfrom(mbzi,mbzi))
-                    b > train.n && break
-                    colrng = b:(l < train.n ? l : train.n)
-                    hp.mb_size = colrng[end] - b + 1     
+                for colrng in MBrng(train.n, mbszin)  # set setup.jl for definition of iterator
+                    hp.mb_size = size(colrng, 1)   
                     !hp.quiet && println("   Start minibatch for ", colrng)           
                     
                     update_Batch_views!(mb, train, nnp, hp, colrng)  # select data columns for the minibatch   
