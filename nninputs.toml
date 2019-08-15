@@ -1,6 +1,6 @@
 
 epochs =  24
-n_hid = [256,128,64]
+n_hid = [128,64]
 alpha =   0.74
 reg =  "L2"
 maxnorm_lim = [4.0]

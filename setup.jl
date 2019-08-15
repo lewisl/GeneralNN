@@ -308,26 +308,24 @@ end
 
 
 
-### This is really not needed when using views--accomplishes nothing
-###    also doesn't create arrays of subarrays, so wouldn't even work
-# function preallocate_minibatch!(mb::Batch_view, nnp, hp)
+function preallocate_minibatch!(mb::Batch_view, nnp, hp)
+    # feedforward:   minibatch views update the underlying data
+    # TODO put @inbounds back after testing
+    n_layers = nnp.output_layer
 
-#     mb.epsilon = [zeros(nnp.ks[l], hp.mb_size) for l in 1:nnp.output_layer]
-#     mb.grad = deepcopy(mb.epsilon)   
+    # we don't need all of these depending on minibatches and batchnorm, but it's very little memory
+    mb.a = Array{SubArray{}}(undef, n_layers)
+    mb.targets = view([0.0],1:1)
+    mb.z = Array{SubArray{}}(undef, n_layers)
+    mb.z_norm = Array{SubArray{}}(undef, n_layers)
+    mb.delta_z_norm = Array{SubArray{}}(undef, n_layers)
+    mb.delta_z = Array{SubArray{}}(undef, n_layers)
+    mb.grad = Array{SubArray{}}(undef, n_layers)
+    mb.epsilon = Array{SubArray{}}(undef, n_layers)
+    mb.dropout_random = Array{SubArray{}}(undef, n_layers)
+    mb.dropout_mask_units = Array{SubArray{}}(undef, n_layers)
 
-#     if hp.do_batch_norm
-#         mb.delta_z_norm = deepcopy(mb.epsilon)  # similar z
-#         mb.delta_z = deepcopy(mb.epsilon)       # similar z
-#     end
-
-#     if hp.dropout
-#         mb.dropout_random = deepcopy(mb.epsilon)
-#         push!(mb.dropout_mask_units,fill(true,(2,2))) # for input layer, not used
-#         for item in mb.dropout_random[2:end]
-#             push!(mb.dropout_mask_units,fill(true,size(item)))
-#         end
-#     end
-# end
+end
 
 
 # method that MIGHT work with slices?
@@ -337,15 +335,16 @@ function preallocate_minibatch!(mb::Batch_slice, nnp, hp)
     mb.a = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]  
     mb.targets = zeros(nnp.ks[nnp.output_layer], ncols)
     mb.z = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]
-    mb.z_norm  = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]
-    mb.delta_z_norm  = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]
-    mb.delta_z  = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]
+    # mb.z_norm  = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]
+    # mb.delta_z_norm  = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]
+    # mb.delta_z  = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]
     mb.grad  = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]
     mb.epsilon  = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]
-    mb.dropout_random  = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]
-    mb.dropout_mask_units  = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]
+    # mb.dropout_random  = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]
+    # mb.dropout_mask_units  = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]
 
     if hp.do_batch_norm
+        mb.z_norm  = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]
         mb.delta_z_norm = deepcopy(mb.epsilon)  # similar z
         mb.delta_z = deepcopy(mb.epsilon)       # similar z
     end

@@ -224,28 +224,34 @@ function update_Batch_views!(mb::Batch_view, train::Model_data, nnp::NN_weights,
     mb_cols = 1:hp.mb_size  # only reason for this is that the last minibatch might be smaller
 
     # feedforward:   minibatch views update the underlying data
-    @inbounds mb.a = [view(train.a[i],:,colrng) for i = 1:n_layers]  # sel is random order of example indices
-    @inbounds mb.targets = view(train.targets,:,colrng)  # only at the output layer
-    @inbounds mb.z = [view(train.z[i],:,colrng) for i = 1:n_layers]
+    # TODO put @inbounds back after testing
+    for i = 1:n_layers
+        mb.a[i] = view(train.a[i],:,colrng)   # sel is random order of example indices
+        mb.z[i] = view(train.z[i],:,colrng) 
+        mb.epsilon[i] = view(train.epsilon[i], :, mb_cols) # NOTE: use mb_cols!
+        mb.grad[i] = view(train.grad[i], :, mb_cols) 
+    end
+    mb.targets = view(train.targets,:,colrng)  # only at the output layer
 
     # training / backprop:  don't need this data and only use minibatch size
     # TEST
-    @inbounds mb.epsilon = [view(train.epsilon[i], :, mb_cols) for i = 1:n_layers]
-    @inbounds mb.grad = [view(train.grad[i], :, mb_cols) for i = 1:n_layers]
     
-
     if hp.do_batch_norm
-        # feedforward
-        @inbounds mb.z_norm = [view(train.z_norm[i],:, colrng) for i = 1:n_layers]
-        # backprop
-        @inbounds mb.delta_z_norm = [view(train.delta_z_norm[i], :, mb_cols) for i = 1:n_layers]
-        @inbounds mb.delta_z = [view(train.delta_z[i], :, mb_cols) for i = 1:n_layers]
+        for i = 1:n_layers
+            # feedforward
+            mb.z_norm[i] = view(train.z_norm[i],:, colrng) 
+            # backprop
+            mb.delta_z_norm[i] = view(train.delta_z_norm[i], :, mb_cols) 
+            mb.delta_z[i] = view(train.delta_z[i], :, mb_cols) 
+        end
     end
 
     if hp.dropout
-        # training:  applied to feedforward, but only for training
-        @inbounds mb.dropout_random = [view(train.dropout_random[i], :, mb_cols) for i = 1:n_layers]
-        @inbounds mb.dropout_mask_units = [view(train.dropout_mask_units[i], :, mb_cols) for i = 1:n_layers]
+        for i = 1:n_layers
+            # training:  applied to feedforward, but only for training
+            mb.dropout_random[i] = view(train.dropout_random[i], :, mb_cols)
+            mb.dropout_mask_units[i] = view(train.dropout_mask_units[i], :, mb_cols)
+        end
     end
 
 end
