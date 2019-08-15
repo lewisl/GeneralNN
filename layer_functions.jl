@@ -1,3 +1,6 @@
+# cost functions, layer functions: activation, layer functions:  gradient,
+#       Classifiers, Optimization, Regularization
+
 
 ###############################################################################
 #  cost functions
@@ -35,15 +38,23 @@ end
 ###########################################################################
 
 
-
 # two methods for linear layer units, with bias and without
-function affine!(z, a, theta, bias)  # with bias
-    @inbounds z[:] = theta * a .+ bias
-end
-
+# function affine!(z, a, theta, bias)  # with bias
+#     @inbounds z[:] = theta * a .+ bias
+# end
 
 function affine!(z, a, theta)  # no bias
-    @inbounds z[:] = theta * a
+    mul!(z, theta, a)
+end
+
+function affine!(z, a, theta, bias)
+    # this is really fast with NO allocations!
+    mul!(z, theta, a)
+    for j = axes(z,2)
+        for i = axes(bias, 1)
+            z[i,j] += bias[i]
+        end
+    end
 end
 
 

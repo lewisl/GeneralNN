@@ -1,13 +1,13 @@
 
 epochs =  24
-n_hid = [80]
+n_hid = [256,128,64]
 alpha =   0.74
 reg =  "L2"
 maxnorm_lim = [4.0]
 lambda =  0.000191
 learn_decay = [0.5,4.0]
 mb_size_in =   50
-norm_mode =   "none"
+norm_mode =   ""
 dobatch = true
 do_batch_norm =  true
 opt =   "adam"
@@ -16,7 +16,7 @@ units =  "relu"
 classify = "softmax"
 dropout = false
 droplim = [1.0,0.8,1.0]
-plots = ["learning", "test", "train"]
+plots = ["none"]
 plot_now = true
 quiet = true
 initializer = "xavier"

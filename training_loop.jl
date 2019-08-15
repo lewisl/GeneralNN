@@ -183,19 +183,24 @@ function update_parameters!(nnp, hp, bn)
 end
 
 
-function accuracy(targets, preds)
+function accuracy(targets, preds)  # this is NOT very general
     if size(targets,1) > 1
         # targetmax = ind2sub(size(targets),vec(findmax(targets,1)[2]))[1]
         # predmax = ind2sub(size(preds),vec(findmax(preds,1)[2]))[1]
-        targetmax = vec(map(x -> x[1], argmax(targets,dims=1)));
-        predmax = vec(map(x -> x[1], argmax(preds,dims=1)));
+        targetmax = getvalidx(targets)     # vec(map(x -> x[1], argmax(targets,dims=1)));
+        predmax =   getvalidx(preds)       # vec(map(x -> x[1], argmax(preds,dims=1)));
         fracright = mean(targetmax .== predmax)
     else
-        # works because single output unit is sigmoid
+        # works because single output unit is classification probability
         choices = [j > 0.5 ? 1.0 : 0.0 for j in preds]
         fracright = mean(choices .== targets)
     end
     return fracright
+end
+
+
+function getvalidx(arr, argfunc=argmax)  # could also be argmin
+    return vec(map(x -> x[1], argfunc(arr, dims=1)))
 end
 
 
