@@ -1,4 +1,6 @@
 #DONE
+#   refactor nnp to nnw as nn_parameters now called nn_weights
+
 
 #BRANCH TODO: layer-based API 
 #   change to layer based api, with simplified api as alternate front-end
@@ -10,7 +12,9 @@
 # LSTM networks
 
 #TODO
-#   digit plots fail unless cost or learning plotted first
+#   make sure we have a valid default for lambda
+#   make sure we have default for initializer: xavier
+#   evolve parameters without reloading data, etc.
 #   try to speed up saving the plot stats
 #   use goodness function to hold either accuracy or r_squared
 #   implement incremental load and train for massive datasets?
@@ -18,13 +22,10 @@
         #   are we scaling units during training?
 #   set an explicit data size variable for both test and train for preallocation?
 #   accuracy for logistic or other single class classifiers should allow -1 or 0 for "bad"
-#   TODO use bias in the output layer with no batch norm?  YES
 #   implement precision and recall
 #   stats on individual regression parameters
-#   separate reg from the cost calculation and the parameter updates
 #   do check on existence of matfname file and that type is .mat
 #   implement one vs. all for logistic classification with multiple classes
-#   factor out extract data--provide as utility; start process with datafiles
 #   is dropout dropping the same units on backprop as feedfwd?  seems like it but results are still poor
 #   set a directory for training stats (keep out of code project directory)
 #   try different versions of ensemble predictions_vector

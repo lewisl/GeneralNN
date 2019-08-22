@@ -1,9 +1,8 @@
 
 using StatsBase
 
-# do minibatch training:  this method accepts both train, mb, bn
-function training_loop!(hp, datalist, mb, nnp, bn, plotdef)
-!hp.quiet && println("training_loop(hp, datalist, mb, nnp, bn, plotdef)")
+function training_loop!(hp, datalist, mb, nnw, bn, plotdef)
+!hp.quiet && println("training_loop(hp, datalist, mb, nnw, bn, plotdef)")
     if size(datalist, 1) == 1
         train = datalist[1]
         dotest = false
@@ -23,21 +22,21 @@ function training_loop!(hp, datalist, mb, nnp, bn, plotdef)
             !hp.quiet && println("Start epoch $ep_i")
             hp.do_learn_decay && step_learn_decay!(hp, ep_i)
 
-            if hp.dobatch
+            if hp.dobatch  # minibatch training
 
                 for colrng in MBrng(train.n, mbszin)  # set setup.jl for definition of iterator
                     hp.mb_size = size(colrng, 1)   
                     !hp.quiet && println("   Start minibatch for ", colrng)           
                     
-                    update_Batch_views!(mb, train, nnp, hp, colrng)  # select data columns for the minibatch   
+                    update_batch_views!(mb, train, nnw, hp, colrng)  # select data columns for the minibatch   
 
                     t += 1   # number of executions of minibatch loop
-                    train_one_step!(mb, nnp, bn, hp, t)
+                    train_one_step!(mb, nnw, bn, hp, t)
 
                     # stats for each minibatch--expensive!!!
                     hp.plotperbatch && begin
-                        gather_stats!(plotdef, "train", t, train, nnp, bn, cost_function, hp)  
-                        dotest && gather_stats!(plotdef, "test", t, test, nnp, bn, cost_function, hp) 
+                        gather_stats!(plotdef, "train", t, train, nnw, bn, cost_function, hp)  
+                        dotest && gather_stats!(plotdef, "test", t, test, nnw, bn, cost_function, hp) 
                     end
 
                 end # mini-batch loop
@@ -45,14 +44,14 @@ function training_loop!(hp, datalist, mb, nnp, bn, plotdef)
             else
 
                 t += 1
-                train_one_step!(train, nnp, bn, hp, t)
+                train_one_step!(train, nnw, bn, hp, t)
 
             end
 
             # stats across all mini-batches of one epoch (e.g.--no stats per minibatch)
             hp.plotperepoch && begin
-                gather_stats!(plotdef, "train", ep_i, train, nnp, bn, cost_function, hp)  
-                dotest && gather_stats!(plotdef, "test", ep_i, test, nnp, bn,cost_function, hp) 
+                gather_stats!(plotdef, "train", ep_i, train, nnw, bn, cost_function, hp)  
+                dotest && gather_stats!(plotdef, "test", ep_i, test, nnw, bn,cost_function, hp) 
             end
 
         end # epoch loop
@@ -62,12 +61,12 @@ function training_loop!(hp, datalist, mb, nnp, bn, plotdef)
 end # function training_loop
 
 
-function train_one_step!(dat, nnp, bn, hp, t)
+function train_one_step!(dat, nnw, bn, hp, t)
 
-    feedfwd!(dat, nnp, bn,  hp)  # for all layers
-    backprop!(nnp, bn, dat, hp)  # for all layers   
-    optimization_function!(nnp, hp, t)
-    update_parameters!(nnp, hp, bn)
+    feedfwd!(dat, nnw, bn,  hp)  # for all layers
+    backprop!(nnw, bn, dat, hp)  # for all layers   
+    optimization_function!(nnw, hp, t)
+    update_parameters!(nnw, hp, bn)
 
 end
 
@@ -79,14 +78,14 @@ end
 
 
 """
-function feedfwd!(dat, nnp, bn, do_batch_norm; istrain)
+function feedfwd!(dat, nnw, bn, do_batch_norm; istrain)
     modifies a, a_wb, z in place to reduce memory allocations
     send it all of the data or a mini-batch
 
     feed forward from inputs to output layer predictions
 """
-function feedfwd!(dat::Union{Batch_view,Batch_slice,Model_data}, nnp, bn,  hp; istrain=true)
-!hp.quiet && println("feedfwd!(dat::Union{Batch_view,Batch_slice,Model_data}, nnp, bn,  hp; istrain=true)")
+function feedfwd!(dat::Union{Batch_view,Batch_slice,Model_data}, nnw, bn,  hp; istrain=true)
+!hp.quiet && println("feedfwd!(dat::Union{Batch_view,Batch_slice,Model_data}, nnw, bn,  hp; istrain=true)")
 
     # dropout for input layer (if probability < 1.0)
     if istrain && hp.dropout && (hp.droplim[1] < 1.0)
@@ -94,12 +93,12 @@ function feedfwd!(dat::Union{Batch_view,Batch_slice,Model_data}, nnp, bn,  hp; i
     end
 
     # hidden layers
-    @fastmath for hl = 2:nnp.output_layer-1  
+    @fastmath for hl = 2:nnw.output_layer-1  
         if hp.do_batch_norm 
-            affine!(dat.z[hl], dat.a[hl-1], nnp.theta[hl])
+            affine!(dat.z[hl], dat.a[hl-1], nnw.theta[hl])
             batch_norm_fwd!(hp, bn, dat, hl, istrain)
         else
-            affine!(dat.z[hl], dat.a[hl-1], nnp.theta[hl], nnp.bias[hl])
+            affine!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
         end
 
         unit_function!(dat.a[hl], dat.z[hl])
@@ -110,36 +109,36 @@ function feedfwd!(dat::Union{Batch_view,Batch_slice,Model_data}, nnp, bn,  hp; i
     end
 
     # output layer
-    @inbounds affine!(dat.z[nnp.output_layer], dat.a[nnp.output_layer-1], 
-                      nnp.theta[nnp.output_layer], nnp.bias[nnp.output_layer])
+    @inbounds affine!(dat.z[nnw.output_layer], dat.a[nnw.output_layer-1], 
+                      nnw.theta[nnw.output_layer], nnw.bias[nnw.output_layer])
 
-    classify_function!(dat.a[nnp.output_layer], dat.z[nnp.output_layer])  # a = activations = predictions
+    classify_function!(dat.a[nnw.output_layer], dat.z[nnw.output_layer])  # a = activations = predictions
 
 end
 
 
 """
-function backprop!(nnp, dat, do_batch_norm)
-    Argument nnp.delta_w holds the computed gradients for weights, delta_b for bias
-    Modifies dat.epsilon, nnp.delta_w, nnp.delta_b in place--caller uses nnp.delta_w, nnp.delta_b
+function backprop!(nnw, dat, do_batch_norm)
+    Argument nnw.delta_w holds the computed gradients for weights, delta_b for bias
+    Modifies dat.epsilon, nnw.delta_w, nnw.delta_b in place--caller uses nnw.delta_w, nnw.delta_b
     Use for training iterations
     Send it all of the data or a mini-batch
-    Intermediate storage of dat.a, dat.z, dat.epsilon, nnp.delta_w, nnp.delta_b reduces memory allocations
+    Intermediate storage of dat.a, dat.z, dat.epsilon, nnw.delta_w, nnw.delta_b reduces memory allocations
 """
-function backprop!(nnp, bn, dat, hp)
-!hp.quiet && println("backprop!(nnp, bn, dat, hp)")
+function backprop!(nnw, bn, dat, hp)
+!hp.quiet && println("backprop!(nnw, bn, dat, hp)")
 
     # for output layer if cross_entropy_cost or mean squared error???
-    dat.epsilon[nnp.output_layer][:] = dat.a[nnp.output_layer] .- dat.targets  
-    !hp.quiet && println("What is epsilon of output layer? ", mean(dat.epsilon[nnp.output_layer]))
-    @fastmath nnp.delta_w[nnp.output_layer][:] = dat.epsilon[nnp.output_layer] * dat.a[nnp.output_layer-1]' # 2nd term is effectively the grad for error   
-    @fastmath nnp.delta_b[nnp.output_layer][:] = sum(dat.epsilon[nnp.output_layer],dims=2)  
+    dat.epsilon[nnw.output_layer][:] = dat.a[nnw.output_layer] .- dat.targets  
+    !hp.quiet && println("What is epsilon of output layer? ", mean(dat.epsilon[nnw.output_layer]))
+    @fastmath nnw.delta_w[nnw.output_layer][:] = dat.epsilon[nnw.output_layer] * dat.a[nnw.output_layer-1]' # 2nd term is effectively the grad for error   
+    @fastmath nnw.delta_b[nnw.output_layer][:] = sum(dat.epsilon[nnw.output_layer],dims=2)  
 
     # loop over hidden layers
-    @fastmath for hl = (nnp.output_layer - 1):-1:2  
+    @fastmath for hl = (nnw.output_layer - 1):-1:2  
         gradient_function!(dat.grad[hl], dat.z[hl])
         !hp.quiet && println("What is gradient $hl? ", mean(dat.grad[hl]))
-        @inbounds dat.epsilon[hl][:] = nnp.theta[hl+1]' * dat.epsilon[hl+1] .* dat.grad[hl] 
+        @inbounds dat.epsilon[hl][:] = nnw.theta[hl+1]' * dat.epsilon[hl+1] .* dat.grad[hl] 
         !hp.quiet && println("what is epsilon $hl? ", mean(dat.epsilon[hl]))
 
         if hp.dropout && (hp.droplim[hl] < 1.0)
@@ -147,35 +146,35 @@ function backprop!(nnp, bn, dat, hp)
         end
 
         if hp.do_batch_norm
-            batch_norm_back!(nnp, dat, bn, hl, hp)
-            @inbounds nnp.delta_w[hl][:] = dat.delta_z[hl] * dat.a[hl-1]'  
+            batch_norm_back!(nnw, dat, bn, hl, hp)
+            @inbounds nnw.delta_w[hl][:] = dat.delta_z[hl] * dat.a[hl-1]'  
 
         else
-            @inbounds nnp.delta_w[hl][:] = dat.epsilon[hl] * dat.a[hl-1]'  
-            @inbounds nnp.delta_b[hl][:] = sum(dat.epsilon[hl],dims=2)  #  times a column of 1's = sum(row)
+            @inbounds nnw.delta_w[hl][:] = dat.epsilon[hl] * dat.a[hl-1]'  
+            @inbounds nnw.delta_b[hl][:] = sum(dat.epsilon[hl],dims=2)  #  times a column of 1's = sum(row)
         end
 
-        !hp.quiet && println("what is delta_w $hl? ", mean(nnp.delta_w[hl]))
-        !hp.quiet && println("what is delta_b $hl? ", mean(nnp.delta_w[hl]))
+        !hp.quiet && println("what is delta_w $hl? ", mean(nnw.delta_w[hl]))
+        !hp.quiet && println("what is delta_b $hl? ", mean(nnw.delta_w[hl]))
 
     end
 
 end
 
 
-function update_parameters!(nnp, hp, bn)
-!hp.quiet && println("update_parameters!(nnp, hp, bn)")
+function update_parameters!(nnw, hp, bn)
+!hp.quiet && println("update_parameters!(nnw, hp, bn)")
     # update weights, bias, and batch_norm parameters
-    @fastmath for hl = 2:nnp.output_layer       
-        @inbounds nnp.theta[hl] .= nnp.theta[hl] .- (hp.alphaovermb .* nnp.delta_w[hl])
+    @fastmath for hl = 2:nnw.output_layer       
+        @inbounds nnw.theta[hl] .= nnw.theta[hl] .- (hp.alphaovermb .* nnw.delta_w[hl])
         
-        reg_function!(nnp, hp, hl)  # regularize function per setup.jl setup_functions!
+        reg_function!(nnw, hp, hl)  # regularize function per setup.jl setup_functions!
 
         if hp.do_batch_norm  # update batch normalization parameters
             @inbounds bn.gam[hl][:] .= bn.gam[hl][:] .- (hp.alphaovermb .* bn.delta_gam[hl])
             @inbounds bn.bet[hl][:] .= bn.bet[hl][:] .- (hp.alphaovermb .* bn.delta_bet[hl])
         else  # update bias
-            @inbounds nnp.bias[hl] .= nnp.bias[hl] .- (hp.alphaovermb .* nnp.delta_b[hl])
+            @inbounds nnw.bias[hl] .= nnw.bias[hl] .- (hp.alphaovermb .* nnw.delta_b[hl])
         end
 
     end  
@@ -192,7 +191,11 @@ function accuracy(targets, preds)  # this is NOT very general
         fracright = mean(targetmax .== predmax)
     else
         # works because single output unit is classification probability
-        choices = [j > 0.5 ? 1.0 : 0.0 for j in preds]
+        # choices = [j > 0.5 ? 1.0 : 0.0 for j in preds]
+        choices = zeros(size(preds))
+        for i = eachindex(choices)
+            choices[i] = preds[i] > 0.5 ? 1.0 : 0.0
+        end
         fracright = mean(choices .== targets)
     end
     return fracright
@@ -214,13 +217,13 @@ end
 """
     Create views for the training data in minibatches
 """
-function update_Batch_views!(mb::Batch_view, train::Model_data, nnp::NN_weights, 
+function update_batch_views!(mb::Batch_view, train::Model_data, nnw::NN_weights, 
     hp::Hyper_parameters, colrng::UnitRange{Int64})
-!hp.quiet && println("update_Batch_views!(mb::Batch_view, train::Model_data, nnp::NN_weights, 
+!hp.quiet && println("update_batch_views!(mb::Batch_view, train::Model_data, nnw::NN_weights, 
     hp::Hyper_parameters, colrng::UnitRange{Int64})")
 
     # colrng refers to the set of training examples included in the minibatch
-    n_layers = nnp.output_layer
+    n_layers = nnw.output_layer
     mb_cols = 1:hp.mb_size  # only reason for this is that the last minibatch might be smaller
 
     # feedforward:   minibatch views update the underlying data
@@ -276,8 +279,8 @@ function batch_norm_fwd!(hp, bn, dat, hl, istrain=true)
 end
 
 
-function batch_norm_back!(nnp, dat, bn, hl, hp)
-!hp.quiet && println("batch_norm_back!(nnp, dat, bn, hl, hp)")
+function batch_norm_back!(nnw, dat, bn, hl, hp)
+!hp.quiet && println("batch_norm_back!(nnw, dat, bn, hl, hp)")
     mb = hp.mb_size
     @inbounds bn.delta_bet[hl][:] = sum(dat.epsilon[hl], dims=2)
     @inbounds bn.delta_gam[hl][:] = sum(dat.epsilon[hl] .* dat.z_norm[hl], dims=2)
@@ -293,19 +296,19 @@ function batch_norm_back!(nnp, dat, bn, hl, hp)
 end
 
 # this method includes bn argument
-function gather_stats!(plotdef, train_or_test, i, dat, nnp, bn, cost_function, hp)
+function gather_stats!(plotdef, train_or_test, i, dat, nnw, bn, cost_function, hp)
 
     if plotdef["plot_switch"][train_or_test]
-        feedfwd!(dat, nnp, bn, hp, istrain=false)
+        feedfwd!(dat, nnw, bn, hp, istrain=false)
 
         if plotdef["plot_switch"]["cost"]
             plotdef["cost_history"][i, plotdef[train_or_test]] = cost_function(dat.targets,
-                dat.a[nnp.output_layer], dat.n, nnp.theta, hp, nnp.output_layer)
+                dat.a[nnw.output_layer], dat.n, nnw.theta, hp, nnw.output_layer)
         end
         if plotdef["plot_switch"]["learning"]
             plotdef["accuracy"][i, plotdef[train_or_test]] = (  hp.classify == "regression"
-                    ? r_squared(dat.targets, dat.a[nnp.output_layer])
-                    : accuracy(dat.targets, dat.a[nnp.output_layer])  )
+                    ? r_squared(dat.targets, dat.a[nnw.output_layer])
+                    : accuracy(dat.targets, dat.a[nnw.output_layer])  )
         end
     end
 
@@ -317,13 +320,13 @@ end
 ##############################################################################
 
 # # This method dispatches on minibatches that are slices
-# function update_Batch_views!(mb::Batch_slice, train::Model_data, nnp::NN_weights, 
+# function update_batch_views!(mb::Batch_slice, train::Model_data, nnw::NN_weights, 
 #     hp::Hyper_parameters, colrng::UnitRange{Int64})
-# !hp.quiet && println("update_Batch_views!(mb::Batch_slice, train::Model_data, nnp::NN_weights, 
+# !hp.quiet && println("update_batch_views!(mb::Batch_slice, train::Model_data, nnw::NN_weights, 
 #     hp::Hyper_parameters, colrng::UnitRange{Int64})")
 
 #     # colrng refers to the set of training examples included in the minibatch
-#     n_layers = nnp.output_layer
+#     n_layers = nnw.output_layer
 #     mb_cols = 1:hp.mb_size  # only reason for this is that the last minibatch might be smaller
 
 #     # feedforward:   minibatch slices update the underlying data

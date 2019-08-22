@@ -46,7 +46,7 @@ function normalize_inputs!(inputs, norm_factors, norm_mode)
 end
 
 
-function setup_model!(mb, hp, nnp, bn, train)
+function setup_model!(mb, hp, nnw, bn, train)
     !hp.quiet && println("Setup_model beginning")
     !hp.quiet && println("hp.dobatch: ", hp.dobatch)
 
@@ -56,7 +56,7 @@ function setup_model!(mb, hp, nnp, bn, train)
 
     #setup mini-batch
     if hp.dobatch
-        @warn("Be sure to shuffle training data when using minibatches.  Use utility function shuffle_data! or your own.")
+        @info("Be sure to shuffle training data when using minibatches.  Use utility function shuffle_data! or your own.")
         if hp.mb_size_in < 1
             hp.mb_size = hp.mb_size_in = train.n  
             hp.dobatch = false    # user provided incompatible inputs
@@ -82,6 +82,8 @@ function setup_model!(mb, hp, nnp, bn, train)
         else
             true
         end
+
+    hp.do_learn_decay && (hp.learn_decay = [learn_decay[1], floor(learn_decay[2])])
 
     # dropout parameters: droplim is in hp (Hyper_parameters),
     #    dropout_random and dropout_mask_units are in mb or train (Model_data)
@@ -127,45 +129,140 @@ function setup_model!(mb, hp, nnp, bn, train)
         end
     end
 
-!hp.quiet && println("end of setup_model: hp.dobatch: ", hp.dobatch)
+    !hp.quiet && println("end of setup_model: hp.dobatch: ", hp.dobatch)
 
 end
 
 
-# iterate across training examples for batch training
-struct MBrng
-    cnt::Int
-    incr::Int
+# iterator for minibatches of training examples
+    struct MBrng
+        cnt::Int
+        incr::Int
+    end
+
+    function mbiter(mb::MBrng, state)
+        up = state + mb.incr
+        hi = up - 1 < mb.cnt ? up - 1 : mb.cnt
+        ret = state < mb.cnt ? (state:hi, up) : nothing # return tuple of range and next state, or nothing--to stop iteration
+        return ret
+    end
+
+    # add iterate method
+    Base.iterate(mb::MBrng, state=1) = mbiter(mb::MBrng, state)
+
+# verify the inputs in the toml file
+
+function args_verify(argsdict)
+    required = [:epochs, :n_hid]
+    all(i -> i in Symbol.(keys(argsdict)), required) || error("Missing a required argument: epochs or n_hid")
+
+    for (k,v) in argsdict
+        checklist = get(valid_toml, Symbol(k), nothing)
+        checklist === nothing && error("Parameter name is not valid: $k")
+
+        for tst in checklist
+            # eval the tst against the value in argsdict
+            result = all(tst.f(v, tst.check)) 
+            warn = get(tst, :warn, false)
+            msg = get(tst, :msg, warn ? "Input argument not ideal: $k: $v" : "Input argument not valid: $k: $v" )
+            !result && (warn ? @warn(msg) : error(msg))
+        end
+    end
 end
 
-function mbiter(mb::MBrng, state)
-    up = state + mb.incr
-    hi = up - 1 < mb.cnt ? up - 1 : mb.cnt
-    ret = state < mb.cnt ? (state:hi, up) : nothing # return a range and next state or nothing
-    return ret
+eqtype(item, check) = typeof(item) == check
+ininterval(item, check) = check[1] .<= item .<= check[2] 
+oneof(item::String, check) = lowercase(item) in check 
+oneof(item::Real, check) = item in check
+lengthle(item, check) = length(item) <= check 
+lengtheq(item, check) = length(item) == check
+lrndecay(item, check) = ininterval(item[1],check[1]) && ininterval(item[2], check[2])
+
+# for plots
+valid_plots = ["learning", "cost", "train", "test", "batch", "epoch"]
+function checkplots(item, _)
+    if length(item) > 1
+        ok1 = all(i -> i in valid_plots, lowercase.(item)) 
+        ok2 = allunique(item) 
+        ok3 = !("batch" in item || "epoch" in item)  # can't have both, ok to have neither
+        ok = all([ok1, ok2, ok3])
+    elseif length(item) == 1
+        ok = item[1] in ["", "none"] 
+    else
+        ok = true
+    end
+    return ok
 end
 
-Base.iterate(mb::MBrng, state=1) = mbiter(mb::MBrng, state)
+# key for each input param; value is list of checks as tuples 
+#     check keys are f=function, check=values, warn can be true--default is false, msg="something"
+#     example:  :alpha =>  [(f=eqtype, check=Float64), (f=ininterval, check=(.000001, 9.0), warn=true)]
+const     valid_toml = Dict(
+          :epochs => [(f=eqtype, check=Int), (f=ininterval, check=(1,9999))],
+          :n_hid =>  [(f=eqtype, check=Array{Int, 1}), (f=lengthle, check=11), 
+                       (f=ininterval, check=(1,8192))],  # empty is only way to say none                    
+          :alpha =>  [(f=eqtype, check=Float64), (f=ininterval, check=(.000001, 9.0), warn=true)],
+          :reg =>  [(f=oneof, check=["l2", "l1", "maxnorm", "", "none"])],
+          :maxnorm_lim =>  [(f=eqtype, check=Array{Float64, 1})],
+          :lambda =>  [(f=eqtype, check=Float64), (f=ininterval, check=(0.0, 5.0))],
+          :learn_decay =>  [(f=eqtype, check=Array{Float64, 1}), (f=lengtheq, check=2), 
+                            (f=lrndecay, check=((.1,.99), (1.0,20.0)))],
+          :mb_size_in =>  [(f=eqtype, check=Int), (f=ininterval, check=(0,1000))],
+          :norm_mode => [(f=oneof, check=["standard", "minmax", "", "none"])] ,
+          :dobatch =>  [(f=eqtype, check=Bool)],
+          :do_batch_norm =>  [(f=eqtype, check=Bool)],
+          :opt =>  [(f=oneof, check=["momentum", "rmsprop", "adam", "", "none"])],
+          :opt_params =>  [(f=eqtype, check=Array{Float64,1}), (f=ininterval, check=(0.5,1.0))],
+          :units =>  [(f=oneof, check=["sigmoid", "l_relu", "relu", "tanh"]), 
+                      (f=oneof, check=["l_relu", "relu"], warn=true, 
+                       msg="Better results obtained with relu using input and/or batch normalization. Proceeding...")],
+          :classify => [(f=oneof, check=["softmax", "sigmoid", "logistic", "regression"])] ,
+          :dropout =>  [(f=eqtype, check=Bool)],
+          :droplim =>  [(f=eqtype, check=Array{Float64, 1}), (f=ininterval, check=(0.2,1.0))],
+          :plots =>  [(f=checkplots, check=nothing)],
+          :plot_now =>  [(f=eqtype, check=Bool)],
+          :quiet =>  [(f=eqtype, check=Bool)],
+          :initializer => [(f=oneof, check=["xavier", "uniform", "normal", "zero"], warn=true, 
+                            msg="Setting to default: xavier")] ,
+          :scale_init =>  [(f=eqtype, check=Float64)],
+          :bias_initializer => [(f=eqtype, check=Float64, warn=true, msg="Setting to default 0.0"),
+                                (f=ininterval, check=(0.0,1.0), warn=true, msg="Setting to default 0.0")],
+          :sparse =>  [(f=eqtype, check=Bool)]
+        )
+
+
+
+function build_hyper_parameters(argsdict)
+    # assumes args have already been verified
+
+    hp = Hyper_parameters()  # hyper_parameters constructor:  sets defaults
+
+    for (k,v) in argsdict
+        setproperty!(hp, Symbol(k), v)
+    end
+
+    return hp
+end
 
 ####################################################################
 #  functions to pre-allocate data updated during training loop
 ####################################################################
 
 # use for test and training data
-function preallocate_data!(dat, nnp, n, hp; istrain=true)
+function preallocate_data!(dat, nnw, n, hp; istrain=true)
 
     # feedforward
     dat.a = [dat.inputs]  # allocates only tiny memory--it's a reference
     dat.z = [dat.inputs] # not used for input layer  TODO--this permeates the code but not needed
     if hp.sparse
-        for i = 2:nnp.output_layer  
-            push!(dat.z, spzeros(nnp.ks[i], n, 0.1))
-            push!(dat.a, spzeros(nnp.ks[i], n, 0.1))  #  and up...  ...output layer set after loop
+        for i = 2:nnw.output_layer  
+            push!(dat.z, spzeros(nnw.ks[i], n, 0.1))
+            push!(dat.a, spzeros(nnw.ks[i], n, 0.1))  #  and up...  ...output layer set after loop
         end
     else
-        for i = 2:nnp.output_layer  
-            push!(dat.z, zeros(nnp.ks[i], n))
-            push!(dat.a, zeros(nnp.ks[i], n))  #  and up...  ...output layer set after loop
+        for i = 2:nnw.output_layer  
+            push!(dat.z, zeros(nnw.ks[i], n))
+            push!(dat.a, zeros(nnw.ks[i], n))  #  and up...  ...output layer set after loop
         end
     end
 
@@ -188,7 +285,7 @@ function preallocate_data!(dat, nnp, n, hp; istrain=true)
         dat.z_norm = deepcopy(dat.z)
         # backprop
         dat.delta_z_norm = deepcopy(dat.z)
-        # preallocate_batchnorm!(bn, mb, nnp.ks)
+        # preallocate_batchnorm!(bn, mb, nnw.ks)
     end
 
     # backprop / training
@@ -200,7 +297,7 @@ function preallocate_data!(dat, nnp, n, hp; istrain=true)
 end
 
 
-function preallocate_nn_params!(nnp, hp, in_k, n, out_k)
+function preallocate_nn_weights!(nnw, hp, in_k, n, out_k)
     # initialize and pre-allocate data structures to hold neural net training data
     # theta = weight matrices for all calculated layers (e.g., not the input layer)
     # bias = bias term used for every layer but input
@@ -213,79 +310,79 @@ function preallocate_nn_params!(nnp, hp, in_k, n, out_k)
     #    and columns are the inputs from the layer below
 
     # layers
-    nnp.output_layer = 2 + size(hp.n_hid, 1) # input layer is 1, output layer is highest value
-    nnp.ks = [in_k, hp.n_hid..., out_k]       # no. of output units by layer
+    nnw.output_layer = 2 + size(hp.n_hid, 1) # input layer is 1, output layer is highest value
+    nnw.ks = [in_k, hp.n_hid..., out_k]       # no. of output units by layer
 
     # set dimensions of the linear weights for each layer
-    push!(nnp.theta_dims, (in_k, 1)) # weight dimensions for the input layer -- if using array, must splat as arg
-    for l = 2:nnp.output_layer  
-        push!(nnp.theta_dims, (nnp.ks[l], nnp.ks[l-1]))
+    push!(nnw.theta_dims, (in_k, 1)) # weight dimensions for the input layer -- if using array, must splat as arg
+    for l = 2:nnw.output_layer  
+        push!(nnw.theta_dims, (nnw.ks[l], nnw.ks[l-1]))
     end
 
     # initialize the linear weights
-    nnp.theta = [zeros(2,2)] # layer 1 not used
+    nnw.theta = [zeros(2,2)] # layer 1 not used
 
     # Xavier initialization--current best practice for relu
     if hp.initializer == "xavier"
-        xavier_initialize!(nnp, hp.scale_init)
+        xavier_initialize!(nnw, hp.scale_init)
     elseif hp.initializer == "uniform"
-        uniform_initialize!(nnp. hp.scale_init)
+        uniform_initialize!(nnw. hp.scale_init)
     elseif hp.initializer == "normal"
-        normal_initialize!(nnp, hp.scale_init)
+        normal_initialize!(nnw, hp.scale_init)
     else # using zeros generally produces poor results
-        for l = 2:nnp.output_layer
-            push!(nnp.theta, zeros(nnp.theta_dims[l])) # sqrt of no. of input units
+        for l = 2:nnw.output_layer
+            push!(nnw.theta, zeros(nnw.theta_dims[l])) # sqrt of no. of input units
         end
     end
 
     # bias initialization: small positive values can improve convergence
-    nnp.bias = 
+    nnw.bias = 
         if hp.bias_initializer == 0.0
-            bias_zeros(nnp.ks)  
+            bias_zeros(nnw.ks)  
         elseif hp.bias_initializer == 1.0
-            bias_ones(nnp.ks)
+            bias_ones(nnw.ks)
         elseif 0.0 < hp.bias_initializer < 1.0
-            bias_val(hp.bias_initializer, nnp.ks)
+            bias_val(hp.bias_initializer, nnw.ks)
         elseif np.bias_initializer == 99.9
-            bias_rand(nnp.ks)
+            bias_rand(nnw.ks)
         else
-            bias_zeros(nnp.ks)
+            bias_zeros(nnw.ks)
         end
 
     # structure of gradient matches theta
-    nnp.delta_w = deepcopy(nnp.theta)
-    nnp.delta_b = deepcopy(nnp.bias)
+    nnw.delta_w = deepcopy(nnw.theta)
+    nnw.delta_b = deepcopy(nnw.bias)
 
     # initialize gradient, 2nd order gradient for Momentum or Adam
     if hp.opt == "momentum" || hp.opt == "adam"
-        nnp.delta_v_w = [zeros(size(a)) for a in nnp.delta_w]
-        nnp.delta_v_b = [zeros(size(a)) for a in nnp.delta_b]
+        nnw.delta_v_w = [zeros(size(a)) for a in nnw.delta_w]
+        nnw.delta_v_b = [zeros(size(a)) for a in nnw.delta_b]
     end
     if hp.opt == "adam"
-        nnp.delta_s_w = [zeros(size(a)) for a in nnp.delta_w]
-        nnp.delta_s_b = [zeros(size(a)) for a in nnp.delta_b]
+        nnw.delta_s_w = [zeros(size(a)) for a in nnw.delta_w]
+        nnw.delta_s_b = [zeros(size(a)) for a in nnw.delta_b]
     end
 
 end
 
 
-function xavier_initialize!(nnp, scale=2.0)
-    for l = 2:nnp.output_layer
-        push!(nnp.theta, randn(nnp.theta_dims[l]...) .* sqrt(scale/nnp.theta_dims[l][2])) # sqrt of no. of input units
+function xavier_initialize!(nnw, scale=2.0)
+    for l = 2:nnw.output_layer
+        push!(nnw.theta, randn(nnw.theta_dims[l]...) .* sqrt(scale/nnw.theta_dims[l][2])) # sqrt of no. of input units
     end
 end
 
 
-function uniform_initialize!(nnp, scale=0.15)
-    for l = 2:nnp.output_layer
-        push!(nnp.theta, (rand(nnp.theta_dims[l]...) .- 0.5) .* (scale/.5)) # sqrt of no. of input units
+function uniform_initialize!(nnw, scale=0.15)
+    for l = 2:nnw.output_layer
+        push!(nnw.theta, (rand(nnw.theta_dims[l]...) .- 0.5) .* (scale/.5)) # sqrt of no. of input units
     end        
 end
 
 
-function normal_initialize!(nnp, scale=0.15)
-    for l = 2:nnp.output_layer
-        push!(nnp.theta, randn(nnp.theta_dims[l]...) .* scale) # sqrt of no. of input units
+function normal_initialize!(nnw, scale=0.15)
+    for l = 2:nnw.output_layer
+        push!(nnw.theta, randn(nnw.theta_dims[l]...) .* scale) # sqrt of no. of input units
     end
 end
 
@@ -306,12 +403,10 @@ function bias_rand(ks)
     [rand(i) .* .1 for i in ks]
 end
 
-
-
-function preallocate_minibatch!(mb::Batch_view, nnp, hp)
+function preallocate_minibatch!(mb::Batch_view, nnw, hp)
     # feedforward:   minibatch views update the underlying data
     # TODO put @inbounds back after testing
-    n_layers = nnp.output_layer
+    n_layers = nnw.output_layer
 
     # we don't need all of these depending on minibatches and batchnorm, but it's very little memory
     mb.a = Array{SubArray{}}(undef, n_layers)
@@ -329,22 +424,22 @@ end
 
 
 # method that MIGHT work with slices?
-function preallocate_minibatch!(mb::Batch_slice, nnp, hp)
+function preallocate_minibatch!(mb::Batch_slice, nnw, hp)
     ncols = hp.mb_size_in
 
-    mb.a = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]  
-    mb.targets = zeros(nnp.ks[nnp.output_layer], ncols)
-    mb.z = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]
-    # mb.z_norm  = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]
-    # mb.delta_z_norm  = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]
-    # mb.delta_z  = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]
-    mb.grad  = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]
-    mb.epsilon  = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]
-    # mb.dropout_random  = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]
-    # mb.dropout_mask_units  = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]
+    mb.a = [zeros(nnw.ks[i],ncols) for i in 1:nnw.output_layer]  
+    mb.targets = zeros(nnw.ks[nnw.output_layer], ncols)
+    mb.z = [zeros(nnw.ks[i],ncols) for i in 1:nnw.output_layer]
+    # mb.z_norm  = [zeros(nnw.ks[i],ncols) for i in 1:nnw.output_layer]
+    # mb.delta_z_norm  = [zeros(nnw.ks[i],ncols) for i in 1:nnw.output_layer]
+    # mb.delta_z  = [zeros(nnw.ks[i],ncols) for i in 1:nnw.output_layer]
+    mb.grad  = [zeros(nnw.ks[i],ncols) for i in 1:nnw.output_layer]
+    mb.epsilon  = [zeros(nnw.ks[i],ncols) for i in 1:nnw.output_layer]
+    # mb.dropout_random  = [zeros(nnw.ks[i],ncols) for i in 1:nnw.output_layer]
+    # mb.dropout_mask_units  = [zeros(nnw.ks[i],ncols) for i in 1:nnw.output_layer]
 
     if hp.do_batch_norm
-        mb.z_norm  = [zeros(nnp.ks[i],ncols) for i in 1:nnp.output_layer]
+        mb.z_norm  = [zeros(nnw.ks[i],ncols) for i in 1:nnw.output_layer]
         mb.delta_z_norm = deepcopy(mb.epsilon)  # similar z
         mb.delta_z = deepcopy(mb.epsilon)       # similar z
     end

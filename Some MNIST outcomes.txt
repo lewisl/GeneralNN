@@ -623,7 +623,7 @@ Final cost test: 4.224141829575289
 Test data accuracy in final 10 iterations:
 0.949 : 0.954 : 0.952 : 0.953 : 0.955 : 0.953 : 0.953 : 0.960 : 0.951 : 0.954 : 
 
-train, test, nnp,bn,hp = train_nn("digits10000by784.mat",20,[50,50],alpha=1.0,mb_size=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0]);
+train, test, nnw,bn,hp = train_nn("digits10000by784.mat",20,[50,50],alpha=1.0,mb_size=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0]);
  **** at 10 stepping down learning rate to 0.5
 Training time: 10.300372102 seconds
 Fraction correct labels predicted training: 0.9999
@@ -633,7 +633,7 @@ Final cost test: 0.3349413219440479
 Test data accuracy in final 10 iterations:
 0.956 : 0.956 : 0.956 : 0.956 : 0.957 : 0.958 : 0.957 : 0.957 : 0.957 : 0.957 : 
 
-train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0],dropout=false, droplim=[0.7,0.9],norm_mode="",lambda=0.001);
+train, test, nnw,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0],dropout=false, droplim=[0.7,0.9],norm_mode="",lambda=0.001);
  **** at 15 stepping down learning rate to 0.5
 Training time: 16.292144014 seconds
 Fraction correct labels predicted training: 0.9994
@@ -644,7 +644,7 @@ Test data accuracy in final 10 iterations:
 0.958 : 0.958 : 0.959 : 0.959 : 0.959 : 0.959 : 0.959 : 0.959 : 0.960 : 0.959 : 
  : 0.959 : 0.960 : 0.960 : 0.960 : 0.960 : 0.961 : 0.961 : 0.961 : 0.961 : 
 
-train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0001);
+train, test, nnw,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0001);
  **** at 15 stepping down learning rate to 0.5
 Training time: 18.202544079 seconds
 Fraction correct labels predicted training: 0.9997
@@ -655,7 +655,7 @@ Test data accuracy in final 10 iterations:
 0.964 : 0.963 : 0.963 : 0.963 : 0.964 : 0.963 : 0.963 : 0.963 : 0.963 : 0.964 : 
 
 
-julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=49,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
+julia> train, test, nnw,bn,hp = train_nn("digits10000by784.mat",30,[50,50],alpha=1.0,mb_size_in=49,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.8,2.0],dropout=true, droplim=[1.0]);
  **** at 15 stepping down learning rate to 0.8
 Training time: 19.28891572 seconds
 Fraction correct labels predicted training: 0.9992
@@ -667,7 +667,7 @@ Test data accuracy in final 10 iterations:
 Press enter to close plot window...
 
 
-julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0001);
+julia> train, test, nnw,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.5,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0001);
  **** at 15 stepping down learning rate to 0.5
 Training time: 18.202544079 seconds
 Fraction correct labels predicted training: 0.9997
@@ -678,7 +678,7 @@ Test data accuracy in final 10 iterations:
 0.964 : 0.963 : 0.963 : 0.963 : 0.964 : 0.963 : 0.963 : 0.963 : 0.963 : 0.964 : 
 
 
-julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",33,[50,50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.6,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0001);
+julia> train, test, nnw,bn,hp = train_nn("digits10000by784.mat",33,[50,50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.6,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0001);
  **** at 16 stepping down learning rate to 0.6
 Training time: 20.650889218 seconds
 Fraction correct labels predicted training: 0.9996
@@ -690,7 +690,7 @@ Test data accuracy in final 10 iterations:
 
 
 
-julia> train, test, nnp,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.6,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0001);
+julia> train, test, nnw,bn,hp = train_nn("digits10000by784.mat",30,[50,50,50],alpha=1.0,mb_size_in=50,opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.6,2.0],dropout=false, droplim=[0.7,0.8,0.9],norm_mode="",lambda=0.0001);
  **** at 15 stepping down learning rate to 0.6
 Training time: 19.277305019 seconds
 Fraction correct labels predicted training: 0.9995
@@ -702,7 +702,7 @@ Test data accuracy in final 10 iterations:
 
 
 ## a great result for a single hidden layer
-train, test, nnp,bn,hp = train_nn("digits10000by784.mat",20,[100],alpha=0.8,mb_size_in=50, opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.4,3.0],dropout=true, droplim=[0.9,0.9,0.9],norm_mode="",lambda=0.00001);
+train, test, nnw,bn,hp = train_nn("digits10000by784.mat",20,[100],alpha=0.8,mb_size_in=50, opt="adam",units="relu",do_batch_norm=true,plots=["Training", "test", "learning"],learn_decay=[0.4,3.0],dropout=true, droplim=[0.9,0.9,0.9],norm_mode="",lambda=0.00001);
  **** at 6 stepping down learning rate to 0.32000000000000006
  **** at 12 stepping down learning rate to 0.12800000000000003
 Training time: 10.437486635 seconds

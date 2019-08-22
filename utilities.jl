@@ -83,16 +83,16 @@ end
 
 """
 
-    function save_params(jld2_fname, nnp, bn, hp; train_preds=[], test_preds=[])
+    function save_params(jld2_fname, nnw, bn, hp; train_preds=[], test_preds=[])
 
-Save the trained parameters: nnp, batch_norm parameters: bn, and hyper parameters: hp,
+Save the trained parameters: nnw, batch_norm parameters: bn, and hyper parameters: hp,
 as a JLD2 file.  Note:  be sure to use the jld2 file extension NOT jld as the formats are 
 not compatible.
 
 Can be used to run the model on prediction data or to evaluate other
 test data results (cost and accuracy).
 """
-function save_params(jld_fname, nnp, bn, hp; train_y=[], test_y=[])
+function save_params(jld_fname, nnw, bn, hp; train_y=[], test_y=[])
     # check if output file exists and ask permission to overwrite
     if isfile(jld_fname)
         print("Output file $jld_fname exists. OK to overwrite? ")
@@ -108,7 +108,7 @@ function save_params(jld_fname, nnp, bn, hp; train_y=[], test_y=[])
 
     # write the JLD formatted file (based on hdf5)
     jldopen(jld_fname, "w") do f
-        f["nnp"] = nnp
+        f["nnp"] = nnw
         f["hp"] = hp
         f["bn"] = bn
         if size(train_y) != (0, ) 
@@ -126,14 +126,14 @@ end
 
     function load_params(jld_fname)
 
-Load the trained parameters: nnp, batch_norm parameters: bn, and hyper parameters: hp,
+Load the trained parameters: nnw, batch_norm parameters: bn, and hyper parameters: hp,
 from a JLD file.
 
 Can be used to run the model on prediction data or to evaluate other
 test data results (cost and accuracy).
 
-returns: nnp, bn, hp
-These are mutable structs.  Use fieldnames(nnp) to list the fields.
+returns: nnw, bn, hp
+These are mutable structs.  Use fieldnames(nnw) to list the fields.
 """
 function load_params(jld_fname)
     f = jldopen(jld_fname, "r")
@@ -201,7 +201,7 @@ end
     Save, print and plot training statistics after all epochs
 
 """
-function output_stats(datalist, nnp, bn, hp, training_time, plotdef, plot_now)
+function output_stats(datalist, nnw, bn, hp, training_time, plotdef)
 
     if size(datalist, 1) == 1
         train = datalist[1]
@@ -225,12 +225,12 @@ function output_stats(datalist, nnp, bn, hp, training_time, plotdef, plot_now)
         println(stats, "Training time: ",training_time, " seconds")  # cpu time since tic() =>  toq() returns secs without printing
 
         # output for entire training set
-        feedfwd!(train, nnp, bn, hp, istrain=false)  
+        feedfwd!(train, nnw, bn, hp, istrain=false)  
         println(stats, "Fraction correct labels predicted training: ",
-                hp.classify == "regression" ? r_squared(train.targets, train.a[nnp.output_layer])
-                    : accuracy(train.targets, train.a[nnp.output_layer]))
-        println(stats, "Final cost training: ", cost_function(train.targets, train.a[nnp.output_layer], train.n,
-                        nnp.theta, hp, nnp.output_layer))
+                hp.classify == "regression" ? r_squared(train.targets, train.a[nnw.output_layer])
+                    : accuracy(train.targets, train.a[nnw.output_layer]))
+        println(stats, "Final cost training: ", cost_function(train.targets, train.a[nnw.output_layer], train.n,
+                        nnw.theta, hp, nnw.output_layer))
 
         # output improvement of last few iterations for training data
         if plotdef["plot_switch"]["train"]
@@ -247,12 +247,12 @@ function output_stats(datalist, nnp, bn, hp, training_time, plotdef, plot_now)
 
         # output test statistics
         if dotest
-            feedfwd!(test, nnp, bn,  hp, istrain=false)
+            feedfwd!(test, nnw, bn,  hp, istrain=false)
             println(stats, "\n\nFraction correct labels predicted test: ",
-                    hp.classify == "regression" ? r_squared(test.targets, test.a[nnp.output_layer])
-                        : accuracy(test.targets, test.a[nnp.output_layer]))
-            println(stats, "Final cost test: ", cost_function(test.targets, test.a[nnp.output_layer], test.n,
-                nnp.theta, hp, nnp.output_layer))
+                    hp.classify == "regression" ? r_squared(test.targets, test.a[nnw.output_layer])
+                        : accuracy(test.targets, test.a[nnw.output_layer]))
+            println(stats, "Final cost test: ", cost_function(test.targets, test.a[nnw.output_layer], test.n,
+                nnw.theta, hp, nnw.output_layer))
         end
 
         # output improvement of last 10 iterations for test data
@@ -269,10 +269,10 @@ function output_stats(datalist, nnp, bn, hp, training_time, plotdef, plot_now)
         end
 
         # output number of incorrect predictions
-        train_wrongs = GeneralNN.wrong_preds(train.targets, train.a[nnp.output_layer]);
+        train_wrongs = GeneralNN.wrong_preds(train.targets, train.a[nnw.output_layer]);
         println(stats, "\nThere are ", length(train_wrongs), " incorrect training predictions.")
         if dotest
-            test_wrongs = GeneralNN.wrong_preds(test.targets, test.a[nnp.output_layer]);
+            test_wrongs = GeneralNN.wrong_preds(test.targets, test.a[nnw.output_layer]);
             println(stats, "\nThere are ", length(test_wrongs), " incorrect test predictions.")
         end
 
@@ -292,7 +292,7 @@ function output_stats(datalist, nnp, bn, hp, training_time, plotdef, plot_now)
     save_plotdef(plotdef)
     
     # plot now?
-    plot_now && plot_output(plotdef)
+    hp.plot_now && plot_output(plotdef)
 
 end
 
@@ -503,27 +503,27 @@ end
 
 Two methods:
     with a .mat file as input: 
-        function predict(matfname::String, hp, nnp, bn; test::Bool=false, norm_mode::String="")
+        function predict(matfname::String, hp, nnw, bn; test::Bool=false, norm_mode::String="")
     with arrays as input:
-        function predict(inputs, targets, hp, nnp, bn, norm_factors)
+        function predict(inputs, targets, hp, nnw, bn, norm_factors)
 
 Generate predictions given previously trained parameters and input data.
 Not suitable in a loop because of all the additional allocations.
 Use with one-off needs like scoring a test data set or
 producing predictions for operational data fed into an existing model.
 """
-function nnpredict(matfname::String, hp, nnp, bn; test::Bool=false)
+function nnpredict(matfname::String, hp, nnw, bn; test::Bool=false)
     if !test
         inputs, targets, _, __ = extract_data(matfname)  # training data
     else
         _, __, inputs, targets = extract_data(matfname)  # test data
     end
 
-    nnpredict(inputs, targets, hp, nnp, bn)
+    nnpredict(inputs, targets, hp, nnw, bn)
 end
 
 
-function nnpredict(inputs, targets, hp, nnp, bn, istest)
+function nnpredict(inputs, targets, hp, nnw, bn, istest)
     dataset = Model_data()
         dataset.inputs = inputs
         dataset.targets = targets
@@ -531,17 +531,17 @@ function nnpredict(inputs, targets, hp, nnp, bn, istest)
         dataset.out_k = size(dataset.targets,1)  # number of output units
 
     if hp.norm_mode == "standard" || hp.norm_mode == "minmax"
-        normalize_replay!(dataset.inputs, hp.norm_mode, nnp.norm_factors)
+        normalize_replay!(dataset.inputs, hp.norm_mode, nnw.norm_factors)
     end
 
-    preallocate_data!(dataset, nnp, dataset.n, hp)
+    preallocate_data!(dataset, nnw, dataset.n, hp)
 
     setup_functions!(hp.units, dataset.out_k, hp.opt, hp.classify, istest)  # for feedforward calculations
 
-    feedfwd!(dataset, nnp, bn, hp, istrain=false)  # output for entire dataset
+    feedfwd!(dataset, nnw, bn, hp, istrain=false)  # output for entire dataset
 
     println("Fraction correct labels predicted: ",
-        hp.classify == "regression" ? r_squared(dataset.targets, dataset.a[nnp.output_layer])
-                                    : accuracy(dataset.targets, dataset.a[nnp.output_layer], hp.epochs))
-    return dataset.a[nnp.output_layer]
+        hp.classify == "regression" ? r_squared(dataset.targets, dataset.a[nnw.output_layer])
+                                    : accuracy(dataset.targets, dataset.a[nnw.output_layer], hp.epochs))
+    return dataset.a[nnw.output_layer]
 end

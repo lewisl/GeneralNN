@@ -44,7 +44,7 @@ end
 """
 struct NN_weights holds model parameters learned by training and model metadata
 """
-mutable struct NN_weights              # we will use nnp as the struct variable
+mutable struct NN_weights              # we will use nnw as the struct variable
     theta::Array{Array{Float64,2},1}
     bias::Array{Array{Float64,1},1}
     delta_w::Array{Array{Float64,2},1}
@@ -56,7 +56,8 @@ mutable struct NN_weights              # we will use nnp as the struct variable
     theta_dims::Array{Tuple{Int64, Int64},1}
     output_layer::Int64
     ks::Array{Int64,1}                     # number of output units in each layer (features for input layer)
-    norm_factors::Tuple{Any, Any}
+                                           #      is the no. of rows in the weight matrix for each layer
+    norm_factors::Tuple{Array{Float64,2},Array{Float64,2}}   # note: each array is 1 row by 2 cols
 
     NN_weights() = new(               # empty constructor
         Array{Array{Float64,2},1}(undef, 0),    # theta::Array{Array{Float64,2}}
@@ -107,6 +108,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
     bias_initializer::Float64   # 0.0, 1.0, between them
     quiet::Bool                 # display progress messages or not
     plots::Array{String, 1}     # not a hyper_parameter, choice of plots to create during training
+    plot_now::Bool
     plotperbatch::Bool
     plotperepoch::Bool
 
@@ -123,8 +125,8 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         false,          # do_batch_norm
         "none",         # norm_mode
         false,          # dropout
-        [0.5],          # droplim
-        "L2",           # reg
+        [],          # droplim
+        "",           # reg
         Float64[],      # maxnorm_lim
         "",             # opt
         [],             # opt_params
@@ -140,6 +142,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         0.0,            # bias_initializer
         true,           # quiet
         ["None"],       # plots
+        false,          # plot_now
         false,          # plotperbatch
         true            # plotperepoch
     )

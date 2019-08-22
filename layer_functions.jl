@@ -44,7 +44,7 @@ end
 # end
 
 function affine!(z, a, theta)  # no bias
-    mul!(z, theta, a)
+    mul!(z, theta, a)  # crazy fast; no allocations
 end
 
 function affine!(z, a, theta, bias)
@@ -105,8 +105,8 @@ end
 
 
 function relu_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
-    grad[:] .= 0.0
-    @simd for i = 1:length(z)
+    fill!(grad, 0.0)
+    @simd for i = eachindex(z)
         if z[i] > 0.0
             grad[i] = 1.0
         end
@@ -183,52 +183,52 @@ function step_learn_decay!(hp, ep_i)
 end
 
 
-function momentum!(nnp, hp, t)
-    @fastmath for hl = (nnp.output_layer - 1):-1:2  # loop over hidden layers
-        @inbounds nnp.delta_v_w[hl] .= hp.b1 .* nnp.delta_v_w[hl] .+ (1.0 - hp.b1) .* nnp.delta_w[hl]  # @inbounds 
-        @inbounds nnp.delta_w[hl] .= nnp.delta_v_w[hl]
+function momentum!(nnw, hp, t)
+    @fastmath for hl = (nnw.output_layer - 1):-1:2  # loop over hidden layers
+        @inbounds nnw.delta_v_w[hl] .= hp.b1 .* nnw.delta_v_w[hl] .+ (1.0 - hp.b1) .* nnw.delta_w[hl]  # @inbounds 
+        @inbounds nnw.delta_w[hl] .= nnw.delta_v_w[hl]
 
         if !hp.do_batch_norm  # then we need to do bias term
-            @inbounds nnp.delta_v_b[hl] .= hp.b1 .* nnp.delta_v_b[hl] .+ (1.0 - hp.b1) .* nnp.delta_b[hl]  # @inbounds 
-            @inbounds nnp.delta_b[hl] .= nnp.delta_v_b[hl]
+            @inbounds nnw.delta_v_b[hl] .= hp.b1 .* nnw.delta_v_b[hl] .+ (1.0 - hp.b1) .* nnw.delta_b[hl]  # @inbounds 
+            @inbounds nnw.delta_b[hl] .= nnw.delta_v_b[hl]
         end
     end
 end
 
 
-function rmsprop!(nnp, hp, t)
-    @fastmath for hl = (nnp.output_layer - 1):-1:2  # loop over hidden layers
-        @inbounds nnp.delta_v_w[hl] .= hp.b1 .* nnp.delta_v_w[hl] .+ (1.0 - hp.b1) .* nnp.delta_w[hl].^2   
-        @inbounds nnp.delta_w[hl] .=  (nnp.delta_w[hl]  ./   
-                              (sqrt.(nnp.delta_v_w[hl]) .+ hp.ltl_eps)  )
+function rmsprop!(nnw, hp, t)
+    @fastmath for hl = (nnw.output_layer - 1):-1:2  # loop over hidden layers
+        @inbounds nnw.delta_v_w[hl] .= hp.b1 .* nnw.delta_v_w[hl] .+ (1.0 - hp.b1) .* nnw.delta_w[hl].^2   
+        @inbounds nnw.delta_w[hl] .=  (nnw.delta_w[hl]  ./   
+                              (sqrt.(nnw.delta_v_w[hl]) .+ hp.ltl_eps)  )
 
         if !hp.do_batch_norm  # then we need to do bias term
-            @inbounds nnp.delta_v_b[hl] .= hp.b1 .* nnp.delta_v_b[hl] .+ (1.0 - hp.b1) .* nnp.delta_b[hl].^2   
-            @inbounds nnp.delta_b[hl] .= (nnp.delta_b[hl]  ./   
-                              (sqrt.(nnp.delta_v_b[hl]) .+ hp.ltl_eps)  )
+            @inbounds nnw.delta_v_b[hl] .= hp.b1 .* nnw.delta_v_b[hl] .+ (1.0 - hp.b1) .* nnw.delta_b[hl].^2   
+            @inbounds nnw.delta_b[hl] .= (nnw.delta_b[hl]  ./   
+                              (sqrt.(nnw.delta_v_b[hl]) .+ hp.ltl_eps)  )
         end
     end
 end
 
 
-function adam!(nnp, hp, t)
-    @fastmath for hl = (nnp.output_layer - 1):-1:2  # loop over hidden layers
-        @inbounds nnp.delta_v_w[hl] .= hp.b1 .* nnp.delta_v_w[hl] .+ (1.0 - hp.b1) .* nnp.delta_w[hl]  
-        @inbounds nnp.delta_s_w[hl] .= hp.b2 .* nnp.delta_s_w[hl] .+ (1.0 - hp.b2) .* nnp.delta_w[hl].^2   
-        @inbounds nnp.delta_w[hl] .= (  (nnp.delta_v_w[hl] ./ (1.0 - hp.b1^t)) ./   
-                              sqrt.(nnp.delta_s_w[hl] ./ (1.0 - hp.b2^t) .+ hp.ltl_eps)  )
+function adam!(nnw, hp, t)
+    @fastmath for hl = (nnw.output_layer - 1):-1:2  # loop over hidden layers
+        @inbounds nnw.delta_v_w[hl] .= hp.b1 .* nnw.delta_v_w[hl] .+ (1.0 - hp.b1) .* nnw.delta_w[hl]  
+        @inbounds nnw.delta_s_w[hl] .= hp.b2 .* nnw.delta_s_w[hl] .+ (1.0 - hp.b2) .* nnw.delta_w[hl].^2   
+        @inbounds nnw.delta_w[hl] .= (  (nnw.delta_v_w[hl] ./ (1.0 - hp.b1^t)) ./   
+                              sqrt.(nnw.delta_s_w[hl] ./ (1.0 - hp.b2^t) .+ hp.ltl_eps)  )
 
         if !hp.do_batch_norm  # then we need to do bias term
-            @inbounds nnp.delta_v_b[hl] .= hp.b1 .* nnp.delta_v_b[hl] .+ (1.0 - hp.b1) .* nnp.delta_b[hl]   
-            @inbounds nnp.delta_s_b[hl] .= hp.b2 .* nnp.delta_s_b[hl] .+ (1.0 - hp.b2) .* nnp.delta_b[hl].^2   
-            @inbounds nnp.delta_b[hl] .= (  (nnp.delta_v_b[hl] ./ (1.0 - hp.b1^t)) ./   
-                              sqrt.(nnp.delta_s_b[hl] ./ (1.0 - hp.b2^t) .+ hp.ltl_eps) )  
+            @inbounds nnw.delta_v_b[hl] .= hp.b1 .* nnw.delta_v_b[hl] .+ (1.0 - hp.b1) .* nnw.delta_b[hl]   
+            @inbounds nnw.delta_s_b[hl] .= hp.b2 .* nnw.delta_s_b[hl] .+ (1.0 - hp.b2) .* nnw.delta_b[hl].^2   
+            @inbounds nnw.delta_b[hl] .= (  (nnw.delta_v_b[hl] ./ (1.0 - hp.b1^t)) ./   
+                              sqrt.(nnw.delta_s_b[hl] ./ (1.0 - hp.b2^t) .+ hp.ltl_eps) )  
         end
     end
 end
 
 
-function no_optimization(nnp, hp, t)
+function no_optimization(nnw, hp, t)
 end
 
 
@@ -236,8 +236,8 @@ end
 # Regularization
 ##########################################################################
 
-function maxnorm_reg!(nnp, hp, hl)    # (theta, maxnorm_lim)
-    theta = nnp.theta[hl]
+function maxnorm_reg!(nnw, hp, hl)    # (theta, maxnorm_lim)
+    theta = nnw.theta[hl]
     maxnorm_lim = hp.maxnorm_lim[hl]
     for i in 1:size(theta,1)  
         # row i of theta contains weights for output of unit i in current layer
@@ -249,13 +249,13 @@ function maxnorm_reg!(nnp, hp, hl)    # (theta, maxnorm_lim)
     end
 end
 
-function l2_reg!(nnp, hp, hl)
-    @inbounds nnp.theta[hl] .= nnp.theta[hl] .+ (hp.alphaovermb .* (hp.lambda .* nnp.theta[hl]))
+function l2_reg!(nnw, hp, hl)
+    @inbounds nnw.theta[hl] .= nnw.theta[hl] .+ (hp.alphaovermb .* (hp.lambda .* nnw.theta[hl]))
 end
 
-function l1_reg!(nnp, hp, hl)
-    @inbounds nnp.theta[hl] .= nnp.theta[hl] .+ (hp.alphaovermb .* (hp.lambda .* sign.(nnp.theta[hl])))
+function l1_reg!(nnw, hp, hl)
+    @inbounds nnw.theta[hl] .= nnw.theta[hl] .+ (hp.alphaovermb .* (hp.lambda .* sign.(nnw.theta[hl])))
 end
 
-function no_reg(nnp, hp, hl)
+function no_reg(nnw, hp, hl)
 end
