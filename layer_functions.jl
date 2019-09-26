@@ -71,7 +71,7 @@ function l_relu!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2}) # lea
 end
 
 
-function relu!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
+function relu!(a::AbstractArray{Float64}, z::AbstractArray{Float64})
     a[:] = max.(z, 0.0)
 end
 
@@ -228,8 +228,7 @@ function adam!(nnw, hp, t)
 end
 
 
-function no_optimization(nnw, hp, t)
-end
+
 
 
 ##########################################################################
@@ -257,5 +256,7 @@ function l1_reg!(nnw, hp, hl)
     @inbounds nnw.theta[hl] .= nnw.theta[hl] .+ (hp.alphaovermb .* (hp.lambda .* sign.(nnw.theta[hl])))
 end
 
-function no_reg(nnw, hp, hl)
+
+############## noop stubb
+function noop(args...)
 end

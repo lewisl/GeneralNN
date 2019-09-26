@@ -34,7 +34,7 @@ function runjob(argfile="nninputs.toml", matfname="digits60000by784.mat")
     # println("train_x ", typeof(train_x), " train_y ", typeof(train_y))
 
     println("........ Training the neural network ........")
-    results = train_nn([train_x, train_y, test_x, test_y], argfile)
+    results = setup_training([train_x, train_y, test_x, test_y], argfile)
 
      # train_inputs, train_targets, train_preds, test_inputs, test_targets, test_preds, nn_weights, batchnorm_params, 
      # hyper_params

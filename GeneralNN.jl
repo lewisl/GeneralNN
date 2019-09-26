@@ -1,5 +1,4 @@
 #DONE
-#   refactor nnp to nnw as nn_parameters now called nn_weights
 
 
 #BRANCH TODO: layer-based API 
@@ -92,7 +91,7 @@ export
 
 # functions you can use
 export 
-    train_nn, 
+    setup_training, 
     test_score, 
     save_params, 
     load_params, 
@@ -116,6 +115,8 @@ using Printf
 using Dates
 using LinearAlgebra
 using SparseArrays
+# for TOML support for arguments file
+using TOML  # we might need private TOML for Julia < 1.3
 
 using Plots
 # plotlyjs()  # PlotlyJS backend to local electron window
@@ -127,13 +128,15 @@ import Measures: mm # for some plot dimensioning
 include("nn_data_structs.jl")
 include("training_loop.jl")
 include("layer_functions.jl")
-include("setup.jl")
+include("setup_model.jl")
+include("setup_data.jl")
+include("setup_training.jl")
 include("utilities.jl")
 include("training.jl")
 
-# for TOML support for arguments file
-using TOML
+
 
 const l_relu_neg = .01  # makes the type constant; value can be changed.
+
 
 end  # module GeneralNN

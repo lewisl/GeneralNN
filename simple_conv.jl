@@ -4,6 +4,7 @@
 
 
 # TODO 
+#   do we need to do affine when we create the fully connected layer?
 #   cut the piece in loops rather than using slicing notation
 #   add bias term for convolutional layers
 #   do examples loop across layers not per layer
@@ -13,6 +14,7 @@
 
 using GeneralNN  # must be installed in LOAD_PATH
 using Random
+using Statistics
 
 
 
@@ -80,7 +82,6 @@ function basic(matfname, norm_mode="minmax", unroll=false)
     (x_out, y_out, pad) = new_img_size(imgx, imgy, filx, fily; stri=stri, pad=0, same=false)
 
     cv1 = zeros(x_out,y_out,8,n)  # preallocate for multiple epochs
-    println("size after 1st convolution: ", size(cv1))
     if !unroll
         @time for ci = 1:n     #size(imgstack,4)  # ci = current image
             cv1[:,:,:, ci] = convolve_multi(imgstack[:,:,:,ci], w1; stri=stri)   # TODO did the dot do anything
@@ -92,12 +93,13 @@ function basic(matfname, norm_mode="minmax", unroll=false)
         @time for ci = 1:n
             unimg[:,:,:,ci] = unroll_img(imgstack[:,:,:,ci], w1)
         end
+        println("unrolled image stack 1: ", size(unimg))
 
         @time unfil = unroll_fil(imgstack[:,:,:,1], w1)
         @time for ci = 1:n
             cv1[:,:,:, ci] = convolve_unroll(unimg[:,:,:,ci], unfil)    
         end
-
+        println("convolved cv1 using unroll: ", size(cv1))
     else
         error("value of unroll not set to true or false.")
     end
@@ -105,10 +107,15 @@ function basic(matfname, norm_mode="minmax", unroll=false)
     # TODO -- do we want to reuse memory or allocate more?
     # first relu
     println("first relu")
+    println("compare relu on flattened vs unrolled")
+    # @time begin
+    #     rl1 = copy(flatten_img(cv1))
+    #     GeneralNN.relu!(rl1, rl1)
+    #     cvnew1 = stack_img(rl1,(x_out, y_out, outch))  # TODO do we need the pre-relu output of convolve?
+    # end
     @time begin
-        rl1 = copy(flatten_img(cv1))
-        GeneralNN.relu!(rl1, rl1)
-        cv1 = stack_img(rl1,(x_out, y_out, outch))  # TODO do we need the pre-relu output of convolve?
+        # we can apply relu to any shape:  1/4 time of flattening and stacking and relu!
+        GeneralNN.relu!(cv1, cv1)
     end
     println("type of conv output: ", typeof(cv1))
 
@@ -128,7 +135,7 @@ function basic(matfname, norm_mode="minmax", unroll=false)
             cv2[:,:,:, ci] .= convolve_multi(cv1[:,:,:, ci], w2; stri=stri)
         end
     else
-        # unroll all examples in one go
+        # unroll all examples in one go--YES, you have to unroll it again
         println("second unroll and convolve")
         unimg = zeros(x_out, x_out*filx*fily, inch, n)
         @time for ci = 1:n
@@ -146,9 +153,9 @@ function basic(matfname, norm_mode="minmax", unroll=false)
     # second relu
     println("second relu")
     @time begin
-        rl2 = copy(flatten_img(cv2))
-        GeneralNN.relu!(rl2, rl2)
-        cv2 = stack_img(rl2, (x_out, y_out, outch))  # TODO do we need the pre-relu output of convolve?
+        # rl2 = copy(flatten_img(cv2))
+        GeneralNN.relu!(cv2, cv2)
+        # cv2 = stack_img(rl2, (x_out, y_out, outch))  # TODO do we need the pre-relu output of convolve?
     end
 
 
@@ -162,8 +169,9 @@ function basic(matfname, norm_mode="minmax", unroll=false)
         end
     end
     println("final size: ", size(cv2pool))
+    
 
-    # fully connected
+    # fully connected direct to softmax
     println("fully connected and softmax output")
     out_k = 10
     in_k = prod(size(cv2pool)[1:3])
@@ -179,7 +187,39 @@ function basic(matfname, norm_mode="minmax", unroll=false)
     ########################################################################
     #  back prop
     ########################################################################
+        # output layer--we only need epsilon, the difference
+        eps_top = a .- train.y
 
+        # fully connected layer
+        delta_w_top = eps_top * a  # do we need 1/m -- we usually take the average as part of the weight update
+        delta_b_top = sum(eps_top, dims=2) # ditto
+        eps_fc = theta * eps_top
+
+        # maxpooling
+            # unpooling
+            #     max:  need a mask for where the max value is.  deriv is 1.  0 for the other values
+            #     avg:  use 1/size of pooling grid times each value.
+
+            eps_pool = unpool(eps_fc, mode="max")
+
+
+        # 2nd relu
+
+        # 2nd conv
+            # dconv/dX is just X (the image layer)
+
+
+            # dconv/dbias is just 1
+
+            # dcost/dX is 1/m *   summation(dcost/dZ * X)
+            # dcost/dbias is 1/m * summation(dcost/dZ)
+
+            # dcost/dX * summation(dcost/dZ * W)  this is convolution, zero pad to size 1 around edges which is padding="same"
+
+       # first relu
+
+       # first conv
+    
 
     return a
     println("that's all folks!...")
@@ -298,21 +338,56 @@ function pooling(img; pooldims=[2,2], same=false, stri=2, pad=0, mode="max")
     y_out = floor(Int, (img_y + 2 * pad - pooly ) / stri) + 1
 
     ret = zeros(x_out, y_out, c)
+    loc = Array{CartesianIndex{2},3}(undef,x_out, y_out,c)
+    # loc = fill(falses(poolx, pooly),(x_out, y_out, c))
     for z = 1:c
         for i = zip(1:x_out, 1:stri:img_x)
             for j = zip(1:y_out, 1:stri:img_y)
-                ret[i[1],j[1], z] = pfunc(@view(img[i[2]:i[2]+poolx-1, j[2]:j[2]+pooly-1, z]))  
-                    # view saves 15 to 20 percent
+                submatview = @view(img[i[2]:i[2]+poolx-1, j[2]:j[2]+pooly-1, z])  # view saves 15 to 20 percent
+                val = pfunc(submatview)  
+                ret[i[1], j[1], z] = val
+                # loc[i[1], j[1], z] = isapprox.(val, submatview)
+                mode == "max" && (loc[i[1], j[1], z] = findfirst(x -> isapprox(x, val),submatview))
             end
         end
     end
 
+    return ret, loc
+end
+
+function unpool(dx, dloc; pooldims = (2,2), mode="max")
+    m,n = size(dx)  # fix to handle channels
+    poolx, pooly = pooldims
+    ret = zeros(m*poolx, n*pooly)
+    if mode == "max"
+        for i = 1:m 
+            for j = 1:n 
+                # ret[(i-1)*poolx+1:i*poolx, (j-1)*pooly+1:j*pooly] = fill(dx[i,j], poolx, pooly) .* dloc[i,j]
+                subret = @view(ret[(i-1)*poolx+1:i*poolx, (j-1)*pooly+1:j*pooly])
+                subret[dloc[i,j]] = dx[i,j]
+                # println(fill(dx[i,j], poolx, pooly))
+            end
+        end
+    elseif mode == "avg"
+        scale = 1 / sum(pooldims)
+        for i = 1:m 
+            for j = 1:n 
+                # ret[(i-1)*poolx+1:i*poolx, (j-1)*pooly+1:j*pooly] = fill(dx[i,j], poolx, pooly) .* dloc[i,j]
+                subret = @view(ret[(i-1)*poolx+1:i*poolx, (j-1)*pooly+1:j*pooly])
+                fillit = scale * dx[i,j]
+                fill!(subret, fillit)
+                # println(fill(dx[i,j], poolx, pooly))
+            end
+        end
+    else
+        error("mode must be max or avg")
+    end    
     return ret
 end
 
 
 function avgpooling(img; pooldims=[2,2], same=false, stri=2, pad=0, mode="avg")
-    pooling(img; pooldims=pooldims, same=same, stri=stri, pad=pad, mode="avg")
+    pooling(img; pooldims=pooldims, same=same, stri=stri, pad=pad, mode=mode)
 end
 
 
