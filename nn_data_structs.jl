@@ -82,7 +82,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
     units::String               # type of units in all hidden layers -- some day relax this requirement
     alpha::Float64              # learning rate
     lambda::Float64             # L2 regularization rate
-    n_hid::Array{Int64,1}       # number of units in each hidden layer
+    hidden::Array{Tuple{String,Int64},1}       # array of ("unit", number) for hidden layers
     b1::Float64                 # 1st optimization for momentum or Adam
     b2::Float64                 # 2nd optimization parameter for Adam
     ltl_eps::Float64            # use in denominator with division of very small values to prevent overflow
@@ -116,7 +116,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         "sigmoid",      # units
         0.35,           # alpha -- OK for nn. way too high for linear regression
         0.01,           # lambda
-        [],             # n_hid
+        [("none",0)],             # hidden
         0.9,            # b1
         0.999,          # b2
         1e-8,           # ltl_eps

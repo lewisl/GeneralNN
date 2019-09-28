@@ -91,6 +91,7 @@ export
 
 # functions you can use
 export 
+    train,
     setup_training, 
     test_score, 
     save_params, 
