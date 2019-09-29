@@ -101,7 +101,7 @@ function feedfwd!(dat::Union{Batch_view,Batch_slice,Model_data}, nnw, bn,  hp; i
             affine!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
         end
 
-        unit_function!(dat.a[hl], dat.z[hl])
+        unit_function![hl](dat.a[hl], dat.z[hl])
 
         if istrain && hp.dropout && (hp.droplim[hl] < 1.0)
             dropout!(dat,hp,hl)
@@ -136,7 +136,7 @@ function backprop!(nnw, bn, dat, hp)
 
     # loop over hidden layers
     @fastmath for hl = (nnw.output_layer - 1):-1:2  
-        gradient_function!(dat.grad[hl], dat.z[hl])
+        gradient_function![hl](dat.grad[hl], dat.z[hl])
         !hp.quiet && println("What is gradient $hl? ", mean(dat.grad[hl]))
         @inbounds dat.epsilon[hl][:] = nnw.theta[hl+1]' * dat.epsilon[hl+1] .* dat.grad[hl] 
         !hp.quiet && println("what is epsilon $hl? ", mean(dat.epsilon[hl]))
@@ -168,7 +168,7 @@ function update_parameters!(nnw, hp, bn)
     @fastmath for hl = 2:nnw.output_layer       
         @inbounds nnw.theta[hl] .= nnw.theta[hl] .- (hp.alphaovermb .* nnw.delta_w[hl])
         
-        reg_function!(nnw, hp, hl)  # regularize function per setup.jl setup_functions!
+        reg_function![hl](nnw, hp, hl)  # regularize function per setup.jl setup_functions!
 
         if hp.do_batch_norm  # update batch normalization parameters
             @inbounds bn.gam[hl][:] .= bn.gam[hl][:] .- (hp.alphaovermb .* bn.delta_gam[hl])
