@@ -1,4 +1,7 @@
 #DONE
+    # remove dimension specifier from layer functions input args
+    # new method to pad an entire 4d imgstack
+    # remove padding from convolve and pooling methods:  do it before these operations
 
 
 #BRANCH TODO: layer-based API 

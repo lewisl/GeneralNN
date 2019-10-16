@@ -58,15 +58,15 @@ function affine!(z, a, theta, bias)
 end
 
 
-function sigmoid!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
+function sigmoid!(a::AbstractArray{Float64}, z::AbstractArray{Float64})
     @fastmath a[:] = 1.0 ./ (1.0 .+ exp.(.-z))  
 end
 
-function tanh_act!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
+function tanh_act!(a::AbstractArray{Float64}, z::AbstractArray{Float64})
     @fastmath a[:] = tanh.(z)
 end
 
-function l_relu!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2}) # leaky relu
+function l_relu!(a::AbstractArray{Float64}, z::AbstractArray{Float64}) # leaky relu
     @fastmath a[:] = map(j -> j >= 0.0 ? j : l_relu_neg * j, z)
 end
 
@@ -88,23 +88,23 @@ function affine_gradient(data, layer)  # no bias
 end
 
 
-function sigmoid_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
+function sigmoid_gradient!(grad::AbstractArray{Float64}, z::AbstractArray{Float64})
     sigmoid!(z, grad)
     @fastmath grad[:] = grad .* (1.0 .- grad)
 end
 
 
-function tanh_act_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
+function tanh_act_gradient!(grad::AbstractArray{Float64}, z::AbstractArray{Float64})
     @fastmath grad[:] = 1.0 .- tanh.(z).^2
 end
 
 
-function l_relu_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
+function l_relu_gradient!(grad::AbstractArray{Float64}, z::AbstractArray{Float64})
     grad[:] = map(j -> j > 0.0 ? 1.0 : l_relu_neg, z);
 end
 
 
-function relu_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
+function relu_gradient!(grad::AbstractArray{Float64}, z::AbstractArray{Float64})
     fill!(grad, 0.0)
     @simd for i = eachindex(z)
         if z[i] > 0.0

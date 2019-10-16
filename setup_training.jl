@@ -161,7 +161,8 @@ function setup_functions!(hp, train)
     push!(gradient_function!, noop)
     push!(reg_function!, noop)
 
-    for i in 1:length(hp.hidden)
+    # TODO fix this to iterate by layer number and use a separate index to the hidden layers
+    for i in 1:length(hp.hidden) # layers 2 through output -1
         push!(unit_function!,
             if hp.hidden[i][1] == "sigmoid"
                 sigmoid!
@@ -175,7 +176,7 @@ function setup_functions!(hp, train)
         )
 
         push!(gradient_function!,
-            if unit_function![i+1] == sigmoid!
+            if unit_function![i+1] == sigmoid! # i + 1 is walks through the hidden layers
                 sigmoid_gradient!
             elseif unit_function![i+1] == l_relu!
                 l_relu_gradient!
