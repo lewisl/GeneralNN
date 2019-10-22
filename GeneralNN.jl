@@ -1,7 +1,5 @@
 #DONE
-    # remove dimension specifier from layer functions input args
-    # new method to pad an entire 4d imgstack
-    # remove padding from convolve and pooling methods:  do it before these operations
+
 
 
 #BRANCH TODO: layer-based API 
@@ -14,6 +12,7 @@
 # LSTM networks
 
 #TODO
+#   switch to using PyPlot:  headache
 #   make sure we have a valid default for lambda
 #   make sure we have default for initializer: xavier
 #   evolve parameters without reloading data, etc.
@@ -124,7 +123,7 @@ using TOML  # we might need private TOML for Julia < 1.3
 
 using Plots
 # plotlyjs()  # PlotlyJS backend to local electron window
-pyplot()
+gr()
 
 import Measures: mm # for some plot dimensioning
 
