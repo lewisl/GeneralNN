@@ -1,5 +1,5 @@
 #DONE
-
+    # change NN_Weights to Wgts
 
 
 #BRANCH TODO: layer-based API 
@@ -12,7 +12,13 @@
 # LSTM networks
 
 #TODO
-#   switch to using PyPlot:  headache
+#   export onehot--decide how to transpose data
+#   create a cost function method without L2 regularization
+#   create a cost prediction method that embeds the feedfwd predictions
+#   in testgrad, test for categorical data or provide other way to do onehot encoding if needed
+#   compare testing gradients with real model size vs tiny model
+#   look for places to try performance benefit of @views when doing dot operations on arrays
+#   factor out preparing all of the datafiles before running training
 #   make sure we have a valid default for lambda
 #   make sure we have default for initializer: xavier
 #   evolve parameters without reloading data, etc.
@@ -68,7 +74,7 @@ To use, include() the file.  Then enter using .GeneralNN to use the module.
 
 These data structures are used to hold parameters and data:
 
-- NN_weights holds theta, bias, delta_w, delta_b, theta_dims, output_layer, k
+- Wgts holds theta, bias, delta_w, delta_b, theta_dims, output_layer, k
 - Model_data holds inputs, targets, a, z, z_norm, epsilon, gradient_function
 - Batch_norm_params holds gam (gamma), bet (beta) for batch normalization and intermediate
     data used for backprop with batch normalization: delta_gam, delta_bet, 
@@ -86,7 +92,7 @@ module GeneralNN
 # data structures for neural network
 export 
     Batch_view,
-    NN_weights, 
+    Wgts, 
     Model_data, 
     Batch_norm_params, 
     Hyper_parameters
@@ -136,6 +142,7 @@ include("setup_data.jl")
 include("setup_training.jl")
 include("utilities.jl")
 include("training.jl")
+include("testgrad.jl")
 
 
 

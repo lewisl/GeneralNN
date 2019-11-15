@@ -119,16 +119,20 @@ end
 
 """
 function backprop!(nnw, dat, do_batch_norm)
-    Argument nnw.delta_w holds the computed gradients for weights, delta_b for bias
+    Argument nnw.delta_w holds the computed gradients for Wgts, delta_b for bias
     Modifies dat.epsilon, nnw.delta_w, nnw.delta_b in place--caller uses nnw.delta_w, nnw.delta_b
     Use for training iterations
     Send it all of the data or a mini-batch
     Intermediate storage of dat.a, dat.z, dat.epsilon, nnw.delta_w, nnw.delta_b reduces memory allocations
 """
 function backprop!(nnw, bn, dat, hp)
-!hp.quiet && println("backprop!(nnw, bn, dat, hp)")
+    !hp.quiet && println("backprop!(nnw, bn, dat, hp)")
 
-    # for output layer if cross_entropy_cost or mean squared error???
+    # println("size epsilon of output: ", size(dat.epsilon[nnw.output_layer]))
+    # println("size predictions: ", size(dat.a[nnw.output_layer]))
+    # println("size targets: ", size(dat.targets))
+
+    # for output layer if cross_entropy_cost or mean squared error???    
     dat.epsilon[nnw.output_layer][:] = dat.a[nnw.output_layer] .- dat.targets  
     !hp.quiet && println("What is epsilon of output layer? ", mean(dat.epsilon[nnw.output_layer]))
     @fastmath nnw.delta_w[nnw.output_layer][:] = dat.epsilon[nnw.output_layer] * dat.a[nnw.output_layer-1]' # 2nd term is effectively the grad for error   
@@ -164,7 +168,7 @@ end
 
 function update_parameters!(nnw, hp, bn)
 !hp.quiet && println("update_parameters!(nnw, hp, bn)")
-    # update weights, bias, and batch_norm parameters
+    # update Wgts, bias, and batch_norm parameters
     @fastmath for hl = 2:nnw.output_layer       
         @inbounds nnw.theta[hl] .= nnw.theta[hl] .- (hp.alphaovermb .* nnw.delta_w[hl])
         
@@ -217,9 +221,9 @@ end
 """
     Create views for the training data in minibatches
 """
-function update_batch_views!(mb::Batch_view, train::Model_data, nnw::NN_weights, 
+function update_batch_views!(mb::Batch_view, train::Model_data, nnw::Wgts, 
     hp::Hyper_parameters, colrng::UnitRange{Int64})
-!hp.quiet && println("update_batch_views!(mb::Batch_view, train::Model_data, nnw::NN_weights, 
+!hp.quiet && println("update_batch_views!(mb::Batch_view, train::Model_data, nnw::Wgts, 
     hp::Hyper_parameters, colrng::UnitRange{Int64})")
 
     # colrng refers to the set of training examples included in the minibatch
@@ -303,7 +307,7 @@ function gather_stats!(plotdef, train_or_test, i, dat, nnw, bn, cost_function, h
 
         if plotdef["plot_switch"]["cost"]
             plotdef["cost_history"][i, plotdef[train_or_test]] = cost_function(dat.targets,
-                dat.a[nnw.output_layer], dat.n, nnw.theta, hp, nnw.output_layer)
+                dat.a[nnw.output_layer], dat.n, nnw.theta, hp.lambda, hp.reg, nnw.output_layer)
         end
         if plotdef["plot_switch"]["learning"]
             plotdef["accuracy"][i, plotdef[train_or_test]] = (  hp.classify == "regression"
@@ -320,9 +324,9 @@ end
 ##############################################################################
 
 # # This method dispatches on minibatches that are slices
-# function update_batch_views!(mb::Batch_slice, train::Model_data, nnw::NN_weights, 
+# function update_batch_views!(mb::Batch_slice, train::Model_data, nnw::Wgts, 
 #     hp::Hyper_parameters, colrng::UnitRange{Int64})
-# !hp.quiet && println("update_batch_views!(mb::Batch_slice, train::Model_data, nnw::NN_weights, 
+# !hp.quiet && println("update_batch_views!(mb::Batch_slice, train::Model_data, nnw::Wgts, 
 #     hp::Hyper_parameters, colrng::UnitRange{Int64})")
 
 #     # colrng refers to the set of training examples included in the minibatch

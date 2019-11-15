@@ -6,26 +6,25 @@
 #  cost functions
 ###############################################################################
 
-function cross_entropy_cost(targets, predictions, n, theta, hp, output_layer)
+function cross_entropy_cost(targets, predictions, n, theta, lambda, reg, output_layer)
     # n is count of all samples in data set--use with regularization term
     # mb_size is count of all samples used in training batch--use with cost
     # these may be equal
     cost = (-1.0 / n) * (dot(targets,log.(predictions .+ 1e-50)) +
         dot((1.0 .- targets), log.(1.0 .- predictions .+ 1e-50)))
 
-    @fastmath if hp.reg == "L2"  # set reg="" if not using regularization
-        # regterm = hp.lambda/(2.0 * n) .* sum([sum(th .* th) for th in theta[2:output_layer]])
-        regterm = hp.lambda/(2.0 * n) .* sum([dot(th, th) for th in theta[2:output_layer]])
+    @fastmath if reg == "L2"  # set reg="" if not using regularization
+        regterm = lambda/(2.0 * n) .* sum([dot(th, th) for th in theta[2:output_layer]])
         cost = cost + regterm
     end
     return cost
 end
 
 
-function mse_cost(targets, predictions, n, theta, hp, output_layer)
+function mse_cost(targets, predictions, n, theta, lambda, reg, output_layer)
     @fastmath cost = (1.0 / (2.0 * n)) .* sum((targets .- predictions) .^ 2.0)
-    @fastmath if hp.reg == "L2"  # set reg="" if not using regularization
-        regterm = hp.lambda/(2.0 * n) .* sum([dot(th, th) for th in theta[2:output_layer]])
+    @fastmath if reg == "L2"  # set reg="" if not using regularization
+        regterm = lambda/(2.0 * n) .* sum([dot(th, th) for th in theta[2:output_layer]])
         cost = cost + regterm
     end
     return cost

@@ -42,9 +42,9 @@ end
 
 
 """
-struct NN_weights holds model parameters learned by training and model metadata
+struct Wgts holds model parameters learned by training and model metadata
 """
-mutable struct NN_weights              # we will use nnw as the struct variable
+mutable struct Wgts              # we will use nnw as the struct variable
     theta::Array{Array{Float64,2},1}
     bias::Array{Array{Float64,1},1}
     delta_w::Array{Array{Float64,2},1}
@@ -59,7 +59,7 @@ mutable struct NN_weights              # we will use nnw as the struct variable
                                            #      is the no. of rows in the weight matrix for each layer
     norm_factors::Tuple{Array{Float64,2},Array{Float64,2}}   # note: each array is 1 row by 2 cols
 
-    NN_weights() = new(               # empty constructor
+    Wgts() = new(               # empty constructor
         Array{Array{Float64,2},1}(undef, 0),    # theta::Array{Array{Float64,2}}
         Array{Array{Float64,2},1}(undef, 0),    # bias::Array{Array{Float64,1}}
         Array{Array{Float64,2},1}(undef, 0),    # delta_w
@@ -79,7 +79,6 @@ end
 struct Hyper_parameters holds hyper_parameters used to control training
 """
 mutable struct Hyper_parameters          # we will use hp as the struct variable
-    units::String               # type of units in all hidden layers -- some day relax this requirement
     alpha::Float64              # learning rate
     lambda::Float64             # L2 regularization rate
     hidden::Array{Tuple{String,Int64},1}       # array of ("unit", number) for hidden layers
@@ -113,10 +112,9 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
     plotperepoch::Bool
 
     Hyper_parameters() = new(       # constructor with defaults--we use hp as the struct variable
-        "sigmoid",      # units
         0.35,           # alpha -- OK for nn. way too high for linear regression
         0.01,           # lambda
-        [("none",0)],             # hidden
+        [("none",0)],   # hidden
         0.9,            # b1
         0.999,          # b2
         1e-8,           # ltl_eps
@@ -125,8 +123,8 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         false,          # do_batch_norm
         "none",         # norm_mode
         false,          # dropout
-        [],          # droplim
-        "",           # reg
+        [],             # droplim
+        "",             # reg
         Float64[],      # maxnorm_lim
         "",             # opt
         [],             # opt_params

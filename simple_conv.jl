@@ -50,12 +50,12 @@ function basic(matfname, norm_mode="minmax"; unroll=false, pad=0)
         # layer 1: inputs are 400 x 5000 examples
                     # the image is 20 x 20
         # layer 2: first conv result 18 x 18 by 8 channels = 5408 values
-                    # first filters are 3 x 3 by 8 filters = 72 weights
+                    # first filters are 3 x 3 by 8 filters = 72 Wgts
                     # first relu is same:   x 5000
         # layer 3: second conv result 16 x 16 by 12 output channels = 6912 values
-                    # second filters are 3 x 3 x 8 channels by 12 filters =  864 weights
+                    # second filters are 3 x 3 x 8 channels by 12 filters =  864 Wgts
                     # second relu is same by 5000
-                    # maxpooling output is 8 x 8 x 12 = 1728 values (no weights)
+                    # maxpooling output is 8 x 8 x 12 = 1728 values (no Wgts)
         # layer 4: fc is 240 x 5000 => flatten imgstack to 768 x 5000; affine weight (240, 768))
                     # third relu is 240 by 5000
         # layer 5: affine and softmax => affine weight (10, 2450)

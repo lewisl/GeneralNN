@@ -148,6 +148,7 @@ function save_plotdef(plotdef; fname="")
     if fname == ""  # build a filename
         fname = repr(Dates.now())
         fname = "plotdef-" * replace(fname, r"[.:]" => "-") * ".jld2"
+        println(fname)
     end
     jldopen(fname, "w") do f
         f["plotdef"] = plotdef
@@ -163,9 +164,9 @@ function load_plotdef(fname::String)
 end
 
 
-function printby2(nby2)  # not used currently
+function printby2(nby2)  
     for i = 1:size(nby2,1)
-        println(nby2[i,1], "    ", nby2[i,2])
+        @printf("  %9.6f    %9.6f\n", nby2[i,1], nby2[i,2])
     end
 end
 
@@ -230,7 +231,7 @@ function output_stats(datalist, nnw, bn, hp, training_time, plotdef)
                 hp.classify == "regression" ? r_squared(train.targets, train.a[nnw.output_layer])
                     : accuracy(train.targets, train.a[nnw.output_layer]))
         println(stats, "Final cost training: ", cost_function(train.targets, train.a[nnw.output_layer], train.n,
-                        nnw.theta, hp, nnw.output_layer))
+                        nnw.theta, hp.lambda, hp.reg, nnw.output_layer))
 
         # output improvement of last few iterations for training data
         if plotdef["plot_switch"]["train"]
@@ -252,7 +253,7 @@ function output_stats(datalist, nnw, bn, hp, training_time, plotdef)
                     hp.classify == "regression" ? r_squared(test.targets, test.a[nnw.output_layer])
                         : accuracy(test.targets, test.a[nnw.output_layer]))
             println(stats, "Final cost test: ", cost_function(test.targets, test.a[nnw.output_layer], test.n,
-                nnw.theta, hp, nnw.output_layer))
+                nnw.theta, hp.lambda, hp.reg, nnw.output_layer))
         end
 
         # output improvement of last 10 iterations for test data
@@ -383,6 +384,7 @@ function onehot(vect,cnt,result_type; dim=1)
     for i = 1:cnt
         eye[i,i] = setone
     end
+    vect = convert.(Int, vect)
     if dim == 1
         return eye[vect,:]
     else
@@ -427,6 +429,121 @@ function toml_test(fn)
 end
 
 
+
+"""
+**compute_numerical_gradient** Computes the gradient using "finite differences"
+and gives us a numerical estimate of the gradient.
+numgrad = compute_numerical_gradient(J, theta) computes the numerical
+gradient of the function J around theta. Calling y = J(theta) must
+return the function value at theta.
+
+Notes: The following code implements numerical gradient checking, and
+returns the numerical gradient.It sets numgrad(i) to (a numerical
+approximation of) the partial derivative of J with respect to the
+i-th input argument, evaluated at theta. (i.e., numgrad(i) should
+be  (approximately) the partial derivative of J with respect
+to theta(i).)
+"""
+function compute_numerical_gradient(dat, nnw, bn, hp)
+    # calculate the numgrad for all of the weights: thetas and biases
+        # this is the delta of cost for small perturbation of weights
+        # calculate the cost for 2 values of weights
+    # need to calculate the cost perturbing each weight INDIVIDUALLY
+    # THIS IS REALLY SLOW: A LOT OF FEEDFORWARD CALCULATIONS
+
+
+    # TODO warn if this is a big model:  calculate the number of weights!
+
+    println("****** Calculating numerical equivalents to weight gradients")
+
+    tweak = 1e-4
+
+    # initialize result matrices
+    gradtheta = deepcopy(nnw.delta_w)
+    for l = 2:nnw.output_layer
+        gradtheta[l][:] = zeros(nnw.theta_dims[l]...)
+    end      
+    gradbias = [zeros(i) for i in nnw.ks]
+
+    # don't do dropout
+    hold_dropout = hp.dropout
+    hp.dropout = false
+
+    for hl = 2:nnw.output_layer
+        # perturb one value of theta
+        println("****** perturbing each individual weight in theta layer $hl")
+        for i in eachindex(nnw.theta[hl])
+            nnw.theta[hl][i] += tweak   # this should be scalar
+            feedfwd!(dat, nnw, bn, hp)
+            cost_plus = cost_function(dat.targets, dat.a[nnw.output_layer], dat.n,
+                        nnw.theta, hp.lambda, hp.reg, nnw.output_layer)
+            nnw.theta[hl][i] -= 2 * tweak   # this should be scalar
+            feedfwd!(dat, nnw, bn, hp)
+            cost_minus = cost_function(dat.targets, dat.a[nnw.output_layer], dat.n,
+                         nnw.theta, hp.lambda, hp.reg, nnw.output_layer)
+            gradtheta[hl][i] = (cost_plus - cost_minus) / (2 * tweak)
+            nnw.theta[hl][i] =+ tweak # back to starting value
+        end
+        # perturb one value of bias
+        println("****** perturbing each individual weight in bias layer $hl")
+        for i in eachindex(nnw.bias[hl])
+            nnw.bias[hl][i] += tweak   # this should be scalar
+            feedfwd!(dat, nnw, bn, hp)
+            cost_plus = cost_function(dat.targets, dat.a[nnw.output_layer], dat.n,
+                        nnw.theta, hp.lambda, hp.reg, nnw.output_layer)  # cost uses theta, not bias for regularization
+            nnw.bias[hl][i] -= 2 * tweak   # this should be scalar
+            feedfwd!(dat, nnw, bn, hp)
+            cost_minus = cost_function(dat.targets, dat.a[nnw.output_layer], dat.n,
+                         nnw.theta, hp.lambda, hp.reg, nnw.output_layer)
+            gradbias[hl][i] = (cost_plus - cost_minus) / (2 * tweak)
+            nnw.bias[hl][i] =+ tweak # back to starting value
+        end
+    end
+
+    # set dropout and weights back to inputs
+    hp.dropout = hold_dropout
+
+    return gradtheta, gradbias
+end
+
+
+function compute_backprop_gradient(dat, nnw, bn, hp)
+    println("****** computing backprop gradients")
+    feedfwd!(dat, nnw, bn, hp)
+    backprop!(nnw, bn, dat, hp)
+    return nnw.delta_w, nnw.delta_b
+end
+
+
+# TODO handle batch norm: limit test to first batch, include batchnorm_params
+function verify_gradient(dat, nnw, bn, hp)
+    # compare numgrads to backprop gradients
+    # calculate the numgrad for all of the weights: thetas and biases
+    # calculate the backprop gradients
+        # backprop does this: the delta for each weight: delta_w and delta_b
+    # for both, use the initialization of the weights--e.g., before training
+
+    numtheta, numbias = compute_numerical_gradient(dat, nnw, bn, hp)
+    backtheta, backbias = compute_backprop_gradient(dat, nnw, bn, hp)
+    println(size(numtheta))
+    println(size(backtheta))
+
+    for hl = 1:size(numtheta,1)
+        for i in eachindex(numtheta[hl])
+            @printf "%+1.6f %+1.6f\n" numtheta[hl][i] backtheta[hl][i]
+        end
+    end
+end
+
+
+Coll = Union{Array,Tuple}
+"""
+    flat(arr::Array)
+Flatten any mess of nested arrays of arbitrary depth, number of indices or type.
+Returns a vector of Any. There is no direct way to get back to the input as 
+structure is not encoded in any way.
+"""    
+flat(arr::Coll) = mapreduce(x -> isa(x, Coll) ? flat(x) : x, append!, arr,init=[])
 
 ##############################################################
 #
@@ -488,10 +605,10 @@ function test_score(theta_fname, data_fname, lambda = 0.01, classify="softmax")
     # setup cost
     cost_function = cross_entropy_cost
 
-    predictions = predict(inputs, theta)
+    predictions = nnpredict(inputs, theta)
     score = accuracy(targets, predictions)
     println("Fraction correct labels predicted test: ", score)
-    println("Final cost test: ", cost_function(targets, predictions, n, theta, hp, output_layer))
+    println("Final cost test: ", cost_function(targets, predictions, n, theta, hp.lambda, hp.reg, output_layer))
 
     return score
 end

@@ -241,7 +241,7 @@ function build_hyper_parameters(argsdict)
 end
 
 
-function preallocate_nn_weights!(nnw, hp, in_k, n, out_k)
+function preallocate_wgts!(nnw, hp, in_k, n, out_k)
     # initialize and pre-allocate data structures to hold neural net training data
     # theta = weight matrices for all calculated layers (e.g., not the input layer)
     # bias = bias term used for every layer but input
@@ -257,13 +257,13 @@ function preallocate_nn_weights!(nnw, hp, in_k, n, out_k)
     nnw.output_layer = 2 + size(hp.hidden, 1) # input layer is 1, output layer is highest value
     nnw.ks = [in_k, map(x -> x[2], hp.hidden)..., out_k]       # no. of output units by layer
 
-    # set dimensions of the linear weights for each layer
+    # set dimensions of the linear Wgts for each layer
     push!(nnw.theta_dims, (in_k, 1)) # weight dimensions for the input layer -- if using array, must splat as arg
     for l = 2:nnw.output_layer  
         push!(nnw.theta_dims, (nnw.ks[l], nnw.ks[l-1]))
     end
 
-    # initialize the linear weights
+    # initialize the linear Wgts
     nnw.theta = [zeros(2,2)] # layer 1 not used
 
     # Xavier initialization--current best practice for relu

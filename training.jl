@@ -20,7 +20,7 @@ all of the input parameters to be read from a TOML file.  This is further explai
         train_inputs      ::= after any normalization
         train_targets     ::= matches original inputs
         train_preds       ::= using final values of trained parameters
-        nn_weights         ::= struct that holds all trained parameters
+        wgts         ::= struct that holds all trained parameters
         batch_norm_params ::= struct that holds all batch_norm parameters
         hyper_params      ::= all hyper parameters used to control training
 
@@ -71,7 +71,7 @@ all of the input parameters to be read from a TOML file.  This is further explai
         plot_now        ::Bool.  If true, plot training stats immediately and save the plotdef that contains stats 
                             gathered while running the training.  You can plot the file separately, later.
         sparse          ::Bool. If true, input data will be treated and maintained as SparseArrays.
-        initializer     ::= "xavier", "uniform", "normal" or "zero" used to set how weights, not including bias, are initialized.
+        initializer     ::= "xavier", "uniform", "normal" or "zero" used to set how Wgts, not including bias, are initialized.
         scale_init      ::= Float64. Scale the initialization values for the parameters.
         bias_initializer::= Float64. 0.0, 1.0 or float inbetween. Initial value for bias terms.
         quiet           ::Bool. true is default to suppress progress messages during preparation and training.
@@ -210,7 +210,7 @@ function train(datalist, hp)
 This is the one function and only method that really does the work.  It runs
 the model training or as many frameworks refer to it, "fits" the model.
 """
-function train(datalist, hp)
+function train(datalist, hp, testgrad=false)
 
     !hp.quiet && println("Training setup beginning")
     !hp.quiet && println("dobatch: ", hp.dobatch)
@@ -245,7 +245,7 @@ function train(datalist, hp)
     train = Model_data()  # train holds all the training data and layer inputs/outputs
     dotest && (test = Model_data())   # for test--but there is no training, just prediction
     mb = Batch_view()  # even if not used, initialization is empty
-    nnw = NN_weights()  # neural network trained parameters
+    nnw = Wgts()  # neural network trained parameters
     bn = Batch_norm_params()  # do we always need the data structure to run?  yes--TODO fix this
 
     !hp.quiet && println("Set input data aliases to model data structures")
@@ -272,7 +272,7 @@ function train(datalist, hp)
 
     # preallocate data storage  # TRAIN
         !hp.quiet && println("Pre-allocate storage starting")
-        preallocate_nn_weights!(nnw, hp, train.in_k, train.n, train.out_k)
+        preallocate_wgts!(nnw, hp, train.in_k, train.n, train.out_k)
         preallocate_data!(train, nnw, train.n, hp)
         hp.dobatch && preallocate_minibatch!(mb, nnw, hp) 
         hp.do_batch_norm && preallocate_batchnorm!(bn, mb, nnw.ks)
@@ -287,11 +287,29 @@ function train(datalist, hp)
 
     !hp.quiet && println("Training setup complete")
     
-    
+
+
     ##########################################################
     #   neural network training loop
     ##########################################################
     datalist = dotest ? [train, test] : [train]
+
+    ##########################################################
+    #   test gradients using the defined model and  STOP
+    ##########################################################
+        # test gradients against numerical gradients
+        # we need to further factor training to capture everything it sets up
+        # as output and have another outer function that then runs the training_loop
+
+        # testgrad && begin
+        #    verify_gradient(train, nnw, bn, hp)
+        #    return
+        # end
+
+    testgrad && begin 
+        check_grads(hp) 
+        return
+    end
     
     training_time = training_loop!(hp, datalist, mb, nnw, bn, plotdef)
 
@@ -303,7 +321,7 @@ function train(datalist, hp)
                 "train_inputs" => train_x, 
                 "train_targets"=> train_y, 
                 "train_preds" => train.a[nnw.output_layer], 
-                "nn_weights" => nnw, 
+                "Wgts" => nnw, 
                 "batchnorm_params" => bn, 
                 "hyper_params" => hp
                 )
