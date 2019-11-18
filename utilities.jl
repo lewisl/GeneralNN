@@ -226,7 +226,7 @@ function output_stats(datalist, nnw, bn, hp, training_time, plotdef)
         println(stats, "Training time: ",training_time, " seconds")  # cpu time since tic() =>  toq() returns secs without printing
 
         # output for entire training set
-        feedfwd!(train, nnw, bn, hp, istrain=false)  
+        feedfwd_predict!(train, nnw, bn, hp)  
         println(stats, "Fraction correct labels predicted training: ",
                 hp.classify == "regression" ? r_squared(train.targets, train.a[nnw.output_layer])
                     : accuracy(train.targets, train.a[nnw.output_layer]))
@@ -248,7 +248,7 @@ function output_stats(datalist, nnw, bn, hp, training_time, plotdef)
 
         # output test statistics
         if dotest
-            feedfwd!(test, nnw, bn,  hp, istrain=false)
+            feedfwd_predict!(test, nnw, bn,  hp)
             println(stats, "\n\nFraction correct labels predicted test: ",
                     hp.classify == "regression" ? r_squared(test.targets, test.a[nnw.output_layer])
                         : accuracy(test.targets, test.a[nnw.output_layer]))
@@ -655,7 +655,7 @@ function nnpredict(inputs, targets, hp, nnw, bn, istest)
 
     setup_functions!(hp.units, dataset.out_k, hp.opt, hp.classify, istest)  # for feedforward calculations
 
-    feedfwd!(dataset, nnw, bn, hp, istrain=false)  # output for entire dataset
+    feedfwd_predict!(dataset, nnw, bn, hp)  # output for entire dataset
 
     println("Fraction correct labels predicted: ",
         hp.classify == "regression" ? r_squared(dataset.targets, dataset.a[nnw.output_layer])

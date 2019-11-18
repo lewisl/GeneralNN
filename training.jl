@@ -276,7 +276,7 @@ function train(datalist, hp, testgrad=false)
         preallocate_data!(train, nnw, train.n, hp)
         hp.dobatch && preallocate_minibatch!(mb, nnw, hp) 
         hp.do_batch_norm && preallocate_batchnorm!(bn, mb, nnw.ks)
-        dotest && preallocate_data!(test, nnw, test.n, hp, istrain=false)
+        dotest && preallocate_data!(test, nnw, test.n, hp)
         !hp.quiet && println("Pre-allocate storage completed")
 
     # choose layer functions and cost function based on inputs

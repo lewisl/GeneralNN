@@ -53,7 +53,7 @@ end
 ####################################################################
 
 # use for test and training data
-function preallocate_data!(dat, nnw, n, hp; istrain=true)
+function preallocate_data!(dat, nnw, n, hp)
 
     # feedforward
     dat.a = [dat.inputs]  # allocates only tiny memory--it's a reference
@@ -72,7 +72,7 @@ function preallocate_data!(dat, nnw, n, hp; istrain=true)
 
     # training / backprop  -- pre-allocate only minibatch size (except last one, which could be smaller)
     # this doesn't work for test set when not using minibatches (minibatch size on training then > entire test set)
-    if istrain   # e.g., only for training->no backprop data structures needed for test data
+    # if istrain   # e.g., only for training->no backprop data structures needed for test data
         if hp.dobatch   # TODO  fix this HACK
             dat.epsilon = [i[:,1:hp.mb_size_in] for i in dat.a]
             dat.grad = [i[:,1:hp.mb_size_in] for i in dat.a]
@@ -82,7 +82,7 @@ function preallocate_data!(dat, nnw, n, hp; istrain=true)
             dat.grad = [i for i in dat.a]
             dat.delta_z = [i for i in dat.a]
         end
-    end
+    # end
 
     if hp.do_batch_norm  # required for full pass performance stats  TODO: really? or only for batch_norm
         # feedforward

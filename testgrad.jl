@@ -8,7 +8,7 @@ function compute_numgrad!(numgradtheta, numgradbias, wgts, dat, bn, hp; tweak = 
         # perturb[p] = tweak   # peturb a single weight; leave others alone to get partial for a single weight
         for bi in 1:length(wgts.bias[lr])  # tweak each bias, compute partial diff for each bias
             wgts.bias[lr][bi] -= tweak
-            feedfwd!(dat, wgts, bn, hp; istrain=false)
+            feedfwd_predict!(dat, wgts, bn, hp)
             loss1 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n, wgts.theta, hp.lambda, hp.reg,
                                   wgts.output_layer)
             # loss1 = (-1.0 / dat.n) * (dot(dat.targets,log.(dat.a[wgts.output_layer] .+ 1e-50)) +
@@ -20,7 +20,7 @@ function compute_numgrad!(numgradtheta, numgradbias, wgts, dat, bn, hp; tweak = 
             # println("n =           ", dat.n)
 
             wgts.bias[lr][bi] += 2.0 * tweak
-            feedfwd!(dat, wgts, bn, hp; istrain=false)
+            feedfwd_predict!(dat, wgts, bn, hp)
             loss2 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n, wgts.theta, hp.lambda, hp.reg,
                                   wgts.output_layer)  
             # println("loss2 =       ", loss2)  
@@ -29,11 +29,11 @@ function compute_numgrad!(numgradtheta, numgradbias, wgts, dat, bn, hp; tweak = 
         end
         for thi in eachindex(wgts.theta[lr])  # tweak each theta, compute partial diff for each theta
             wgts.theta[lr][thi] -= tweak
-            feedfwd!(dat, wgts, bn, hp; istrain=false)
+            feedfwd_predict!(dat, wgts, bn, hp)
             loss1 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n, wgts.theta, hp.lambda, hp.reg,
                                   wgts.output_layer)
             wgts.theta[lr][thi] += 2.0 * tweak
-            feedfwd!(dat, wgts, bn, hp; istrain=false)
+            feedfwd_predict!(dat, wgts, bn, hp)
             loss2 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n, wgts.theta, hp.lambda, hp.reg,
                                   wgts.output_layer)
             wgts.theta[lr][thi] -= tweak      
@@ -113,7 +113,7 @@ function check_grads(hp)
     miniwgts.delta_w = deepcopy(miniwgts.theta)
     miniwgts.delta_b = deepcopy(miniwgts.bias)
 
-    # initialize numgrads
+    # initialize numeric gradients
     numgradtheta = deepcopy(miniwgts.theta)
     numgradbias  = deepcopy(miniwgts.bias)
 
@@ -126,24 +126,37 @@ function check_grads(hp)
     debug_initialize_weights!(minidat.inputs)
 
     minidat.targets = 1 .+ mod.(collect(1:m), out_k)
-    minidat.targets = collect(onehot(minidat.targets, out_k)')
+    minidat.targets = collect(onehot(minidat.targets, out_k)')  # onehot encode categories
 
     # preallocate the training matrices
     preallocate_data!(minidat, miniwgts, m, minihp)
+
+    # advance 5 iterations using the analytic model
+
+    # compute numgrad
+    println("  ****** Calculating numeric approximation gradients")
+    compute_numgrad!(numgradtheta, numgradbias, miniwgts, minidat, minibn, minihp; tweak=1e-6)
+    numgrad = (numgradtheta,numgradbias)
 
     # compute_modelgrad!()
     println("  ****** Calculating feedfwd/backprop gradients")
     compute_modelgrad!(minidat, miniwgts, minibn, minihp)
     modgrad = (deepcopy(miniwgts.delta_w), deepcopy(miniwgts.delta_b))
 
-    # compute numgrad
-    println("  ****** Calculating numeric approximation gradients")
-    compute_numgrad!(numgradtheta, numgradbias, miniwgts, minidat, minibn, minihp; tweak=1e-7)
-    numgrad = (numgradtheta,numgradbias)
+    deltacols = hcat(flat(modgrad), flat(numgrad))
+    relative_error = map(x -> abs(x[1]-x[2]) / (maximum(abs.(x)) + 1e-15), eachrow(deltacols))
+    println("\nrelative errors")
+    for v in relative_error;
+        @printf("\n  % 8.5f", v) 
+    end
+
 
     #  compare modelgrad and numgrad
-    println("\n    model", "      numeric")
-    print_grads(modgrad, numgrad)
+    println("\ngradients")
+    println("    model", "      numeric")
+    printby2(deltacols)
+
+
 end
 
 """
@@ -159,9 +172,4 @@ function debug_initialize_weights!(mx)
 
     mx[:] = reshape(sin.(0:length(mx)-1), size(mx)) / 10.0
 
-end
-
-
-function print_grads(gr1, gr2)
-    printby2(hcat(flat(gr1), flat(gr2)))
 end

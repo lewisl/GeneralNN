@@ -117,6 +117,33 @@ function feedfwd!(dat::Union{Batch_view,Batch_slice,Model_data}, nnw, bn,  hp; i
 end
 
 
+function feedfwd_predict!(dat::Union{Batch_view,Batch_slice,Model_data}, nnw, bn,  hp)
+!hp.quiet && println("feedfwd!(dat::Union{Batch_view,Batch_slice,Model_data}, nnw, bn,  hp)")
+
+
+    # hidden layers
+    @fastmath for hl = 2:nnw.output_layer-1  
+        if hp.do_batch_norm 
+            affine!(dat.z[hl], dat.a[hl-1], nnw.theta[hl])
+            batch_norm_fwd_predict!(hp, bn, dat, hl)
+        else
+            affine!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
+        end
+
+        unit_function![hl](dat.a[hl], dat.z[hl])
+
+    end
+
+    # output layer
+    @inbounds affine!(dat.z[nnw.output_layer], dat.a[nnw.output_layer-1], 
+                      nnw.theta[nnw.output_layer], nnw.bias[nnw.output_layer])
+
+    classify_function!(dat.a[nnw.output_layer], dat.z[nnw.output_layer])  # a = activations = predictions
+
+end
+
+
+
 """
 function backprop!(nnw, dat, do_batch_norm)
     Argument nnw.delta_w holds the computed gradients for Wgts, delta_b for bias
@@ -141,9 +168,9 @@ function backprop!(nnw, bn, dat, hp)
     # loop over hidden layers
     @fastmath for hl = (nnw.output_layer - 1):-1:2  
         gradient_function![hl](dat.grad[hl], dat.a[hl])  
-        !hp.quiet && println("What is gradient $hl? ", mean(dat.grad[hl]))
+            !hp.quiet && println("What is gradient $hl? ", mean(dat.grad[hl]))
         @inbounds dat.epsilon[hl][:] = nnw.theta[hl+1]' * dat.epsilon[hl+1] .* dat.grad[hl] 
-        !hp.quiet && println("what is epsilon $hl? ", mean(dat.epsilon[hl]))
+            !hp.quiet && println("what is epsilon $hl? ", mean(dat.epsilon[hl]))
 
         if hp.dropout && (hp.droplim[hl] < 1.0)
             @inbounds dat.epsilon[hl][:] = dat.epsilon[hl] .* dat.dropout_mask_units[hl]
@@ -283,6 +310,14 @@ function batch_norm_fwd!(hp, bn, dat, hl, istrain=true)
 end
 
 
+function batch_norm_fwd_predict!(hp, bn, dat, hl)
+    !hp.quiet && println("batch_norm_fwd!(hp, bn, dat, hl, istrain=true)")
+
+    @inbounds dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu_run[hl]) ./ (bn.std_run[hl] .+ hp.ltl_eps) # normalized: 'aka' xhat or zhat  @inbounds 
+    @inbounds dat.z[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y  @inbounds 
+end
+
+
 function batch_norm_back!(nnw, dat, bn, hl, hp)
 !hp.quiet && println("batch_norm_back!(nnw, dat, bn, hl, hp)")
     mb = hp.mb_size
@@ -299,11 +334,11 @@ function batch_norm_back!(nnw, dat, bn, hl, hp)
         )
 end
 
-# this method includes bn argument
+ 
 function gather_stats!(plotdef, train_or_test, i, dat, nnw, bn, cost_function, hp)
 
     if plotdef["plot_switch"][train_or_test]
-        feedfwd!(dat, nnw, bn, hp, istrain=false)
+        feedfwd_predict!(dat, nnw, bn, hp)
 
         if plotdef["plot_switch"]["cost"]
             plotdef["cost_history"][i, plotdef[train_or_test]] = cost_function(dat.targets,

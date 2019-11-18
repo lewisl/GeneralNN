@@ -130,6 +130,8 @@ function setup_functions!(hp, train)
     global cost_function
     global reg_function!
 
+    n_layers = length(hp.hidden) + 2
+
     # unitfunctions = Dict("sigmoid" => sigmoid!, "l_relu" => l_relu!, "relu" => relu!, "tanh" => tanh_act!)
     # gradientfunctions = Dict("sigmoid" => sigmoid_gradient!, "l_relu" => l_relu_gradient!, 
     #                         "relu" => relu_gradient!, "tanh" => tanh_act_gradient!)
@@ -148,45 +150,45 @@ function setup_functions!(hp, train)
     # cost_function = get(costfunctions, hp.classify_function, cross_entropy_cost)
 
     # allow different functions at each hidden layer
-    unit_function! = Function[]
-    gradient_function! = Function[]
-    reg_function! = Function[]
+    unit_function! = Array{Function}(undef,n_layers)
+    gradient_function! = Array{Function}(undef,n_layers)
+    reg_function! = Array{Function}(undef,n_layers)
 
     # layer 1: input layer--no model calculations
-    push!(unit_function!, noop)
-    push!(gradient_function!, noop)
-    push!(reg_function!, noop)
+    # push!(unit_function!, noop)
+    # push!(gradient_function!, noop)
+    # push!(reg_function!, noop)
 
     # TODO fix this to iterate by layer number and use a separate index to the hidden layers
-    for layer in 1:length(hp.hidden) # layers 2 through output -1
-        push!(unit_function!,
-            if hp.hidden[layer][1] == "sigmoid"
+    for layer in 2:n_layers-1 # layers 2 through output -1
+        hidden_layer = layer - 1
+        unit_function![layer] =
+            if hp.hidden[hidden_layer][1] == "sigmoid"
                 sigmoid!
-            elseif hp.hidden[layer][1] == "l_relu"
+            elseif hp.hidden[hidden_layer][1] == "l_relu"
                 l_relu!
-            elseif hp.hidden[layer][1] == "relu"
+            elseif hp.hidden[hidden_layer][1] == "relu"
                 relu!
-            elseif hp.hidden[layer][1] == "tanh"
+            elseif hp.hidden[hidden_layer][1] == "tanh"
                 tanh_act!
             end
-        )
 
-        push!(gradient_function!,
-            if unit_function![layer+1] == sigmoid! # i + 1 is walks through the hidden layers
+        gradient_function![layer] =
+            if unit_function![layer] == sigmoid! # i + 1 is walks through the hidden layers
                 sigmoid_gradient!
-            elseif unit_function![layer+1] == l_relu!
+            elseif unit_function![layer] == l_relu!
                 l_relu_gradient!
-            elseif unit_function![layer+1] == relu!
+            elseif unit_function![layer] == relu!
                 relu_gradient!
-            elseif unit_function![layer+1] == tanh_act!
+            elseif unit_function![layer] == tanh_act!
                 tanh_act_gradient!
             end
-        )
+        
     end
 
     # TODO update to enable different regulization at each layer
-    for layer = 2:length(hp.hidden)+2  # from the first hidden layer=2 to output layer
-        push!(reg_function!,
+    for layer = 2:n_layers  # from the first hidden layer=2 to output layer
+        reg_function![layer] = 
             if hp.reg == "L2"
                 l2_reg!
             elseif hp.reg == "L1"
@@ -196,7 +198,7 @@ function setup_functions!(hp, train)
             else
                 noop
             end
-        )
+        
     end
 
     optimization_function! = 
