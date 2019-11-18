@@ -196,38 +196,39 @@ end
 
 
 
-"""
-Experimental: Struct Batch_slice holds slices of model data that will be broken into minibatches
-"""
-mutable struct Batch_slice               # we will use mb for as the variable for minibatches
-    # array of views
-    a  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    targets  #::SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true}
-    z  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    z_norm  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    delta_z_norm  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    delta_z  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    grad  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    epsilon  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    dropout_random  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    dropout_mask_units  #::Array{SubArray{Bool,2,BitArray{2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    sel::AbstractArray{Int64}
+# """
+# Experimental: Struct Batch_slice holds slices of model data that will be broken into minibatches
+#               Sort of worked, but gave it up to use views, which are fast.
+# """
+# mutable struct Batch_slice               # we will use mb for as the variable for minibatches
+#     # array of views
+#     a  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+#     targets  #::SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true}
+#     z  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+#     z_norm  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+#     delta_z_norm  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+#     delta_z  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+#     grad  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+#     epsilon  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+#     dropout_random  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+#     dropout_mask_units  #::Array{SubArray{Bool,2,BitArray{2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+#     sel::AbstractArray{Int64}
 
-    Batch_slice() = new(                      # empty constructor
-        [],  # a
-        [],                 # targets
-        [],  # z
-        [],  # z_norm
-        [],  # delta_z_norm
-        [],  # delta_z
-        [],  # grad
-        [],  # epsilon
-        [],  # dropout_random
-        [],  # dropout_mask_units  
-        []   
-    )
+#     Batch_slice() = new(                      # empty constructor
+#         [],  # a
+#         [],                 # targets
+#         [],  # z
+#         [],  # z_norm
+#         [],  # delta_z_norm
+#         [],  # delta_z
+#         [],  # grad
+#         [],  # epsilon
+#         [],  # dropout_random
+#         [],  # dropout_mask_units  
+#         []   
+#     )
 
-end
+# end
 
 
 """

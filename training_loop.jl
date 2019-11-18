@@ -78,17 +78,17 @@ end
 
 
 """
-function feedfwd!(dat, nnw, bn, do_batch_norm; istrain)
+function feedfwd!(dat, nnw, bn, do_batch_norm)
     modifies a, a_wb, z in place to reduce memory allocations
     send it all of the data or a mini-batch
 
     feed forward from inputs to output layer predictions
 """
-function feedfwd!(dat::Union{Batch_view,Batch_slice,Model_data}, nnw, bn,  hp; istrain=true)
-!hp.quiet && println("feedfwd!(dat::Union{Batch_view,Batch_slice,Model_data}, nnw, bn,  hp; istrain=true)")
+function feedfwd!(dat::Union{Batch_view,Model_data}, nnw, bn, hp)
+!hp.quiet && println("feedfwd!(dat::Union{Batch_view, Model_data}, nnw, bn,  hp)")
 
     # dropout for input layer (if probability < 1.0)
-    if istrain && hp.dropout && (hp.droplim[1] < 1.0)
+    if hp.dropout && (hp.droplim[1] < 1.0)
         dropout!(dat, hp, 1)
     end
 
@@ -96,14 +96,14 @@ function feedfwd!(dat::Union{Batch_view,Batch_slice,Model_data}, nnw, bn,  hp; i
     @fastmath for hl = 2:nnw.output_layer-1  
         if hp.do_batch_norm 
             affine!(dat.z[hl], dat.a[hl-1], nnw.theta[hl])
-            batch_norm_fwd!(hp, bn, dat, hl, istrain)
+            batch_norm_fwd!(hp, bn, dat, hl)
         else
             affine!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
         end
 
         unit_function![hl](dat.a[hl], dat.z[hl])
 
-        if istrain && hp.dropout && (hp.droplim[hl] < 1.0)
+        if hp.dropout && (hp.droplim[hl] < 1.0)
             dropout!(dat,hp,hl)
         end
     end
@@ -117,8 +117,8 @@ function feedfwd!(dat::Union{Batch_view,Batch_slice,Model_data}, nnw, bn,  hp; i
 end
 
 
-function feedfwd_predict!(dat::Union{Batch_view,Batch_slice,Model_data}, nnw, bn,  hp)
-!hp.quiet && println("feedfwd!(dat::Union{Batch_view,Batch_slice,Model_data}, nnw, bn,  hp)")
+function feedfwd_predict!(dat::Union{Batch_view, Model_data}, nnw, bn,  hp)
+!hp.quiet && println("feedfwd!(dat::Union{Batch_view, Model_data}, nnw, bn,  hp)")
 
 
     # hidden layers
@@ -291,27 +291,23 @@ function update_batch_views!(mb::Batch_view, train::Model_data, nnw::Wgts,
 end
 
 
-function batch_norm_fwd!(hp, bn, dat, hl, istrain=true)
-!hp.quiet && println("batch_norm_fwd!(hp, bn, dat, hl, istrain=true)")
-    # in_k,mb = size(dat.z[hl])
-    if istrain
-        @inbounds bn.mu[hl][:] = mean(dat.z[hl], dims=2)          # use in backprop
-        @inbounds bn.stddev[hl][:] = std(dat.z[hl], dims=2)
-        @inbounds dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu[hl]) ./ (bn.stddev[hl] .+ hp.ltl_eps) # normalized: 'aka' xhat or zhat  @inbounds 
-        @inbounds dat.z[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y  @inbounds 
-        @inbounds bn.mu_run[hl][:] = (  bn.mu_run[hl][1] == 0.0 ? bn.mu[hl] :  # @inbounds 
-            0.9 .* bn.mu_run[hl] .+ 0.1 .* bn.mu[hl]  )
-        @inbounds bn.std_run[hl][:] = (  bn.std_run[hl][1] == 0.0 ? bn.stddev[hl] :  # @inbounds 
-            0.9 .* bn.std_run[hl] + 0.1 .* bn.stddev[hl]  )
-    else  # predictions with existing parameters
-        @inbounds dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu_run[hl]) ./ (bn.std_run[hl] .+ hp.ltl_eps) # normalized: 'aka' xhat or zhat  @inbounds 
-        @inbounds dat.z[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y  @inbounds 
-    end
+function batch_norm_fwd!(hp, bn, dat, hl)
+!hp.quiet && println("batch_norm_fwd!(hp, bn, dat, hl)")
+
+    @inbounds bn.mu[hl][:] = mean(dat.z[hl], dims=2)          # use in backprop
+    @inbounds bn.stddev[hl][:] = std(dat.z[hl], dims=2)
+    @inbounds dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu[hl]) ./ (bn.stddev[hl] .+ hp.ltl_eps) # normalized: 'aka' xhat or zhat  @inbounds 
+    @inbounds dat.z[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y  @inbounds 
+    @inbounds bn.mu_run[hl][:] = (  bn.mu_run[hl][1] == 0.0 ? bn.mu[hl] :  # @inbounds 
+        0.9 .* bn.mu_run[hl] .+ 0.1 .* bn.mu[hl]  )
+    @inbounds bn.std_run[hl][:] = (  bn.std_run[hl][1] == 0.0 ? bn.stddev[hl] :  # @inbounds 
+        0.9 .* bn.std_run[hl] + 0.1 .* bn.stddev[hl]  )
+
 end
 
 
 function batch_norm_fwd_predict!(hp, bn, dat, hl)
-    !hp.quiet && println("batch_norm_fwd!(hp, bn, dat, hl, istrain=true)")
+!hp.quiet && println("batch_norm_fwd_predict!(hp, bn, dat, hl)")
 
     @inbounds dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu_run[hl]) ./ (bn.std_run[hl] .+ hp.ltl_eps) # normalized: 'aka' xhat or zhat  @inbounds 
     @inbounds dat.z[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y  @inbounds 
