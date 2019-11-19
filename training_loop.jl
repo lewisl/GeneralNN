@@ -64,7 +64,7 @@ end # function training_loop
 function train_one_step!(dat, nnw, bn, hp, t)
 
     feedfwd!(dat, nnw, hp)  # for all layers
-    backprop!(nnw, bn, dat, hp)  # for all layers   
+    backprop!(nnw, dat, hp)  # for all layers   
     optimization_function!(nnw, hp, t)
     update_parameters!(nnw, hp, bn)
 
@@ -132,8 +132,8 @@ function backprop!(nnw, dat, do_batch_norm)
     Send it all of the data or a mini-batch
     Intermediate storage of dat.a, dat.z, dat.epsilon, nnw.delta_w, nnw.delta_b reduces memory allocations
 """
-function backprop!(nnw, bn, dat, hp)
-    !hp.quiet && println("backprop!(nnw, bn, dat, hp)")
+function backprop!(nnw, dat, hp)
+    !hp.quiet && println("backprop!(nnw, dat, hp)")
 
     # println("size epsilon of output: ", size(dat.epsilon[nnw.output_layer]))
     # println("size predictions: ", size(dat.a[nnw.output_layer]))
@@ -154,10 +154,6 @@ function backprop!(nnw, bn, dat, hp)
             !hp.quiet && println("what is epsilon $hl? ", mean(dat.epsilon[hl]))
 
         dropout_back_function![hl](dat, hl)
-
-        # if hp.do_batch_norm
-        #     batch_norm_back!(nnw, dat, bn, hl, hp)
-        # end
         batch_norm_back_function!(dat, hl)
         backprop_weights_function!(nnw.delta_w[hl], nnw.delta_b[hl], dat.delta_z[hl], 
                                    dat.epsilon[hl], dat.a[hl-1])

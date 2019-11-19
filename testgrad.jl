@@ -51,7 +51,7 @@ function compute_modelgrad!(dat, nnw, hp)
     #    but there is no reason to do it
 
     feedfwd!(dat, nnw, hp)  # for all layers
-    backprop!(nnw, bn, dat, hp)  # for all layers   
+    backprop!(nnw, dat, hp)  # for all layers   
 
     # now we just need 1/n .* nnw.delta_w   and 1/mb .* nnw.delta_b
     nnw.delta_b .*= 1.0/dat.n

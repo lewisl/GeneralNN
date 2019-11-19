@@ -510,7 +510,7 @@ end
 function compute_backprop_gradient(dat, nnw, bn, hp)
     println("****** computing backprop gradients")
     feedfwd!(dat, nnw, bn, hp)
-    backprop!(nnw, bn, dat, hp)
+    backprop!(nnw, dat, hp)
     return nnw.delta_w, nnw.delta_b
 end
 
