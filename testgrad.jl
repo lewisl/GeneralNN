@@ -43,12 +43,14 @@ function compute_numgrad!(numgradtheta, numgradbias, wgts, dat, bn, hp; tweak = 
 
 end
 
-function compute_modelgrad!(dat, nnw, bn, hp)
+
+# TODO: make sure we don't use batchnorm for feedfwd
+function compute_modelgrad!(dat, nnw, hp)
     # no optimization, no batch normalization, no minibatches, no learning rate (e.g. alpha = 1)
     # can do with or without regularization if L2--has to be consistent for numgrad and modelgrad
     #    but there is no reason to do it
 
-    feedfwd!(dat, nnw, bn, hp)  # for all layers
+    feedfwd!(dat, nnw, hp)  # for all layers
     backprop!(nnw, bn, dat, hp)  # for all layers   
 
     # now we just need 1/n .* nnw.delta_w   and 1/mb .* nnw.delta_b

@@ -63,7 +63,7 @@ end # function training_loop
 
 function train_one_step!(dat, nnw, bn, hp, t)
 
-    feedfwd!(dat, nnw, bn,  hp)  # for all layers
+    feedfwd!(dat, nnw, hp)  # for all layers
     backprop!(nnw, bn, dat, hp)  # for all layers   
     optimization_function!(nnw, hp, t)
     update_parameters!(nnw, hp, bn)
@@ -78,14 +78,14 @@ end
 
 
 """
-function feedfwd!(dat, nnw, bn, do_batch_norm)
+function feedfwd!(dat, nnw, do_batch_norm)
     modifies a, a_wb, z in place to reduce memory allocations
     send it all of the data or a mini-batch
 
     feed forward from inputs to output layer predictions
 """
-function feedfwd!(dat::Union{Batch_view,Model_data}, nnw, bn, hp)
-!hp.quiet && println("feedfwd!(dat::Union{Batch_view, Model_data}, nnw, bn,  hp)")
+function feedfwd!(dat::Union{Batch_view,Model_data}, nnw, hp)  # bn,
+!hp.quiet && println("feedfwd!(dat::Union{Batch_view, Model_data}, nnw, hp)")
 
     # dropout for input layer (if probability < 1.0)
     dropout_fwd_function![1](dat,hp,1)  
@@ -93,37 +93,27 @@ function feedfwd!(dat::Union{Batch_view,Model_data}, nnw, bn, hp)
     # hidden layers
     @fastmath for hl = 2:nnw.output_layer-1  
         affine_function!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl]) # if do_batch_norm, ignores bias arg
-        if hp.do_batch_norm 
-            # affine!(dat.z[hl], dat.a[hl-1], nnw.theta[hl])
-            batch_norm_fwd!(hp, bn, dat, hl)
-        # else
-        #     affine!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
-        end
-
+        batch_norm_fwd_function!(dat, hl)
         unit_function![hl](dat.a[hl], dat.z[hl])
-
         dropout_fwd_function![hl](dat,hp,hl)  # do it or noop
     end
 
     # output layer
     @inbounds affine!(dat.z[nnw.output_layer], dat.a[nnw.output_layer-1], 
                       nnw.theta[nnw.output_layer], nnw.bias[nnw.output_layer])
-
     classify_function!(dat.a[nnw.output_layer], dat.z[nnw.output_layer])  # a = activations = predictions
 
 end
 
 
 function feedfwd_predict!(dat::Union{Batch_view, Model_data}, nnw, bn,  hp)
-!hp.quiet && println("feedfwd!(dat::Union{Batch_view, Model_data}, nnw, bn,  hp)")
+!hp.quiet && println("feedfwd_predict!(dat::Union{Batch_view, Model_data}, nnw, bn,  hp)")
 
     # hidden layers
     @fastmath for hl = 2:nnw.output_layer-1  
         affine_function!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
         if hp.do_batch_norm 
             batch_norm_fwd_predict!(hp, bn, dat, hl)
-        # else
-        #     affine!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
         end
         unit_function![hl](dat.a[hl], dat.z[hl])
     end
@@ -131,9 +121,7 @@ function feedfwd_predict!(dat::Union{Batch_view, Model_data}, nnw, bn,  hp)
     # output layer
     @inbounds affine!(dat.z[nnw.output_layer], dat.a[nnw.output_layer-1], 
                       nnw.theta[nnw.output_layer], nnw.bias[nnw.output_layer])
-
     classify_function!(dat.a[nnw.output_layer], dat.z[nnw.output_layer])  # a = activations = predictions
-
 end
 
 
@@ -294,7 +282,6 @@ function batch_norm_fwd!(hp, bn, dat, hl)
         0.9 .* bn.mu_run[hl] .+ 0.1 .* bn.mu[hl]  )
     @inbounds bn.std_run[hl][:] = (  bn.std_run[hl][1] == 0.0 ? bn.stddev[hl] :  # @inbounds 
         0.9 .* bn.std_run[hl] + 0.1 .* bn.stddev[hl]  )
-
 end
 
 

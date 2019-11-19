@@ -474,11 +474,11 @@ function compute_numerical_gradient(dat, nnw, bn, hp)
         println("****** perturbing each individual weight in theta layer $hl")
         for i in eachindex(nnw.theta[hl])
             nnw.theta[hl][i] += tweak   # this should be scalar
-            feedfwd!(dat, nnw, bn, hp)
+            feedfwd_predict!(dat, nnw, bn, hp)
             cost_plus = cost_function(dat.targets, dat.a[nnw.output_layer], dat.n,
                         nnw.theta, hp.lambda, hp.reg, nnw.output_layer)
             nnw.theta[hl][i] -= 2 * tweak   # this should be scalar
-            feedfwd!(dat, nnw, bn, hp)
+            feedfwd_predict!(dat, nnw, bn, hp)
             cost_minus = cost_function(dat.targets, dat.a[nnw.output_layer], dat.n,
                          nnw.theta, hp.lambda, hp.reg, nnw.output_layer)
             gradtheta[hl][i] = (cost_plus - cost_minus) / (2 * tweak)
@@ -488,11 +488,11 @@ function compute_numerical_gradient(dat, nnw, bn, hp)
         println("****** perturbing each individual weight in bias layer $hl")
         for i in eachindex(nnw.bias[hl])
             nnw.bias[hl][i] += tweak   # this should be scalar
-            feedfwd!(dat, nnw, bn, hp)
+            feedfwd_predict!(dat, nnw, bn, hp)
             cost_plus = cost_function(dat.targets, dat.a[nnw.output_layer], dat.n,
                         nnw.theta, hp.lambda, hp.reg, nnw.output_layer)  # cost uses theta, not bias for regularization
             nnw.bias[hl][i] -= 2 * tweak   # this should be scalar
-            feedfwd!(dat, nnw, bn, hp)
+            feedfwd_predict!(dat, nnw, bn, hp)
             cost_minus = cost_function(dat.targets, dat.a[nnw.output_layer], dat.n,
                          nnw.theta, hp.lambda, hp.reg, nnw.output_layer)
             gradbias[hl][i] = (cost_plus - cost_minus) / (2 * tweak)
@@ -506,7 +506,7 @@ function compute_numerical_gradient(dat, nnw, bn, hp)
     return gradtheta, gradbias
 end
 
-
+# TODO make sure we don't use batchnorm here:  do setup functions again or use feedfwd_predict
 function compute_backprop_gradient(dat, nnw, bn, hp)
     println("****** computing backprop gradients")
     feedfwd!(dat, nnw, bn, hp)

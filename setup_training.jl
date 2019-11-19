@@ -109,15 +109,11 @@ end
     Base.iterate(mb::MBrng, state=1) = mbiter(mb::MBrng, state)
 
 
-
-
 """
 define and choose functions to be used in neural net training
 """
-function setup_functions!(hp, train)
-    # assumes hp has been verified--no error checking here!
-
-    !hp.quiet && println("Setup functions beginning")
+function setup_functions!(hp, bn, train)
+!hp.quiet && println("Setup functions beginning")
 
     # make these function variables module level 
         # the layer functions they point to are all module level (in file layer_functions.jl)
@@ -132,6 +128,7 @@ function setup_functions!(hp, train)
     global dropout_fwd_function!
     global dropout_back_function!
     global affine_function!
+    global batch_norm_fwd_function!
 
     n_layers = length(hp.hidden) + 2
 
@@ -245,7 +242,6 @@ function setup_functions!(hp, train)
             end
         end
 
-    # set cost function
     cost_function = 
         if hp.classify=="regression" 
             mse_cost 
@@ -253,8 +249,6 @@ function setup_functions!(hp, train)
             cross_entropy_cost
         end
 
-    # set closure to capture arguments for the affine! function:
-    # pik(arr,idx) = arr[idx]
     affine_function! = 
         if hp.do_batch_norm
             affine_nobias!
@@ -262,8 +256,26 @@ function setup_functions!(hp, train)
             affine!
         end
 
+    batch_norm_fwd_function! = 
+        if hp.do_batch_norm
+            batch_norm_fwd_function! = create_curry_batch_norm_fwd!(hp, bn)
+        else
+            noop
+        end
+
     !hp.quiet && println("Setup functions completed.")
 end
+
+##############################################################
+# curried functions used by setup_functions
+##############################################################
+
+function create_curry_batch_norm_fwd!(hp, bn)  # arguments that are captured and "built-in" to curried function
+    return function f(dat, hl)  # arguments that will be passed in when new function called
+                batch_norm_fwd!(hp, bn, dat, hl)
+           end  # actual name of the resulting function set to return result of create_curry function
+end
+
 
 
 """
