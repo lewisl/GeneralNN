@@ -131,6 +131,7 @@ function setup_functions!(hp, train)
     global reg_function!
     global dropout_fwd_function!
     global dropout_back_function!
+    global affine_function!
 
     n_layers = length(hp.hidden) + 2
 
@@ -182,20 +183,21 @@ function setup_functions!(hp, train)
                 tanh_act_gradient!
             end
 
-        dropout_fwd_function![layer] = 
-            if hp.dropout && (hp.droplim[hl] < 1.0)
-                dropout_fwd!
-            else
-                noop
-            end
-
         dropout_back_function![layer] =
             if hp.dropout && (hp.droplim[hl] < 1.0)
                 dropout_back!
             else
                 noop
             end
+    end
 
+    for layer = 1:n_layers-1 # input layer and hidden layers
+        dropout_fwd_function![layer] = 
+            if hp.dropout && (hp.droplim[hl] < 1.0)
+                dropout_fwd!
+            else
+                noop
+            end
     end
 
     # TODO update to enable different regulization at each layer
@@ -250,6 +252,16 @@ function setup_functions!(hp, train)
         else
             cross_entropy_cost
         end
+
+    # set closure to capture arguments for the affine! function:
+    # pik(arr,idx) = arr[idx]
+    affine_function! = 
+        if hp.do_batch_norm
+            affine_nobias!
+        else
+            affine!
+        end
+
     !hp.quiet && println("Setup functions completed.")
 end
 

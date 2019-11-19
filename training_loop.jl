@@ -88,17 +88,16 @@ function feedfwd!(dat::Union{Batch_view,Model_data}, nnw, bn, hp)
 !hp.quiet && println("feedfwd!(dat::Union{Batch_view, Model_data}, nnw, bn,  hp)")
 
     # dropout for input layer (if probability < 1.0)
-    if hp.dropout && (hp.droplim[1] < 1.0)
-        dropout!(dat, hp, 1)
-    end
+    dropout_fwd_function![1](dat,hp,1)  
 
     # hidden layers
     @fastmath for hl = 2:nnw.output_layer-1  
+        affine_function!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl]) # if do_batch_norm, ignores bias arg
         if hp.do_batch_norm 
-            affine!(dat.z[hl], dat.a[hl-1], nnw.theta[hl])
+            # affine!(dat.z[hl], dat.a[hl-1], nnw.theta[hl])
             batch_norm_fwd!(hp, bn, dat, hl)
-        else
-            affine!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
+        # else
+        #     affine!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
         end
 
         unit_function![hl](dat.a[hl], dat.z[hl])
@@ -120,11 +119,11 @@ function feedfwd_predict!(dat::Union{Batch_view, Model_data}, nnw, bn,  hp)
 
     # hidden layers
     @fastmath for hl = 2:nnw.output_layer-1  
+        affine_function!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
         if hp.do_batch_norm 
-            affine!(dat.z[hl], dat.a[hl-1], nnw.theta[hl])
             batch_norm_fwd_predict!(hp, bn, dat, hl)
-        else
-            affine!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
+        # else
+        #     affine!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
         end
         unit_function![hl](dat.a[hl], dat.z[hl])
     end

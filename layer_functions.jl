@@ -42,7 +42,7 @@ end
 #     @inbounds z[:] = theta * a .+ bias
 # end
 
-function affine!(z, a, theta)  # no bias
+function affine_nobias!(z, a, theta, bias)  # just ignore the bias term
     mul!(z, theta, a)  # crazy fast; no allocations
 end
 
