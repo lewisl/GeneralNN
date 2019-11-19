@@ -129,6 +129,8 @@ function setup_functions!(hp, train)
     global optimization_function!
     global cost_function
     global reg_function!
+    global dropout_fwd_function!
+    global dropout_back_function!
 
     n_layers = length(hp.hidden) + 2
 
@@ -149,18 +151,14 @@ function setup_functions!(hp, train)
     # optimization_function! = get(optimizationfunctions, hp.opt, noop)
     # cost_function = get(costfunctions, hp.classify_function, cross_entropy_cost)
 
-    # allow different functions at each hidden layer
-    unit_function! = Array{Function}(undef,n_layers)
-    gradient_function! = Array{Function}(undef,n_layers)
-    reg_function! = Array{Function}(undef,n_layers)
+    # allow different functions at each appropriate layer
+    unit_function! = Array{Function}(undef, n_layers)
+    gradient_function! = Array{Function}(undef, n_layers)
+    reg_function! = Array{Function}(undef, n_layers)
+    dropout_fwd_function! = Array{Function}(undef, n_layers)
+    dropout_back_function! = Array{Function}(undef, n_layers)
 
-    # layer 1: input layer--no model calculations
-    # push!(unit_function!, noop)
-    # push!(gradient_function!, noop)
-    # push!(reg_function!, noop)
-
-    # TODO fix this to iterate by layer number and use a separate index to the hidden layers
-    for layer in 2:n_layers-1 # layers 2 through output -1
+    for layer in 2:n_layers-1 # for hidden layers: layers 2 through output - 1
         hidden_layer = layer - 1
         unit_function![layer] =
             if hp.hidden[hidden_layer][1] == "sigmoid"
@@ -183,7 +181,21 @@ function setup_functions!(hp, train)
             elseif unit_function![layer] == tanh_act!
                 tanh_act_gradient!
             end
-        
+
+        dropout_fwd_function![layer] = 
+            if hp.dropout && (hp.droplim[hl] < 1.0)
+                dropout_fwd!
+            else
+                noop
+            end
+
+        dropout_back_function![layer] =
+            if hp.dropout && (hp.droplim[hl] < 1.0)
+                dropout_back!
+            else
+                noop
+            end
+
     end
 
     # TODO update to enable different regulization at each layer

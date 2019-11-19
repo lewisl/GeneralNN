@@ -158,11 +158,16 @@ end
 ##########################################################################
 
 
-function dropout!(dat,hp,hl)  # applied per layer
+function dropout_fwd!(dat,hp,hl)  # applied per layer
     @inbounds dat.dropout_random[hl][:] = rand(Float64, size(dat.dropout_random[hl]))
     @inbounds dat.dropout_mask_units[hl][:] = dat.dropout_random[hl] .< hp.droplim[hl]
     # choose activations to remain and scale
     @inbounds dat.a[hl][:] = dat.a[hl] .* (dat.dropout_mask_units[hl] ./ hp.droplim[hl])
+end
+
+
+function dropout_back!(dat, hl)
+    @inbounds dat.epsilon[hl][:] = dat.epsilon[hl] .* dat.dropout_mask_units[hl]
 end
 
 

@@ -103,9 +103,7 @@ function feedfwd!(dat::Union{Batch_view,Model_data}, nnw, bn, hp)
 
         unit_function![hl](dat.a[hl], dat.z[hl])
 
-        if hp.dropout && (hp.droplim[hl] < 1.0)
-            dropout!(dat,hp,hl)
-        end
+        dropout_fwd_function![hl](dat,hp,hl)  # do it or noop
     end
 
     # output layer
@@ -120,7 +118,6 @@ end
 function feedfwd_predict!(dat::Union{Batch_view, Model_data}, nnw, bn,  hp)
 !hp.quiet && println("feedfwd!(dat::Union{Batch_view, Model_data}, nnw, bn,  hp)")
 
-
     # hidden layers
     @fastmath for hl = 2:nnw.output_layer-1  
         if hp.do_batch_norm 
@@ -129,9 +126,7 @@ function feedfwd_predict!(dat::Union{Batch_view, Model_data}, nnw, bn,  hp)
         else
             affine!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
         end
-
         unit_function![hl](dat.a[hl], dat.z[hl])
-
     end
 
     # output layer
@@ -172,9 +167,7 @@ function backprop!(nnw, bn, dat, hp)
         @inbounds dat.epsilon[hl][:] = nnw.theta[hl+1]' * dat.epsilon[hl+1] .* dat.grad[hl] 
             !hp.quiet && println("what is epsilon $hl? ", mean(dat.epsilon[hl]))
 
-        if hp.dropout && (hp.droplim[hl] < 1.0)
-            @inbounds dat.epsilon[hl][:] = dat.epsilon[hl] .* dat.dropout_mask_units[hl]
-        end
+        dropout_back_function![hl](dat, hl)
 
         if hp.do_batch_norm
             batch_norm_back!(nnw, dat, bn, hl, hp)
