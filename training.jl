@@ -280,7 +280,7 @@ function train(datalist, hp, testgrad=false)
         !hp.quiet && println("Pre-allocate storage completed")
 
     # choose layer functions and cost function based on inputs
-    setup_functions!(hp, bn, train)  # TRAIN
+    setup_functions!(hp, bn, nnw, train)  # TRAIN
 
     # statistics for plots and history data
     plotdef = setup_plots(hp, dotest)  # TRAIN

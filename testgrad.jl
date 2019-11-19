@@ -8,7 +8,7 @@ function compute_numgrad!(numgradtheta, numgradbias, wgts, dat, bn, hp; tweak = 
         # perturb[p] = tweak   # peturb a single weight; leave others alone to get partial for a single weight
         for bi in 1:length(wgts.bias[lr])  # tweak each bias, compute partial diff for each bias
             wgts.bias[lr][bi] -= tweak
-            feedfwd_predict!(dat, wgts, bn, hp)
+            feedfwd_predict!(dat, wgts, hp)
             loss1 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n, wgts.theta, hp.lambda, hp.reg,
                                   wgts.output_layer)
             # loss1 = (-1.0 / dat.n) * (dot(dat.targets,log.(dat.a[wgts.output_layer] .+ 1e-50)) +
@@ -20,7 +20,7 @@ function compute_numgrad!(numgradtheta, numgradbias, wgts, dat, bn, hp; tweak = 
             # println("n =           ", dat.n)
 
             wgts.bias[lr][bi] += 2.0 * tweak
-            feedfwd_predict!(dat, wgts, bn, hp)
+            feedfwd_predict!(dat, wgts, hp)
             loss2 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n, wgts.theta, hp.lambda, hp.reg,
                                   wgts.output_layer)  
             # println("loss2 =       ", loss2)  
@@ -29,11 +29,11 @@ function compute_numgrad!(numgradtheta, numgradbias, wgts, dat, bn, hp; tweak = 
         end
         for thi in eachindex(wgts.theta[lr])  # tweak each theta, compute partial diff for each theta
             wgts.theta[lr][thi] -= tweak
-            feedfwd_predict!(dat, wgts, bn, hp)
+            feedfwd_predict!(dat, wgts, hp)
             loss1 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n, wgts.theta, hp.lambda, hp.reg,
                                   wgts.output_layer)
             wgts.theta[lr][thi] += 2.0 * tweak
-            feedfwd_predict!(dat, wgts, bn, hp)
+            feedfwd_predict!(dat, wgts, hp)
             loss2 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n, wgts.theta, hp.lambda, hp.reg,
                                   wgts.output_layer)
             wgts.theta[lr][thi] -= tweak      

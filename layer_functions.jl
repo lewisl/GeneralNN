@@ -33,7 +33,7 @@ end
 
 
 ###########################################################################
-#  layer functions:  activation 
+#  layer functions:  activation for feed forward
 ###########################################################################
 
 
@@ -73,6 +73,28 @@ end
 function relu!(a::AbstractArray{Float64}, z::AbstractArray{Float64})
     a[:] = max.(z, 0.0)
 end
+
+
+###########################################################################
+#  layer functions:  back propagation chain rule
+###########################################################################
+
+    
+    function backprop_weights_nobias!(delta_w, delta_b, delta_z, epsilon, a_prev)
+        mul!(delta_w, delta_z, a_prev')
+    end
+
+    function backprop_weights!(delta_w, delta_b, delta_z, epsilon, a_prev)
+        mul!(delta_w, epsilon, a_prev')
+        delta_b[:] = sum(epsilon, dims=2)
+    end
+
+
+        #     mul!(nnw.delta_w[hl], dat.delta_z[hl], dat.a[hl-1]')
+        # else
+        #     # @inbounds nnw.delta_w[hl][:] = dat.epsilon[hl] * dat.a[hl-1]'  
+        #     mul!(nnw.delta_w[hl], dat.epsilon[hl], dat.a[hl-1]')  
+        #     @inbounds nnw.delta_b[hl][:] = sum(dat.epsilon[hl],dims=2)
 
 
 ###########################################################################

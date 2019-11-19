@@ -112,7 +112,7 @@ end
 """
 define and choose functions to be used in neural net training
 """
-function setup_functions!(hp, bn, train)
+function setup_functions!(hp, bn, nnw, train)
 !hp.quiet && println("Setup functions beginning")
 
     # make these function variables module level 
@@ -129,6 +129,9 @@ function setup_functions!(hp, bn, train)
     global dropout_back_function!
     global affine_function!
     global batch_norm_fwd_function!
+    global batch_norm_fwd_predict_function!
+    global batch_norm_back_function!
+    global backprop_weights_function!
 
     n_layers = length(hp.hidden) + 2
 
@@ -251,7 +254,7 @@ function setup_functions!(hp, bn, train)
 
     affine_function! = 
         if hp.do_batch_norm
-            affine_nobias!
+            affine_nobias!  # same arguments, just ignores bias in calculation
         else
             affine!
         end
@@ -261,6 +264,27 @@ function setup_functions!(hp, bn, train)
             batch_norm_fwd_function! = create_curry_batch_norm_fwd!(hp, bn)
         else
             noop
+        end
+
+    batch_norm_fwd_predict_function! = 
+        if hp.do_batch_norm
+            batch_norm_fwd_predict_function! = create_curry_batch_norm_fwd_predict!(hp, bn)
+        else
+            noop
+        end
+
+    batch_norm_back_function! =
+        if hp.do_batch_norm
+            batch_norm_back_function! = create_curry_batch_norm_back!(hp, bn, nnw)
+        else
+            noop
+        end
+
+    backprop_weights_function! = 
+        if hp.do_batch_norm
+            backprop_weights_nobias!
+        else
+            backprop_weights!
         end
 
     !hp.quiet && println("Setup functions completed.")
@@ -273,6 +297,20 @@ end
 function create_curry_batch_norm_fwd!(hp, bn)  # arguments that are captured and "built-in" to curried function
     return function f(dat, hl)  # arguments that will be passed in when new function called
                 batch_norm_fwd!(hp, bn, dat, hl)
+           end  # actual name of the resulting function set to return result of create_curry function
+end
+
+
+function create_curry_batch_norm_fwd_predict!(hp, bn)  # arguments that are captured and "built-in" to curried function
+    return function f(dat, hl)  # arguments that will be passed in when new function called
+                batch_norm_fwd_predict!(hp, bn, dat, hl)
+           end  # actual name of the resulting function set to return result of create_curry function
+end
+
+
+function create_curry_batch_norm_back!(hp, bn, nnw)  # arguments that are captured and "built-in" to curried function
+    return function f(dat, hl)  # arguments that will be passed in when new function called
+                batch_norm_back!(nnw, dat, bn, hl, hp)
            end  # actual name of the resulting function set to return result of create_curry function
 end
 

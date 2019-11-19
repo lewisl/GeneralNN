@@ -106,15 +106,13 @@ function feedfwd!(dat::Union{Batch_view,Model_data}, nnw, hp)  # bn,
 end
 
 
-function feedfwd_predict!(dat::Union{Batch_view, Model_data}, nnw, bn,  hp)
-!hp.quiet && println("feedfwd_predict!(dat::Union{Batch_view, Model_data}, nnw, bn,  hp)")
+function feedfwd_predict!(dat::Union{Batch_view, Model_data}, nnw, hp)
+!hp.quiet && println("feedfwd_predict!(dat::Union{Batch_view, Model_data}, nnw, hp)")
 
     # hidden layers
     @fastmath for hl = 2:nnw.output_layer-1  
         affine_function!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
-        if hp.do_batch_norm 
-            batch_norm_fwd_predict!(hp, bn, dat, hl)
-        end
+        batch_norm_fwd_predict_function!(dat, hl)
         unit_function![hl](dat.a[hl], dat.z[hl])
     end
 
@@ -144,26 +142,25 @@ function backprop!(nnw, bn, dat, hp)
     # for output layer if cross_entropy_cost or mean squared error???    
     dat.epsilon[nnw.output_layer][:] = dat.a[nnw.output_layer] .- dat.targets  
     !hp.quiet && println("What is epsilon of output layer? ", mean(dat.epsilon[nnw.output_layer]))
-    @fastmath nnw.delta_w[nnw.output_layer][:] = dat.epsilon[nnw.output_layer] * dat.a[nnw.output_layer-1]' # 2nd term is effectively the grad for error   
+    mul!(nnw.delta_w[nnw.output_layer], dat.epsilon[nnw.output_layer], dat.a[nnw.output_layer-1]')  
     @fastmath nnw.delta_b[nnw.output_layer][:] = sum(dat.epsilon[nnw.output_layer],dims=2)  
 
     # loop over hidden layers
     @fastmath for hl = (nnw.output_layer - 1):-1:2  
         gradient_function![hl](dat.grad[hl], dat.a[hl])  
             !hp.quiet && println("What is gradient $hl? ", mean(dat.grad[hl]))
-        @inbounds dat.epsilon[hl][:] = nnw.theta[hl+1]' * dat.epsilon[hl+1] .* dat.grad[hl] 
+        mul!(dat.epsilon[hl], nnw.theta[hl+1]', dat.epsilon[hl+1])
+        @inbounds dat.epsilon[hl][:] = dat.epsilon[hl] .* dat.grad[hl] 
             !hp.quiet && println("what is epsilon $hl? ", mean(dat.epsilon[hl]))
 
         dropout_back_function![hl](dat, hl)
 
-        if hp.do_batch_norm
-            batch_norm_back!(nnw, dat, bn, hl, hp)
-            @inbounds nnw.delta_w[hl][:] = dat.delta_z[hl] * dat.a[hl-1]'  
-
-        else
-            @inbounds nnw.delta_w[hl][:] = dat.epsilon[hl] * dat.a[hl-1]'  
-            @inbounds nnw.delta_b[hl][:] = sum(dat.epsilon[hl],dims=2)  #  times a column of 1's = sum(row)
-        end
+        # if hp.do_batch_norm
+        #     batch_norm_back!(nnw, dat, bn, hl, hp)
+        # end
+        batch_norm_back_function!(dat, hl)
+        backprop_weights_function!(nnw.delta_w[hl], nnw.delta_b[hl], dat.delta_z[hl], 
+                                   dat.epsilon[hl], dat.a[hl-1])
 
         !hp.quiet && println("what is delta_w $hl? ", mean(nnw.delta_w[hl]))
         !hp.quiet && println("what is delta_b $hl? ", mean(nnw.delta_w[hl]))
@@ -313,7 +310,7 @@ end
 function gather_stats!(plotdef, train_or_test, i, dat, nnw, bn, cost_function, hp)
 
     if plotdef["plot_switch"][train_or_test]
-        feedfwd_predict!(dat, nnw, bn, hp)
+        feedfwd_predict!(dat, nnw, hp)
 
         if plotdef["plot_switch"]["cost"]
             plotdef["cost_history"][i, plotdef[train_or_test]] = cost_function(dat.targets,
