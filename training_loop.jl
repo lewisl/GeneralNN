@@ -1,8 +1,8 @@
 
 using StatsBase
 
-function training_loop!(hp, datalist, mb, nnw, bn, plotdef)
-!hp.quiet && println("training_loop(hp, datalist, mb, nnw, bn, plotdef)")
+function training_loop!(hp, datalist, mb, nnw, bn, statsdat)
+!hp.quiet && println("training_loop(hp, datalist, mb, nnw, bn, statsdat)")
     if size(datalist, 1) == 1
         train = datalist[1]
         dotest = false
@@ -35,8 +35,8 @@ function training_loop!(hp, datalist, mb, nnw, bn, plotdef)
 
                     # stats for each minibatch--expensive!!!
                     hp.plotperbatch && begin
-                        gather_stats!(plotdef, "train", t, train, nnw, bn, cost_function, hp)  
-                        dotest && gather_stats!(plotdef, "test", t, test, nnw, bn, cost_function, hp) 
+                        gather_stats!(statsdat, "train", t, train, nnw, cost_function, hp)  
+                        dotest && gather_stats!(statsdat, "test", t, test, nnw, cost_function, hp) 
                     end
 
                 end # mini-batch loop
@@ -50,8 +50,8 @@ function training_loop!(hp, datalist, mb, nnw, bn, plotdef)
 
             # stats across all mini-batches of one epoch (e.g.--no stats per minibatch)
             hp.plotperepoch && begin
-                gather_stats!(plotdef, "train", ep_i, train, nnw, bn, cost_function, hp)  
-                dotest && gather_stats!(plotdef, "test", ep_i, test, nnw, bn,cost_function, hp) 
+                gather_stats!(statsdat, "train", ep_i, train, nnw, cost_function, hp)  
+                dotest && gather_stats!(statsdat, "test", ep_i, test, nnw, cost_function, hp) 
             end
 
         end # epoch loop
@@ -141,9 +141,9 @@ function backprop!(nnw, dat, hp)
 
     # for output layer if cross_entropy_cost or mean squared error???    
     dat.epsilon[nnw.output_layer][:] = dat.a[nnw.output_layer] .- dat.targets  
-    !hp.quiet && println("What is epsilon of output layer? ", mean(dat.epsilon[nnw.output_layer]))
-    mul!(nnw.delta_w[nnw.output_layer], dat.epsilon[nnw.output_layer], dat.a[nnw.output_layer-1]')  
-    @fastmath nnw.delta_b[nnw.output_layer][:] = sum(dat.epsilon[nnw.output_layer],dims=2)  
+        !hp.quiet && println("What is epsilon of output layer? ", mean(dat.epsilon[nnw.output_layer]))
+    backprop_weights!(nnw.delta_w[nnw.output_layer], nnw.delta_b[nnw.output_layer], dat.delta_z[nnw.output_layer], 
+        dat.epsilon[nnw.output_layer], dat.a[nnw.output_layer-1])      
 
     # loop over hidden layers
     @fastmath for hl = (nnw.output_layer - 1):-1:2  
@@ -303,17 +303,17 @@ function batch_norm_back!(nnw, dat, bn, hl, hp)
 end
 
  
-function gather_stats!(plotdef, train_or_test, i, dat, nnw, bn, cost_function, hp)
+function gather_stats!(statsdat, train_or_test, i, dat, nnw, cost_function, hp)
 
-    if plotdef["plot_switch"][train_or_test]
+    if statsdat["stats_sel"][train_or_test]
         feedfwd_predict!(dat, nnw, hp)
 
-        if plotdef["plot_switch"]["cost"]
-            plotdef["cost_history"][i, plotdef[train_or_test]] = cost_function(dat.targets,
+        if statsdat["stats_sel"]["cost"]
+            statsdat["cost_history"][i, statsdat[train_or_test]] = cost_function(dat.targets,
                 dat.a[nnw.output_layer], dat.n, nnw.theta, hp.lambda, hp.reg, nnw.output_layer)
         end
-        if plotdef["plot_switch"]["learning"]
-            plotdef["accuracy"][i, plotdef[train_or_test]] = (  hp.classify == "regression"
+        if statsdat["stats_sel"]["learning"]
+            statsdat["accuracy"][i, statsdat[train_or_test]] = (  hp.classify == "regression"
                     ? r_squared(dat.targets, dat.a[nnw.output_layer])
                     : accuracy(dat.targets, dat.a[nnw.output_layer])  )
         end
@@ -321,44 +321,4 @@ function gather_stats!(plotdef, train_or_test, i, dat, nnw, bn, cost_function, h
 
 end
 
-
-##############################################################################
-#  this is a slice approach for performance comparison
-##############################################################################
-
-# # This method dispatches on minibatches that are slices
-# function update_batch_views!(mb::Batch_slice, train::Model_data, nnw::Wgts, 
-#     hp::Hyper_parameters, colrng::UnitRange{Int64})
-# !hp.quiet && println("update_batch_views!(mb::Batch_slice, train::Model_data, nnw::Wgts, 
-#     hp::Hyper_parameters, colrng::UnitRange{Int64})")
-
-#     # colrng refers to the set of training examples included in the minibatch
-#     n_layers = nnw.output_layer
-#     mb_cols = 1:hp.mb_size  # only reason for this is that the last minibatch might be smaller
-
-#     # feedforward:   minibatch slices update the underlying data
-#     @inbounds for i = 1:n_layers
-#         mb.a[i][:] = train.a[i][:,colrng]
-#         mb.targets[:] = train.targets[:,colrng]  
-#         mb.z[i][:] = train.z[i][:,colrng]
-
-#         # training / backprop:  don't need this data and only use minibatch size
-#         mb.epsilon[i][:] = train.epsilon[i][:, mb_cols]
-#         mb.grad[i][:] = train.grad[i][:, mb_cols]
-#         mb.delta_z[i][:] = train.delta_z[i][:, mb_cols]
-
-#         if hp.do_batch_norm
-#             # feedforward
-#             mb.z_norm[i][:] = train.z_norm[i][:, colrng]
-#             # backprop
-#             mb.delta_z_norm[i][:] = train.delta_z_norm[i][:, mb_cols]
-#         end
-
-#         if hp.dropout
-#             # training:  applied to feedforward, but only for training
-#             mb.dropout_random[i][:] = train.dropout_random[i][:, mb_cols]
-#             mb.dropout_mask_units[i][:] = train.dropout_mask_units[i][:, mb_cols]
-#         end
-#     end
-# end
 

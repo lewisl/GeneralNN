@@ -51,11 +51,11 @@ all of the input parameters to be read from a TOML file.  This is further explai
                            Note that epsilon is ALWAYS set to 1e-8
                            To accept defaults, don't input this parameter or use []
         classify        ::= "softmax", "sigmoid", "logistic", or "regression" for only the output layer
-        plots           ::= determines training results collected and plotted
+        stats           ::= determines training statistics collected and plotted
                             any choice of ["learning", "cost", "train", "test"];
-                            for no plots use [""] or ["none"]
-                            include "batch" to plot each minibatch and/or "epoch" (the default) to plot each epoch
-                            warning:  plotting results of every batch is SLOW
+                            for no stats use [""] or ["none"]
+                            include "batch" to collect stats on each minibatch and/or "epoch" (the default) for stats per epoch
+                            warning:  stats for every batch is SLOW
         reg             ::= type of regularization, must be one of "L1", "L2", "Maxnorm", ""
         maxnorm_lim     ::= array of limits set for hidden layers + output layer
         dropout         ::= true to use dropout network or false
@@ -68,7 +68,7 @@ all of the input parameters to be read from a TOML file.  This is further explai
                             reduce learning rate (alpha).  Ex: [.5, 2.0] reduces alpha in 1/2 after 1/2 of the
                             epochs.
                             [1.0, 1.0] signals don't do learning decay
-        plot_now        ::Bool.  If true, plot training stats immediately and save the plotdef that contains stats 
+        plot_now        ::Bool.  If true, plot training stats immediately and save the statsdat that contains stats 
                             gathered while running the training.  You can plot the file separately, later.
         sparse          ::Bool. If true, input data will be treated and maintained as SparseArrays.
         initializer     ::= "xavier", "uniform", "normal" or "zero" used to set how Wgts, not including bias, are initialized.
@@ -106,7 +106,7 @@ The following method allows all input parameters to be supplied by a TOML file:
         scale_init = 2.0, 
         bias_initializer  = 0.0
         quiet = true
-        plots = ["Train", "Learning", "Test", "epoch", "batch"]           
+        stats = ["Train", "Learning", "Test", "epoch", "batch"]           
         plot_now = true                    
 
         The last 4 items are not training hyperparameters, but control plotting and the process.
@@ -132,7 +132,7 @@ function setup_training(
                 maxnorm_lim::Array{Float64,1}=Float64[], 
                 dropout::Bool=false, 
                 droplim::Array{Float64,1}=[], 
-                plots::Array{String,1}=["Training", "Learning"], 
+                stats::Array{String,1}=["Training", "Learning"], 
                 learn_decay::Array{Float64,1}=[1.0, 1.0], 
                 plot_now::Bool=false, 
                 sparse::Bool=false, 
@@ -161,7 +161,7 @@ function setup_training(
         "maxnorm_lim"       =>  maxnorm_lim, 
         "dropout"           =>  dropout, 
         "droplim"           =>  droplim, 
-        "plots"             =>  plots, 
+        "stats"             =>  stats, 
         "learn_decay"       =>  learn_decay, 
         "plot_now"          =>  plot_now, 
         "sparse"            =>  sparse, 
@@ -283,7 +283,7 @@ function train(datalist, hp, testgrad=false)
     setup_functions!(hp, bn, nnw, train)  # TRAIN
 
     # statistics for plots and history data
-    plotdef = setup_plots(hp, dotest)  # TRAIN
+    statsdat = setup_stats(hp, dotest)  # TRAIN
 
     !hp.quiet && println("Training setup complete")
     
@@ -311,11 +311,11 @@ function train(datalist, hp, testgrad=false)
         return
     end
     
-    training_time = training_loop!(hp, datalist, mb, nnw, bn, plotdef)
+    training_time = training_loop!(hp, datalist, mb, nnw, bn, statsdat)
 
     
     # save, print and plot training statistics after all epochs
-    output_stats(datalist, nnw, bn, hp, training_time, plotdef)
+    output_stats(datalist, nnw, bn, hp, training_time, statsdat)
 
     ret = Dict(
                 "train_inputs" => train_x, 

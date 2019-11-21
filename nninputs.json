@@ -16,7 +16,7 @@
     "classify": "softmax",
     "dropout": false,
     "droplim": [1.0,0.8,1.0],
-    "plots": ["Train", "Learning", "Test"],
+    "stats": ["Train", "Learning", "Test"],
     "plot_now": true,
     "quiet": true,
     "initializer": "xavier",

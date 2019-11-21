@@ -1,5 +1,5 @@
 #DONE
-    # change NN_Weights to Wgts
+    
 
 
 #BRANCH TODO: layer-based API 
@@ -17,6 +17,7 @@
 #   create a cost prediction method that embeds the feedfwd predictions
 #   in testgrad, test for categorical data or provide other way to do onehot encoding if needed
 #   compare testing gradients with real model size vs tiny model
+#   utilities for plotdef will break on old plotdefs because they are now called statsdat
 #   look for places to try performance benefit of @views when doing dot operations on arrays
 #   factor out preparing all of the datafiles before running training
 #   make sure we have a valid default for lambda

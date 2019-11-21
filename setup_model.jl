@@ -131,10 +131,10 @@ end
     lrndecay(item, check) = ininterval(item[1],check[1]) && ininterval(item[2], check[2])
 
 # for plots
-valid_plots = ["learning", "cost", "train", "test", "batch", "epoch"]
-function checkplots(item, _)
+valid_stats = ["learning", "cost", "train", "test", "batch", "epoch"]
+function checkstats(item, _)
     if length(item) > 1
-        ok1 = all(i -> i in valid_plots, lowercase.(item)) 
+        ok1 = all(i -> i in valid_stats, lowercase.(item)) 
         ok2 = allunique(item) 
         ok3 = !("batch" in item || "epoch" in item)  # can't have both, ok to have neither
         ok = all([ok1, ok2, ok3])
@@ -166,7 +166,7 @@ const valid_training = Dict(
           :opt_params =>  [(f=eqtype, check=Array{Float64,1}), (f=ininterval, check=(0.5,1.0))],
           :dropout =>  [(f=eqtype, check=Bool)],
           :droplim =>  [(f=eqtype, check=Array{Float64, 1}), (f=ininterval, check=(0.2,1.0))],
-          :plots =>  [(f=checkplots, check=nothing)],
+          :stats =>  [(f=checkstats, check=nothing)],
           :plot_now =>  [(f=eqtype, check=Bool)],
           :quiet =>  [(f=eqtype, check=Bool)],
           :initializer => [(f=oneof, check=["xavier", "uniform", "normal", "zero"], warn=true, 
@@ -212,7 +212,7 @@ const valid_toml = Dict(
           :classify => [(f=oneof, check=["softmax", "sigmoid", "logistic", "regression"])] ,
           :dropout =>  [(f=eqtype, check=Bool)],
           :droplim =>  [(f=eqtype, check=Array{Float64, 1}), (f=ininterval, check=(0.2,1.0))],
-          :plots =>  [(f=checkplots, check=nothing)],
+          :stats =>  [(f=checkstats, check=nothing)],
           :plot_now =>  [(f=eqtype, check=Bool)],
           :quiet =>  [(f=eqtype, check=Bool)],
           :initializer => [(f=oneof, check=["xavier", "uniform", "normal", "zero"], warn=true, 

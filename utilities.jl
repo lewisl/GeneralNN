@@ -144,23 +144,23 @@ function load_params(jld_fname)
 end
 
 
-function save_plotdef(plotdef; fname="")
+function save_statsdat(statsdat; fname="")
     if fname == ""  # build a filename
         fname = repr(Dates.now())
-        fname = "plotdef-" * replace(fname, r"[.:]" => "-") * ".jld2"
+        fname = "statsdat-" * replace(fname, r"[.:]" => "-") * ".jld2"
         println(fname)
     end
     jldopen(fname, "w") do f
-        f["plotdef"] = plotdef
+        f["statsdat"] = statsdat
     end
 end
 
 
-function load_plotdef(fname::String)
+function load_statsdat(fname::String)
     f = jldopen(fname, "r")
-    plotdef = f["plotdef"]
+    statsdat = f["statsdat"]
     close(f)
-    return plotdef
+    return statsdat
 end
 
 
@@ -202,7 +202,7 @@ end
     Save, print and plot training statistics after all epochs
 
 """
-function output_stats(datalist, nnw, bn, hp, training_time, plotdef)
+function output_stats(datalist, nnw, bn, hp, training_time, statsdat)
 
     if size(datalist, 1) == 1
         train = datalist[1]
@@ -234,11 +234,11 @@ function output_stats(datalist, nnw, bn, hp, training_time, plotdef)
                         nnw.theta, hp.lambda, hp.reg, nnw.output_layer))
 
         # output improvement of last few iterations for training data
-        if plotdef["plot_switch"]["train"]
-            if plotdef["plot_switch"]["learning"]
+        if statsdat["stats_sel"]["train"]
+            if statsdat["stats_sel"]["learning"]
                 tailcount = min(10, hp.epochs)
                 println(stats, "Training data accuracy in final $tailcount iterations:")
-                printdata = plotdef["accuracy"][end-tailcount+1:end, plotdef["train"]]
+                printdata = statsdat["accuracy"][end-tailcount+1:end, statsdat["train"]]
                 for i=1:tailcount
                     @printf(stats, "%0.3f : ", printdata[i])
                 end
@@ -257,11 +257,11 @@ function output_stats(datalist, nnw, bn, hp, training_time, plotdef)
         end
 
         # output improvement of last 10 iterations for test data
-        if plotdef["plot_switch"]["test"]
-            if plotdef["plot_switch"]["learning"]
+        if statsdat["stats_sel"]["test"]
+            if statsdat["stats_sel"]["learning"]
                 tailcount = min(10, hp.epochs)
                 println(stats, "Test data accuracy in final $tailcount iterations:")
-                printdata = plotdef["accuracy"][end-tailcount+1:end, plotdef["test"]]
+                printdata = statsdat["accuracy"][end-tailcount+1:end, statsdat["test"]]
                 for i=1:tailcount
                     @printf(stats, "%0.3f : ", printdata[i])
                 end
@@ -290,32 +290,32 @@ function output_stats(datalist, nnw, bn, hp, training_time, plotdef)
     println(read(fname, String))
 
     # save cost and accuracy from training
-    save_plotdef(plotdef)
+    save_statsdat(statsdat)
     
     # plot now?
-    hp.plot_now && plot_output(plotdef)
+    hp.plot_now && plot_output(statsdat)
 
 end
 
 
 """
-    plot_output(plotdef::Dict)
+    plot_output(statsdat::Dict)
 
-    Plots the plotdef and creates 1 or 2 PyPlot plot windows of the learning (accuracy)
+    Plots the statsdat and creates 1 or 2  plot windows of the learning (accuracy)
     and/or cost from each training epoch.
 
 """
-function plot_output(plotdef::Dict)
+function plot_output(statsdat::Dict)
     # plot the progress of training cost and/or learning
-    if (plotdef["plot_switch"]["train"] || plotdef["plot_switch"]["test"])
+    if (statsdat["stats_sel"]["train"] || statsdat["stats_sel"]["test"])
         # plotlyjs(size=(600,400)) # set chart size defaults
         gr()
 
-        if plotdef["plot_switch"]["cost"]
+        if statsdat["stats_sel"]["cost"]
             plt_cost = plot(
-                plotdef["cost_history"], 
+                statsdat["cost_history"], 
                 title="Cost Function",
-                labels=plotdef["plot_labels"], 
+                labels=statsdat["stats_labels"], 
                 legend=:bottomright,
                 ylims=(0.0, Inf), 
                 bottom_margin=7mm, 
@@ -323,11 +323,11 @@ function plot_output(plotdef::Dict)
             display(plt_cost)  # or can use gui()
         end
 
-        if plotdef["plot_switch"]["learning"]
+        if statsdat["stats_sel"]["learning"]
             plt_learning = plot(
-                plotdef["accuracy"], 
+                statsdat["accuracy"], 
                 title="Learning Progress",
-                labels=plotdef["plot_labels"], 
+                labels=statsdat["stats_labels"], 
                 legend=:bottomright,
                 ylims=(0.0, 1.05), 
                 bottom_margin=7mm,
@@ -335,7 +335,7 @@ function plot_output(plotdef::Dict)
             display(plt_learning)
         end
 
-        if (plotdef["plot_switch"]["cost"] || plotdef["plot_switch"]["learning"])
+        if (statsdat["stats_sel"]["cost"] || statsdat["stats_sel"]["learning"])
             println("Press enter to close plot window..."); readline()
             closeall()
         end

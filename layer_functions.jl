@@ -79,11 +79,12 @@ end
 #  layer functions:  back propagation chain rule
 ###########################################################################
 
-    
+    # uses delta_z from the backnorm calculations
     function backprop_weights_nobias!(delta_w, delta_b, delta_z, epsilon, a_prev)
         mul!(delta_w, delta_z, a_prev')
     end
 
+    # ignores delta_z terms
     function backprop_weights!(delta_w, delta_b, delta_z, epsilon, a_prev)
         mul!(delta_w, epsilon, a_prev')
         delta_b[:] = sum(epsilon, dims=2)

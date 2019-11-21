@@ -317,18 +317,18 @@ end
 
 
 """
-Function setup_plots(hp, dotest::Bool)
+Function setup_stats(hp, dotest::Bool)
 
 Creates data structure to hold everything needed to plot progress of
 neural net training by iteration.
 
-A plotdef is a dict containing:
+A statsdat is a dict containing:
 
-    "plot_switch"=>plot_switch: Dict of bools for each type of results to be plotted.
+    "stats_sel"=>stats_sel: Dict of bools to select each type of results to be collected.
         Currently used are: "Training", "Test", "Learning", "Cost".  This determines what
         data will be collected during training iterations and what data series will be
         plotted.
-    "plot_labels"=>plot_labels: array of strings provides the labels to be used in the
+    "stats_labels"=>stats_labels: array of strings provides the labels to be used in the
         plot legend.
     "cost_history"=>cost_history: an array of calculated cost at each iteration
         with iterations as rows and result types ("Training", "Test") as columns.
@@ -339,34 +339,34 @@ A plotdef is a dict containing:
     "col_test"=>col_test: column of the arrays above to be used for Test results
 
 """
-function setup_plots(hp, dotest::Bool)
+function setup_stats(hp, dotest::Bool)
     # set up cost_history to track 1 or 2 data series for plots
     # lots of indirection here:  someday might add "validation"
-    if size(hp.plots,1) > 5
+    if size(hp.stats,1) > 5
         @warn("Only 4 plot requests permitted. Proceeding with up to 4.")
     end
 
-    valid_plots = ["train", "test", "learning", "cost", "epoch", "batch"]
-    if in(hp.plots, ["None", "none", ""])
-        plot_switch = Dict(pl => false for pl in valid_plots) # set all to false
+    valid_stats = ["train", "test", "learning", "cost", "epoch", "batch"]
+    if in(hp.stats, ["None", "none", ""])
+        stats_sel = Dict(pl => false for pl in valid_stats) # set all to false
     else
-        plot_switch = Dict(pl => in(pl, hp.plots) for pl in valid_plots)
+        stats_sel = Dict(pl => in(pl, hp.stats) for pl in valid_stats)
     end
 
     # determine whether to plot per batch or per epoch
-    if in(hp.plots, ["None", "none", ""])
+    if in(hp.stats, ["None", "none", ""])
         hp.plotperbatch = false
         hp.plotperepoch = false        
     elseif !hp.dobatch # no batches--must plot by epoch
         hp.plotperbatch = false
         hp.plotperepoch = true
-    elseif in("epoch", hp.plots) # this is the default and overrides conflicting choice
+    elseif in("epoch", hp.stats) # this is the default and overrides conflicting choice
         hp.plotperbatch = false
         hp.plotperepoch = true
-    elseif in("batch", hp.plots)
+    elseif in("batch", hp.stats)
         hp.plotperbatch = true
         hp.plotperepoch = false
-    else # even when NOT plotting we still gather stats in the plotdef for default epoch
+    else # even when NOT plotting we still gather stats in the statsdat for default epoch
         hp.plotperbatch = false
         hp.plotperepoch = true
     end
@@ -375,30 +375,30 @@ function setup_plots(hp, dotest::Bool)
 
     # must have test data to plot test results
     if !dotest  # no test data
-        if plot_switch["test"]  # input requested plotting test data results
+        if stats_sel["test"]  # input requested plotting test data results
             @warn("Can't plot test data. No test data. Proceeding.")
-            plot_switch["test"] = false
+            stats_sel["test"] = false
         end
     end
 
-    plot_labels = dotest ? ["Train", "Test"] : ["Train"]
-    plot_labels = reshape(plot_labels,1,size(plot_labels,1)) # 1 x N row array required by pyplot
+    stats_labels = dotest ? ["Train", "Test"] : ["Train"]
+    stats_labels = reshape(stats_labels,1,size(stats_labels,1)) # 1 x N row array required by pyplot
 
-    plotdef = Dict("plot_switch"=>plot_switch, "plot_labels"=>plot_labels)
+    statsdat = Dict("stats_sel"=>stats_sel, "stats_labels"=>stats_labels)
 
-    if plot_switch["cost"]
-        plotdef["cost_history"] = zeros(pointcnt, size(plot_labels,2)) # cost history initialized to 0's
+    if stats_sel["cost"]
+        statsdat["cost_history"] = zeros(pointcnt, size(stats_labels,2)) # cost history initialized to 0's
     end
-    if plot_switch["learning"]
-        plotdef["accuracy"] = zeros(pointcnt, size(plot_labels,2))
+    if stats_sel["learning"]
+        statsdat["accuracy"] = zeros(pointcnt, size(stats_labels,2))
     end
 
     # set column in cost_history for each data series
-    col_train = plot_switch["train"] ? 1 : 0
-    col_test = plot_switch["test"] ? col_train + 1 : 0
+    col_train = stats_sel["train"] ? 1 : 0
+    col_test = stats_sel["test"] ? col_train + 1 : 0
 
-    plotdef["train"] = col_train
-    plotdef["test"] = col_test
+    statsdat["train"] = col_train
+    statsdat["test"] = col_test
 
-    return plotdef
+    return statsdat
 end

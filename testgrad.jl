@@ -69,7 +69,7 @@ function check_grads(hp)
     # set appropriate bogus hyper-parameters for mini-model
     minihp = Hyper_parameters()
         minihp.reg = ""                # no reg
-        minihp.plots = []              # no plots
+        minihp.stats = []              # no stats
         minihp.plot_now = false        # no plots
         minihp.opt = "none"            # no optimization
         minihp.do_learn_decay = false  # no optimization

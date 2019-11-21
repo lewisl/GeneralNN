@@ -106,7 +106,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
     scale_init::Float64         # varies with initializer method: 2.0 for xavier, around .15 for others
     bias_initializer::Float64   # 0.0, 1.0, between them
     quiet::Bool                 # display progress messages or not
-    plots::Array{String, 1}     # not a hyper_parameter, choice of plots to create during training
+    stats::Array{String, 1}     # not a hyper_parameter, choice of stats data to collect during training
     plot_now::Bool
     plotperbatch::Bool
     plotperepoch::Bool
@@ -139,7 +139,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         2.0,            # scale_init
         0.0,            # bias_initializer
         true,           # quiet
-        ["None"],       # plots
+        ["None"],       # stats
         false,          # plot_now
         false,          # plotperbatch
         true            # plotperepoch
@@ -194,43 +194,6 @@ mutable struct Model_data               # we will use train for inputs and test 
 end
 
 
-
-
-# """
-# Experimental: Struct Batch_slice holds slices of model data that will be broken into minibatches
-#               Sort of worked, but gave it up to use views, which are fast.
-# """
-# mutable struct Batch_slice               # we will use mb for as the variable for minibatches
-#     # array of views
-#     a  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-#     targets  #::SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true}
-#     z  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-#     z_norm  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-#     delta_z_norm  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-#     delta_z  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-#     grad  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-#     epsilon  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-#     dropout_random  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-#     dropout_mask_units  #::Array{SubArray{Bool,2,BitArray{2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-#     sel::AbstractArray{Int64}
-
-#     Batch_slice() = new(                      # empty constructor
-#         [],  # a
-#         [],                 # targets
-#         [],  # z
-#         [],  # z_norm
-#         [],  # delta_z_norm
-#         [],  # delta_z
-#         [],  # grad
-#         [],  # epsilon
-#         [],  # dropout_random
-#         [],  # dropout_mask_units  
-#         []   
-#     )
-
-# end
-
-
 """
 struct Batch_norm_params holds batch normalization parameters for
 feedfwd calculations and backprop training.
@@ -258,15 +221,3 @@ mutable struct Batch_norm_params               # we will use bn as the struct va
         Array{Array{Float64,1},1}(undef, 0)     # std_run
     )
 end
-
-
-
-# 
-# ERROR: MethodError: Cannot `convert` an object of type Array{Float64,2} 
-# to an object of type SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true}
-# This may have arisen from a call to the constructor SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true}(...),
-# since type constructors fall back to convert methods.
-
-# ERROR: MethodError: Cannot `convert` 
-# an object of type SubArray{Bool,2,Array{Bool,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true} to an
-#    object of type SubArray{Bool,2,BitArray{2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true}
