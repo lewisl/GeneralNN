@@ -36,15 +36,15 @@ function runjob(argfile="nninputs.toml", matfname="digits5000by400.mat"; testgra
     # println("train_x ", typeof(train_x), " train_y ", typeof(train_y))
 
     println("........ Setup training ........")
-    hp = setup_training([train_x, train_y, test_x, test_y], argfile)
+    hp = setup_training(argfile)
 
     println("........ Training the neural network ........")
     if size(test_x) == (0,0)
         dotest = false
-        results = train([train_x, train_y], hp, testgrad)
+        results = train(train_x, train_y, hp, testgrad)
     else
         dotest = true
-        results = train([train_x, train_y, test_x, test_y], hp, testgrad)
+        results = train(train_x, train_y, test_x, test_y, hp, testgrad)
     end
 
     if testgrad

@@ -4,7 +4,7 @@ using Printf
 using LinearAlgebra
 
 
-function prep_training!(mb, hp, nnw, bn, train)
+function prep_training!(mb, hp, nnw, bn, n)
     !hp.quiet && println("Setup_model beginning")
     !hp.quiet && println("hp.dobatch: ", hp.dobatch)
 
@@ -16,10 +16,10 @@ function prep_training!(mb, hp, nnw, bn, train)
     if hp.dobatch
         @info("Be sure to shuffle training data when using minibatches.  Use utility function shuffle_data! or your own.")
         if hp.mb_size_in < 1
-            hp.mb_size = hp.mb_size_in = train.n  
+            hp.mb_size = hp.mb_size_in = n  
             hp.dobatch = false    # user provided incompatible inputs
-        elseif hp.mb_size_in >= train.n
-            hp.mb_size = hp.mb_size_in = train.n
+        elseif hp.mb_size_in >= n
+            hp.mb_size = hp.mb_size_in = n
             hp.dobatch = false   # user provided incompatible inputs
         else 
             hp.mb_size = hp.mb_size_in
@@ -28,7 +28,7 @@ function prep_training!(mb, hp, nnw, bn, train)
         hp.do_batch_norm = hp.dobatch ? hp.do_batch_norm : false  
 
     else
-        hp.alphaovermb = hp.alpha / train.n 
+        hp.alphaovermb = hp.alpha / n 
     end
 
 
@@ -112,7 +112,7 @@ end
 """
 define and choose functions to be used in neural net training
 """
-function setup_functions!(hp, bn, nnw, train)
+function setup_functions!(hp, nnw, bn, dat)
 !hp.quiet && println("Setup functions beginning")
 
     # make these function variables module level 
@@ -227,7 +227,7 @@ function setup_functions!(hp, bn, nnw, train)
         end
 
     classify_function! = 
-        if train.out_k > 1  # more than one output (unit)
+        if dat.out_k > 1  # more than one output (unit)
             if hp.classify == "sigmoid"
                 sigmoid!
             elseif hp.classify == "softmax"

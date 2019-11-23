@@ -102,6 +102,8 @@ export
 export 
     train,
     setup_training, 
+    pretrain,
+    prepredict,
     test_score, 
     save_params, 
     load_params, 

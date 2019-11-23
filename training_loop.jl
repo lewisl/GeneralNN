@@ -1,18 +1,26 @@
 
 using StatsBase
 
-function training_loop!(hp, datalist, mb, nnw, bn, statsdat)
+function training_loop!(hp, train, mb, nnw, bn, statsdat)
+    _training_loop!(hp, train, Model_data(), mb, nnw, bn, statsdat; dotest=false)
+end
+
+function training_loop!(hp, train, test, mb, nnw, bn, statsdat)
+    _training_loop!(hp, train, test, mb, nnw, bn, statsdat; dotest=true)
+end
+
+function _training_loop!(hp, train, test, mb, nnw, bn, statsdat; dotest=false)
 !hp.quiet && println("training_loop(hp, datalist, mb, nnw, bn, statsdat)")
-    if size(datalist, 1) == 1
-        train = datalist[1]
-        dotest = false
-    elseif size(datalist,1) == 2
-        train = datalist[1]
-        test = datalist[2]
-        dotest = true
-    else
-        error("Datalist contains wrong number of elements.")
-    end
+    # if size(datalist, 1) == 1
+    #     train = datalist[1]
+    #     dotest = false
+    # elseif size(datalist,1) == 2
+    #     train = datalist[1]
+    #     test = datalist[2]
+    #     dotest = true
+    # else
+    #     error("Datalist contains wrong number of elements.")
+    # end
 
     training_time = @elapsed begin # start the cpu clock and begin block for training process
         t = 0  # counter:  number of times parameters will have been updated: minibatches * epochs

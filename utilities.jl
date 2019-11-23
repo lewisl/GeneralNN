@@ -202,18 +202,27 @@ end
     Save, print and plot training statistics after all epochs
 
 """
-function output_stats(datalist, nnw, bn, hp, training_time, statsdat)
+function output_stats(train, test, nnw, bn, hp, training_time, statsdat)
+    _output_stats(train, test, nnw, bn, hp, training_time, statsdat; dotest=true)
+end
 
-    if size(datalist, 1) == 1
-        train = datalist[1]
-        dotest = false
-    elseif size(datalist,1) == 2
-        train = datalist[1]
-        test = datalist[2]
-        dotest = true
-    else
-        error("Datalist contains wrong number of elements.")
-    end
+# TODO maybe we don't need a valid Model_data object
+function output_stats(train, nnw, bn, hp, training_time, statsdat)
+    _output_stats(train, Model_data(), nnw, bn, hp, training_time, statsdat; dotest=false)
+end
+
+function _output_stats(train, test, nnw, bn, hp, training_time, statsdat; dotest=false)
+
+    # if size(datalist, 1) == 1
+    #     train = datalist[1]
+    #     dotest = false
+    # elseif size(datalist,1) == 2
+    #     train = datalist[1]
+    #     test = datalist[2]
+    #     dotest = true
+    # else
+    #     error("Datalist contains wrong number of elements.")
+    # end
 
 
     # file for simple training stats

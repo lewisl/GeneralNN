@@ -116,8 +116,8 @@ function check_grads(hp)
     miniwgts.delta_b = deepcopy(miniwgts.bias)
 
     # initialize numeric gradients
-    numgradtheta = deepcopy(miniwgts.theta)
-    numgradbias  = deepcopy(miniwgts.bias)
+    numgradtheta = miniwgts.theta      # deepcopy(miniwgts.theta)
+    numgradbias  = miniwgts.bias       # deepcopy(miniwgts.bias)
 
     # create repeatable bogus train data (x,y) for mini-model
     minidat = Model_data()
@@ -133,7 +133,13 @@ function check_grads(hp)
     # preallocate the training matrices
     preallocate_data!(minidat, miniwgts, m, minihp)
 
+    # set functions
+    setup_functions!(minihp, miniwgts, minidat) 
+
+
     # advance 5 iterations using the analytic model
+    minihp.epochs = 5
+    training_time = training_loop!(minihp, datalist, mb, nnw, bn, statsdat)
 
     # compute numgrad
     println("  ****** Calculating numeric approximation gradients")
@@ -142,7 +148,7 @@ function check_grads(hp)
 
     # compute_modelgrad!()
     println("  ****** Calculating feedfwd/backprop gradients")
-    compute_modelgrad!(minidat, miniwgts, minibn, minihp)
+    compute_modelgrad!(minidat, miniwgts, minihp)
     modgrad = (deepcopy(miniwgts.delta_w), deepcopy(miniwgts.delta_b))
 
     deltacols = hcat(flat(modgrad), flat(numgrad))
