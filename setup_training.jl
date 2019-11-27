@@ -26,11 +26,9 @@ function prep_training!(mb, hp, nnw, bn, n)
         end
         hp.alphaovermb = hp.alpha / hp.mb_size  # calc once, use in hot loop
         hp.do_batch_norm = hp.dobatch ? hp.do_batch_norm : false  
-
     else
         hp.alphaovermb = hp.alpha / n 
     end
-
 
     hp.do_learn_decay = 
         if hp.learn_decay == [1.0, 1.0]
@@ -88,7 +86,6 @@ function prep_training!(mb, hp, nnw, bn, n)
     end
 
     !hp.quiet && println("end of setup_model: hp.dobatch: ", hp.dobatch)
-
 end
 
 
@@ -135,23 +132,6 @@ function setup_functions!(hp, nnw, bn, dat)
 
     n_layers = length(hp.hidden) + 2
 
-    # unitfunctions = Dict("sigmoid" => sigmoid!, "l_relu" => l_relu!, "relu" => relu!, "tanh" => tanh_act!)
-    # gradientfunctions = Dict("sigmoid" => sigmoid_gradient!, "l_relu" => l_relu_gradient!, 
-    #                         "relu" => relu_gradient!, "tanh" => tanh_act_gradient!)
-    # classifyfunctions = Dict("sigmoid" => sigmoid!, "softmax" => softmax!)
-    # regfunctions = Dict("L2" => l2_reg!, "L1" => l1_reg!, "Maxnorm" => maxnorm_reg!, "" => no_reg, "none" => no_reg)
-    # optimizationfunctions = Dict("momentum" => momentum!, "adam" => adam!, "rmsprop" => rmsprop!, "" => no_optimization,
-    #                      "none" => no_optimization)
-    # costfunctions = Dict("regression" => mse_cost, "default" => cross_entropy_cost)
-
-    # unit_function! = get(unitfunctions, hp.units, sigmoid!)
-    # gradient_function! = get(gradientfunctions, hp.units, sigmoid!)
-    # classify_function! = get(classifyfunctions, hp.classify, sigmoid!)
-    # # check outputs
-    # reg_function! = get(regfunctions, hp.reg, noop)
-    # optimization_function! = get(optimizationfunctions, hp.opt, noop)
-    # cost_function = get(costfunctions, hp.classify_function, cross_entropy_cost)
-
     # allow different functions at each appropriate layer
     unit_function! = Array{Function}(undef, n_layers)
     gradient_function! = Array{Function}(undef, n_layers)
@@ -161,7 +141,7 @@ function setup_functions!(hp, nnw, bn, dat)
 
     for layer in 2:n_layers-1 # for hidden layers: layers 2 through output - 1
         hidden_layer = layer - 1
-        unit_function![layer] =
+        unit_function![layer] =  # hidden looks like [["relu",100], ...]
             if hp.hidden[hidden_layer][1] == "sigmoid"
                 sigmoid!
             elseif hp.hidden[hidden_layer][1] == "l_relu"
@@ -173,7 +153,7 @@ function setup_functions!(hp, nnw, bn, dat)
             end
 
         gradient_function![layer] =
-            if unit_function![layer] == sigmoid! # i + 1 is walks through the hidden layers
+            if unit_function![layer] == sigmoid! 
                 sigmoid_gradient!
             elseif unit_function![layer] == l_relu!
                 l_relu_gradient!
@@ -233,7 +213,7 @@ function setup_functions!(hp, nnw, bn, dat)
             elseif hp.classify == "softmax"
                 softmax!
             else
-                error("Function to classify output labels must be \"sigmoid\" or \"softmax\".")
+                error("Function to classify multiple output labels must be \"sigmoid\" or \"softmax\".")
             end
         else
             if hp.classify == "sigmoid" || hp.classify == "logistic"
@@ -241,7 +221,7 @@ function setup_functions!(hp, nnw, bn, dat)
             elseif hp.classify == "regression"
                 regression!
             else
-                error("Function to classify output must be \"sigmoid\", \"logistic\" or \"regression\".")
+                error("Function to classify single output must be \"sigmoid\", \"logistic\" or \"regression\".")
             end
         end
 

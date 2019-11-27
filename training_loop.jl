@@ -1,26 +1,18 @@
 
 using StatsBase
 
+# method with no input test data
 function training_loop!(hp, train, mb, nnw, bn, statsdat)
     _training_loop!(hp, train, Model_data(), mb, nnw, bn, statsdat; dotest=false)
 end
 
+# method with input of train and test data: test data used for training stats
 function training_loop!(hp, train, test, mb, nnw, bn, statsdat)
     _training_loop!(hp, train, test, mb, nnw, bn, statsdat; dotest=true)
 end
 
 function _training_loop!(hp, train, test, mb, nnw, bn, statsdat; dotest=false)
-!hp.quiet && println("training_loop(hp, datalist, mb, nnw, bn, statsdat)")
-    # if size(datalist, 1) == 1
-    #     train = datalist[1]
-    #     dotest = false
-    # elseif size(datalist,1) == 2
-    #     train = datalist[1]
-    #     test = datalist[2]
-    #     dotest = true
-    # else
-    #     error("Datalist contains wrong number of elements.")
-    # end
+!hp.quiet && println("training_loop(hp, train, test mb, nnw, bn, statsdat; dotest=false)")
 
     training_time = @elapsed begin # start the cpu clock and begin block for training process
         t = 0  # counter:  number of times parameters will have been updated: minibatches * epochs
@@ -50,10 +42,8 @@ function _training_loop!(hp, train, test, mb, nnw, bn, statsdat; dotest=false)
                 end # mini-batch loop
 
             else
-
                 t += 1
                 train_one_step!(train, nnw, bn, hp, t)
-
             end
 
             # stats across all mini-batches of one epoch (e.g.--no stats per minibatch)
@@ -92,16 +82,16 @@ function feedfwd!(dat, nnw, do_batch_norm)
 
     feed forward from inputs to output layer predictions
 """
-function feedfwd!(dat::Union{Batch_view,Model_data}, nnw, hp)  # bn,
+function feedfwd!(dat::Union{Batch_view,Model_data}, nnw, hp)  
 !hp.quiet && println("feedfwd!(dat::Union{Batch_view, Model_data}, nnw, hp)")
 
-    # dropout for input layer (if probability < 1.0)
+    # dropout for input layer (if probability < 1.0) or noop
     dropout_fwd_function![1](dat,hp,1)  
 
     # hidden layers
     @fastmath for hl = 2:nnw.output_layer-1  
         affine_function!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl]) # if do_batch_norm, ignores bias arg
-        batch_norm_fwd_function!(dat, hl)
+        batch_norm_fwd_function!(dat, hl)  # do it or noop
         unit_function![hl](dat.a[hl], dat.z[hl])
         dropout_fwd_function![hl](dat,hp,hl)  # do it or noop
     end
@@ -133,7 +123,7 @@ end
 
 
 """
-function backprop!(nnw, dat, do_batch_norm)
+function backprop!(nnw, dat, hp)
     Argument nnw.delta_w holds the computed gradients for Wgts, delta_b for bias
     Modifies dat.epsilon, nnw.delta_w, nnw.delta_b in place--caller uses nnw.delta_w, nnw.delta_b
     Use for training iterations
@@ -243,8 +233,8 @@ function update_batch_views!(mb::Batch_view, train::Model_data, nnw::Wgts,
     for i = 1:n_layers
         mb.a[i] = view(train.a[i],:,colrng)   # sel is random order of example indices
         mb.z[i] = view(train.z[i],:,colrng) 
-        mb.epsilon[i] = view(train.epsilon[i], :, mb_cols) # NOTE: use mb_cols!
-        mb.grad[i] = view(train.grad[i], :, mb_cols) 
+        mb.epsilon[i] = view(train.epsilon[i], :, colrng) # NOTE: use mb_cols!  mb_cols
+        mb.grad[i] = view(train.grad[i], :, colrng)   # mb_cols
     end
     mb.targets = view(train.targets,:,colrng)  # only at the output layer
 
@@ -256,16 +246,16 @@ function update_batch_views!(mb::Batch_view, train::Model_data, nnw::Wgts,
             # feedforward
             mb.z_norm[i] = view(train.z_norm[i],:, colrng) 
             # backprop
-            mb.delta_z_norm[i] = view(train.delta_z_norm[i], :, mb_cols) 
-            mb.delta_z[i] = view(train.delta_z[i], :, mb_cols) 
+            mb.delta_z_norm[i] = view(train.delta_z_norm[i], :, colrng)   # mb_cols
+            mb.delta_z[i] = view(train.delta_z[i], :, colrng)   # mb_cols
         end
     end
 
     if hp.dropout
         for i = 1:n_layers
             # training:  applied to feedforward, but only for training
-            mb.dropout_random[i] = view(train.dropout_random[i], :, mb_cols)
-            mb.dropout_mask_units[i] = view(train.dropout_mask_units[i], :, mb_cols)
+            mb.dropout_random[i] = view(train.dropout_random[i], :, colrng)  # mb_cols
+            mb.dropout_mask_units[i] = view(train.dropout_mask_units[i], :, colrng)  # mb_cols
         end
     end
 

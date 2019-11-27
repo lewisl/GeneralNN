@@ -281,6 +281,6 @@ function l1_reg!(nnw, hp, hl)
 end
 
 
-############## noop stubb
+############## noop stub
 function noop(args...)
 end

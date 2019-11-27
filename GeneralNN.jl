@@ -1,5 +1,6 @@
 #DONE
-    
+
+   
 
 
 #BRANCH TODO: layer-based API 
@@ -12,9 +13,12 @@
 # LSTM networks
 
 #TODO
+#   implement a gradient checking function with option to run it
+#   fix approach to weights inititalization:  set sizes with zeros, then update to initial values
 #   export onehot--decide how to transpose data
 #   create a cost function method without L2 regularization
 #   create a cost prediction method that embeds the feedfwd predictions
+#   figure out memory requirements of pre-allocation.  is there someway to reduce and still get speed benefit?
 #   in testgrad, test for categorical data or provide other way to do onehot encoding if needed
 #   compare testing gradients with real model size vs tiny model
 #   utilities for plotdef will break on old plotdefs because they are now called statsdat
@@ -47,7 +51,6 @@
         #        to get rid of all of the temporaries in there. 
         # To use an infix operator, you can use \cdot, as in view(A,:,j)⋅r.
 #   figure out memory use between train set and minibatch set
-#   implement a gradient checking function with option to run it
 
 
 
@@ -116,7 +119,8 @@ export
     wrong_preds,
     right_preds,
     plot_output,
-    dodigit
+    dodigit,
+    check_grads
 
 using MAT
 using JLD2
@@ -131,7 +135,6 @@ using SparseArrays
 using TOML  # we might need private TOML for Julia < 1.3
 
 using Plots
-# plotlyjs()  # PlotlyJS backend to local electron window
 gr()
 
 import Measures: mm # for some plot dimensioning

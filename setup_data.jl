@@ -73,16 +73,32 @@ function preallocate_data!(dat, nnw, n, hp)
     # training / backprop  -- pre-allocate only minibatch size (except last one, which could be smaller)
     # this doesn't work for test set when not using minibatches (minibatch size on training then > entire test set)
     # if istrain   # e.g., only for training->no backprop data structures needed for test data
-        if hp.dobatch   # TODO  fix this HACK
-            dat.epsilon = [i[:,1:hp.mb_size_in] for i in dat.a]
-            dat.grad = [i[:,1:hp.mb_size_in] for i in dat.a]
-            dat.delta_z = [i[:,1:hp.mb_size_in] for i in dat.a]
-        else  # this should pick up sparsity
-            dat.epsilon = [i for i in dat.a]
-            dat.grad = [i for i in dat.a]
-            dat.delta_z = [i for i in dat.a]
-        end
+        # if hp.dobatch   # TODO  fix this HACK
+        #     dat.epsilon = [i[:,1:hp.mb_size_in] for i in dat.a]
+        #     dat.grad = [i[:,1:hp.mb_size_in] for i in dat.a]
+        #     dat.delta_z = [i[:,1:hp.mb_size_in] for i in dat.a]
+        # else  # this should pick up sparsity
+            # dat.epsilon = [i for i in dat.a]
+            # dat.grad = [i for i in dat.a]
+            # dat.delta_z = [i for i in dat.a]
+        # end
     # end
+    dat.epsilon = []
+    dat.grad = []
+    dat.delta_z = []
+    if hp.sparse
+        for i = 1:nnw.output_layer  
+            push!(dat.epsilon, spzeros(nnw.ks[i], n, 0.1))
+            push!(dat.grad, spzeros(nnw.ks[i], n, 0.1))  #  and up...  ...output layer set after loop
+            push!(dat.delta_z, spzeros(nnw.ks[i], n, 0.1))  #  and up...  ...output layer set after loop
+        end
+    else
+        for i = 1:nnw.output_layer  
+            push!(dat.epsilon, zeros(nnw.ks[i], n))
+            push!(dat.grad, zeros(nnw.ks[i], n))  #  and up...  ...output layer set after loop
+            push!(dat.delta_z, zeros(nnw.ks[i], n))  #  and up...  ...output layer set after loop
+        end
+    end    
 
     if hp.do_batch_norm  # required for full pass performance stats  TODO: really? or only for batch_norm
         # feedforward

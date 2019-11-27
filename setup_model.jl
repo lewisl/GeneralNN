@@ -280,18 +280,19 @@ function preallocate_wgts!(nnw, hp, in_k, n, out_k)
     end
 
     # bias initialization: small positive values can improve convergence
-    nnw.bias = 
-        if hp.bias_initializer == 0.0
-            bias_zeros(nnw.ks)  
-        elseif hp.bias_initializer == 1.0
-            bias_ones(nnw.ks)
-        elseif 0.0 < hp.bias_initializer < 1.0
-            bias_val(hp.bias_initializer, nnw.ks)
-        elseif np.bias_initializer == 99.9
-            bias_rand(nnw.ks)
-        else
-            bias_zeros(nnw.ks)
-        end
+    nnw.bias = [zeros(2)] # layer 1 not used
+
+    if hp.bias_initializer == 0.0
+        bias_zeros(nnw.ks, nnw)  
+    elseif hp.bias_initializer == 1.0
+        bias_ones(nnw.ks, nnw)
+    elseif 0.0 < hp.bias_initializer < 1.0
+        bias_val(hp.bias_initializer, nnw.ks, nnw)
+    elseif np.bias_initializer == 99.9
+        bias_rand(nnw.ks, nnw)
+    else
+        bias_zeros(nnw.ks, nnw)
+    end
 
     # structure of gradient matches theta
     nnw.delta_w = deepcopy(nnw.theta)
@@ -331,20 +332,28 @@ function normal_initialize!(nnw, scale=0.15)
 end
 
 
-function bias_zeros(ks)
-    [zeros(i) for i in ks]
+function bias_zeros(ks, nnw)
+    for l = 2:nnw.output_layer
+        push!(nnw.bias, zeros(ks[l]))
+    end
 end
 
-function bias_ones(ks)
-    [ones(i) for i in ks]
+function bias_ones(ks, nnw)
+    for l = 2:nnw.output_layer
+        push!(nnw.bias, ones(ks[l]))
+    end
 end
 
-function bias_val(val,ks)
-    [fill(val, i) for i in ks]
+function bias_val(val, ks, nnw)
+    for l = 2:nnw.output_layer
+        push!(nnw.bias, fill(val, ks[l]))
+    end
 end
 
-function bias_rand(ks)
-    [rand(i) .* .1 for i in ks]
+function bias_rand(ks, nnw)
+    for l = 2:nnw.output_layer
+        push!(nnw.bias, rand(ks[l]) .* 0.1)
+    end
 end
 
 

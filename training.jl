@@ -205,6 +205,73 @@ function setup_training(argsfile::String)
 end
 
 
+"""
+function train(datalist, hp)
+
+This is the one function and only method that really does the work.  It runs
+the model training or as many frameworks refer to it, "fits" the model.
+"""
+function train(train_x, train_y, hp, testgrad=false)
+    !hp.quiet && println("Training setup beginning")
+    dotest = false
+
+    train, mb, nnw, bn = pretrain(train_x, train_y, hp)
+    statsdat = setup_stats(hp, dotest)  
+
+    !hp.quiet && println("Training setup complete")
+
+    training_time = training_loop!(hp, train, mb, nnw, bn, statsdat)
+
+    # save, print and plot training statistics
+    output_stats(train, nnw, bn, hp, training_time, statsdat)
+
+    ret = Dict(
+                "train_inputs" => train_x, 
+                "train_targets"=> train_y, 
+                "train_preds" => train.a[nnw.output_layer], 
+                "Wgts" => nnw, 
+                "batchnorm_params" => bn, 
+                "hyper_params" => hp
+                )
+
+    return ret
+
+end # _run_training_core, method with test data
+
+
+function train(train_x, train_y, test_x, test_y, hp, testgrad=false)
+    !hp.quiet && println("Training setup beginning")
+    dotest = true
+
+    train, mb, nnw, bn = pretrain(train_x, train_y, hp)
+    test = prepredict(test_x, test_y, hp, nnw, notrain=false)
+        # use notrain=false because the test data is used during training
+    statsdat = setup_stats(hp, dotest)  
+
+    !hp.quiet && println("Training setup complete")
+
+    training_time = training_loop!(hp, train, test, mb, nnw, bn, statsdat)
+
+    # save, print and plot training statistics
+    output_stats(train, test, nnw, bn, hp, training_time, statsdat)
+
+    ret = Dict(
+                "train_inputs" => train_x, 
+                "train_targets"=> train_y, 
+                "train_preds" => train.a[nnw.output_layer], 
+                "Wgts" => nnw, 
+                "batchnorm_params" => bn, 
+                "hyper_params" => hp,
+                "test_inputs" => test.inputs, 
+                "test_targets" => test.targets, 
+                "test_preds" => test.a[nnw.output_layer]  
+                )
+
+    return ret
+
+end # _run_training_core, method with test data
+
+
 function pretrain(dat_x, dat_y, hp)
     Random.seed!(70653)  # seed int value is meaningless
 
@@ -282,248 +349,3 @@ function prepredict(dat_x, dat_y, hp, nnw; notrain=true)
 end
 
 
-"""
-function train(datalist, hp)
-
-This is the one function and only method that really does the work.  It runs
-the model training or as many frameworks refer to it, "fits" the model.
-"""
-function train(train_x, train_y, hp, testgrad=false)
-    !hp.quiet && println("Training setup beginning")
-
-    train, mb, nnw, bn = pretrain(train_x, train_y, hp)
-    statsdat = setup_stats(hp, false)  # GET RID of dotest here
-
-    !hp.quiet && println("Training setup complete")
-
-    training_time = training_loop!(hp, train, mb, nnw, bn, statsdat)
-
-    # save, print and plot training statistics
-    output_stats(train, nnw, bn, hp, training_time, statsdat)
-
-    ret = Dict(
-                "train_inputs" => train_x, 
-                "train_targets"=> train_y, 
-                "train_preds" => train.a[nnw.output_layer], 
-                "Wgts" => nnw, 
-                "batchnorm_params" => bn, 
-                "hyper_params" => hp
-                )
-
-    return ret
-
-end # _run_training_core, method with test data
-
-
-function train(train_x, train_y, test_x, test_y, hp, testgrad=false)
-    !hp.quiet && println("Training setup beginning")
-
-    train, mb, nnw, bn = pretrain(train_x, train_y, hp)
-    test = prepredict(test_x, test_y, hp, nnw, notrain=false)
-        # use notrain=false because the test data is used during training
-    statsdat = setup_stats(hp, true)  # GET RID of dotest here
-
-    !hp.quiet && println("Training setup complete")
-
-    training_time = training_loop!(hp, train, test, mb, nnw, bn, statsdat)
-
-    # save, print and plot training statistics
-    output_stats(train, test, nnw, bn, hp, training_time, statsdat)
-
-    ret = Dict(
-                "train_inputs" => train_x, 
-                "train_targets"=> train_y, 
-                "train_preds" => train.a[nnw.output_layer], 
-                "Wgts" => nnw, 
-                "batchnorm_params" => bn, 
-                "hyper_params" => hp,
-                "test_inputs" => test.inputs, 
-                "test_targets" => test.targets, 
-                "test_preds" => test.a[nnw.output_layer]  
-                )
-
-
-    
-    return ret
-
-end # _run_training_core, method with test data
-
-
-
-
-
-# function train(datalist, hp, testgrad=false)
-
-#     !hp.quiet && println("Training setup beginning")
-#     !hp.quiet && println("dobatch: ", hp.dobatch)
-#     # seed random number generator.  For runs of identical models the same weight initialization
-#     # will be used, given the number of parameters to be estimated.  Enables better comparisons.
-#     Random.seed!(70653)  # seed int value is meaningless
-
-#     if size(datalist,1) == 4
-#         train_x = datalist[1]
-#         train_y = datalist[2]
-#         test_x = datalist[3]
-#         test_y = datalist[4]
-#         dotest = size(test_x, 1) > 0  # there is testing data -> true, else false
-#         if !dotest
-#             error("Test data inputs are empty. Rerun without passing test data inputs at all.")
-#         end
-#     elseif size(datalist, 1) == 2
-#         train_x = datalist[1]
-#         train_y = datalist[2]
-#         dotest = false
-#     else
-#         error("Datalist input contained wrong number of inputs")
-#     end
-
-#     ##################################################################################
-#     #   setup model: data structs, many control parameters, functions,  memory pre-allocation
-#     #################################################################################
-
-#     # 1. instantiate data containers  
-#     !hp.quiet && println("Instantiate data containers")
-
-#         train = Model_data()  # train holds all the training data and layer inputs/outputs
-#         dotest && (test = Model_data())   # for test--but there is no training, just prediction
-#         mb = Batch_view()  # even if not used, initialization is empty
-#         nnw = Wgts()  # neural network trained parameters
-#         bn = Batch_norm_params()  # do we always need the data structure to run?  yes--TODO fix this
-
-#         !hp.quiet && println("Set input data aliases to model data structures")
-#         if dotest
-#             train.inputs, train.targets, test.inputs, test.targets = train_x, train_y, test_x, test_y
-#         else
-#             train.inputs, train.targets = train_x, train_y
-#         end
-#         !hp.quiet && println("Alias to model data structures completed")
-
-#         # set some useful variables
-#         train.in_k, train.n = size(train_x)  # number of features in_k (rows) by no. of examples n (columns)
-#         dotest && ((test.in_k, test.n) = size(test_x))
-#         train.out_k = size(train_y,1)  # number of output units
-
-#     #  2. optimization parameters, minibatches, regularization
-#         prep_training!(mb, hp, nnw, bn, train)
-
-#     # 3. normalize data  
-#         if !(hp.norm_mode == "" || lowercase(hp.norm_mode) == "none")
-#             nnw.norm_factors = normalize_inputs!(train.inputs, hp.norm_mode)
-#             dotest && normalize_inputs!(test.inputs, nnw.norm_factors, hp.norm_mode) 
-#         end
-
-#     # 4. preallocate data storage  
-#         !hp.quiet && println("Pre-allocate storage starting")
-#         preallocate_wgts!(nnw, hp, train.in_k, train.n, train.out_k)
-#         preallocate_data!(train, nnw, train.n, hp)
-#         hp.dobatch && preallocate_minibatch!(mb, nnw, hp) 
-#         hp.do_batch_norm && preallocate_batchnorm!(bn, mb, nnw.ks)
-#         dotest && preallocate_data!(test, nnw, test.n, hp)
-#         !hp.quiet && println("Pre-allocate storage completed")
-
-#     # 5. choose layer functions and cost function based on inputs
-#         setup_functions!(hp, nnw, train) 
-
-#     # 6. statistics for plots and history data
-#         statsdat = setup_stats(hp, dotest)  # TRAIN
-
-#     !hp.quiet && println("Training setup complete")
-    
-
-
-#     ##########################################################
-#     #   neural network training loop
-#     ##########################################################
-#     datalist = dotest ? [train, test] : [train]
-
-#     ##########################################################
-#     #   test gradients using the defined model and  STOP
-#     ##########################################################
-#         # test gradients against numerical gradients
-#         # we need to further factor training to capture everything it sets up
-#         # as output and have another outer function that then runs the training_loop
-
-#         # testgrad && begin
-#         #    verify_gradient(train, nnw, bn, hp)
-#         #    return
-#         # end
-
-#     testgrad && begin 
-#         check_grads(hp) 
-#         return
-#     end
-    
-#     training_time = training_loop!(hp, datalist, mb, nnw, bn, statsdat)
-
-    
-#     # save, print and plot training statistics
-#     output_stats(datalist, nnw, bn, hp, training_time, statsdat)
-
-#     ret = Dict(
-#                 "train_inputs" => train_x, 
-#                 "train_targets"=> train_y, 
-#                 "train_preds" => train.a[nnw.output_layer], 
-#                 "Wgts" => nnw, 
-#                 "batchnorm_params" => bn, 
-#                 "hyper_params" => hp
-#                 )
-
-#     dotest &&   begin
-#                     ret["test_inputs"] = test.inputs 
-#                     ret["test_targets"] = test.targets 
-#                     ret["test_preds"] = test.a[nnw.output_layer]  
-#                 end 
-
-#     return ret
-
-# end # _run_training_core, method with test data
-
-
-# TODO do we need to compare the test and train features, labels
-function validate_datafiles(dat_x, dat_y)
-   # if size(datalist,1) == 4
-   #      train_x = datalist[1]
-   #      train_y = datalist[2]
-   #      test_x = datalist[3]
-   #      test_y = datalist[4]
-   #      dotest = size(test_x, 1) > 0  # there is testing data -> true, else false
-   #  elseif size(datalist, 1) == 2
-   #      train_x = datalist[1]
-   #      train_y = datalist[2]
-   #      dotest = false
-   #  else
-   #      error("Datalist input contained wrong number of input arrays")
-   #  end
-    
-    # training data
-    (dat_m, dat_n) = size(dat_x)
-    (target_m, target_n) = size(dat_y)
-    if dat_m >= dat_n
-        @warn("No. of features is greater than no. of samples. Maybe the training array must be tranposed.")
-    end
-    if target_m >= target_n
-        error("No. of output labels is greater than no. of samples. Probably the label array must be transposed.")
-    end
-    if target_n != dat_n
-        error("No. of training inputs does not match no. of training label outputs.")
-    end
-    
-    # # test or validation data
-    # if dotest
-    #     (test_m, test_n) = size(test_x)
-    #     (testy_m, testy_n) = size(test_y)
-    #     if test_m >= test_n
-    #         error("No. of features is greater than no. of samples. Probably the test array must be tranposed.")
-    #     end
-    #     if testy_m >= testy_n
-    #         error("No. of test output labels is greater than no. of samples. Probably the test label array must be transposed.")
-    #     end
-    #     if testy_n != test_n
-    #         error("No. of test inputs does not match no. of test label outputs.")
-    #     end
-        
-    #     if train_m != test_m
-    #         error("No. of training features does not match test features.")
-    #     end   
-    # end
-end

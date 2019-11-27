@@ -50,7 +50,63 @@ function extract_data(matfname::String)
         test_targets = zeros(0,0)
     end
 
+    # fix the funny thing that MAT file extraction does to the type of the arrays
+    inputs = convert(Array{Float64,2}, inputs)
+    targets = convert(Array{Float64,2}, targets)
+    test_inputs = convert(Array{Float64,2}, test_inputs)
+    test_targets = convert(Array{Float64,2}, test_targets)
+
     return inputs, targets, test_inputs, test_targets
+end
+
+
+# TODO do we need to compare the test and train features, labels
+function validate_datafiles(dat_x, dat_y)
+   # if size(datalist,1) == 4
+   #      train_x = datalist[1]
+   #      train_y = datalist[2]
+   #      test_x = datalist[3]
+   #      test_y = datalist[4]
+   #      dotest = size(test_x, 1) > 0  # there is testing data -> true, else false
+   #  elseif size(datalist, 1) == 2
+   #      train_x = datalist[1]
+   #      train_y = datalist[2]
+   #      dotest = false
+   #  else
+   #      error("Datalist input contained wrong number of input arrays")
+   #  end
+    
+    # training data
+    (dat_m, dat_n) = size(dat_x)
+    (target_m, target_n) = size(dat_y)
+    if dat_m >= dat_n
+        @warn("No. of features is greater than no. of samples. Maybe the training array must be tranposed.")
+    end
+    if target_m >= target_n
+        error("No. of output labels is greater than no. of samples. Probably the label array must be transposed.")
+    end
+    if target_n != dat_n
+        error("No. of training inputs does not match no. of training label outputs.")
+    end
+    
+    # # test or validation data
+    # if dotest
+    #     (test_m, test_n) = size(test_x)
+    #     (testy_m, testy_n) = size(test_y)
+    #     if test_m >= test_n
+    #         error("No. of features is greater than no. of samples. Probably the test array must be tranposed.")
+    #     end
+    #     if testy_m >= testy_n
+    #         error("No. of test output labels is greater than no. of samples. Probably the test label array must be transposed.")
+    #     end
+    #     if testy_n != test_n
+    #         error("No. of test inputs does not match no. of test label outputs.")
+    #     end
+        
+    #     if train_m != test_m
+    #         error("No. of training features does not match test features.")
+    #     end   
+    # end
 end
 
 
@@ -168,6 +224,29 @@ function printby2(nby2)
     for i = 1:size(nby2,1)
         @printf("  %9.6f    %9.6f\n", nby2[i,1], nby2[i,2])
     end
+end
+
+
+function count_weights(wgts; skip1=true)
+    cnt_theta = 0
+    cnt_bias = 0
+    skip = skip1
+    for th in wgts.theta
+        if skip
+            skip=false
+            continue
+        end
+        cnt_theta += product(size(th))
+    end
+    skip = skip1
+    for bi in wgts.bias
+        if skip
+            skip=false
+            continue
+        end
+        cnt_bias += size(bi,1)
+    end
+    return cnt_theta, cnt_bias
 end
 
 
@@ -475,8 +554,8 @@ function compute_numerical_gradient(dat, nnw, bn, hp)
     gradbias = [zeros(i) for i in nnw.ks]
 
     # don't do dropout
-    hold_dropout = hp.dropout
-    hp.dropout = false
+    # hold_dropout = hp.dropout
+    # hp.dropout = false
 
     for hl = 2:nnw.output_layer
         # perturb one value of theta
@@ -516,9 +595,9 @@ function compute_numerical_gradient(dat, nnw, bn, hp)
 end
 
 # TODO make sure we don't use batchnorm here:  do setup functions again or use feedfwd_predict
-function compute_backprop_gradient(dat, nnw, bn, hp)
+function compute_backprop_gradient(dat, nnw, hp)
     println("****** computing backprop gradients")
-    feedfwd!(dat, nnw, bn, hp)
+    feedfwd!(dat, nnw, hp)
     backprop!(nnw, dat, hp)
     return nnw.delta_w, nnw.delta_b
 end
@@ -534,8 +613,8 @@ function verify_gradient(dat, nnw, bn, hp)
 
     numtheta, numbias = compute_numerical_gradient(dat, nnw, bn, hp)
     backtheta, backbias = compute_backprop_gradient(dat, nnw, bn, hp)
-    println(size(numtheta))
-    println(size(backtheta))
+    # println(size(numtheta))
+    # println(size(backtheta))
 
     for hl = 1:size(numtheta,1)
         for i in eachindex(numtheta[hl])
@@ -545,13 +624,13 @@ function verify_gradient(dat, nnw, bn, hp)
 end
 
 
-Coll = Union{Array,Tuple}
 """
     flat(arr::Array)
 Flatten any mess of nested arrays of arbitrary depth, number of indices or type.
 Returns a vector of Any. There is no direct way to get back to the input as 
 structure is not encoded in any way.
 """    
+Coll = Union{Array,Tuple}
 flat(arr::Coll) = mapreduce(x -> isa(x, Coll) ? flat(x) : x, append!, arr,init=[])
 
 ##############################################################

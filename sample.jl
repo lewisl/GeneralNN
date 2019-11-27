@@ -21,12 +21,6 @@ function runjob(argfile="nninputs.toml", matfname="digits5000by400.mat"; testgra
     println("........ Loading training and test data ........")
     train_x, train_y, test_x, test_y = extract_data(matfname);  #
 
-    # fix the funny thing that MAT file extraction does to the type of the arrays
-    train_x = convert(Array{Float64,2}, train_x)
-    train_y = convert(Array{Float64,2}, train_y)
-    test_x = convert(Array{Float64,2}, test_x)
-    test_y = convert(Array{Float64,2}, test_y)
-
     # println("size of test_x ", size(test_x))
 
     # shuffle in advance for training with minibatches and  batchnorm
