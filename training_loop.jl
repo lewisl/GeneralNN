@@ -145,7 +145,7 @@ function backprop!(nnw, dat, hp)
 
     # loop over hidden layers
     @fastmath for hl = (nnw.output_layer - 1):-1:2  
-        gradient_function![hl](dat.grad[hl], dat.a[hl])  
+        gradient_function![hl](dat.grad[hl], dat.z[hl])  
             !hp.quiet && println("What is gradient $hl? ", mean(dat.grad[hl]))
         mul!(dat.epsilon[hl], nnw.theta[hl+1]', dat.epsilon[hl+1])
         @inbounds dat.epsilon[hl][:] = dat.epsilon[hl] .* dat.grad[hl] 

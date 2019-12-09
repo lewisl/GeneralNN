@@ -61,9 +61,11 @@ function sigmoid!(a::AbstractArray{Float64}, z::AbstractArray{Float64})
     @fastmath a[:] = 1.0 ./ (1.0 .+ exp.(.-z))  
 end
 
+
 function tanh_act!(a::AbstractArray{Float64}, z::AbstractArray{Float64})
     @fastmath a[:] = tanh.(z)
 end
+
 
 function l_relu!(a::AbstractArray{Float64}, z::AbstractArray{Float64}) # leaky relu
     @fastmath a[:] = map(j -> j >= 0.0 ? j : l_relu_neg * j, z)
@@ -84,7 +86,7 @@ end
         mul!(delta_w, delta_z, a_prev')
     end
 
-    # ignores delta_z terms
+    # ignores delta_z terms because no batchnorm 
     function backprop_weights!(delta_w, delta_b, delta_z, epsilon, a_prev)
         mul!(delta_w, epsilon, a_prev')
         delta_b[:] = sum(epsilon, dims=2)

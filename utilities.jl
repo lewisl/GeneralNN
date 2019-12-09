@@ -1,4 +1,4 @@
-using Plots
+using PyPlot
 using JLD2
 using Printf
 using LinearAlgebra
@@ -133,7 +133,9 @@ function shuffle_data!(x,y;returnidx = false)
     randidx = Random.randperm(size(x,2))
     x[:] = x[:,randidx]
     y[:] = y[:,randidx]
-    returnidx && return randidx # return the permuted indices if true
+    if returnidx 
+        return randidx # return the permuted indices if true
+    end
 end
 
 
@@ -264,16 +266,29 @@ end
 Pass a dim1 x dim2 by 1 column vector holding the image data to display it.
 Also pass the dimensions as 2 element vector (default is [28,28]).
 """
-function display_mnist_digit(digit_data, digit_dims=[28,28])
-    # plotlyjs(size=(400,400))
-    gr()
-    clibrary(:misc)  # collection of color palettes
-    img = reshape(digit_data, digit_dims...)'
-    pldigit = plot(img, seriestype=:heatmap, color=:grays,  
-        showaxis=false, legend=false, yflip=true, size=(500,500)) # right_margin=6mm, bottom_margin=6mm
-    display(pldigit)
+# function display_mnist_digit(digit_data, digit_dims=[28,28])
+#     clibrary(:misc)  # collection of color palettes
+#     img = reshape(digit_data, digit_dims...)'
+#     pldigit = plot(img, seriestype=:heatmap, color=:grays,  
+#         showaxis=false, legend=false, yflip=true, size=(500,500)) # right_margin=6mm, bottom_margin=6mm
+#     display(pldigit)
+#     println("Press enter to close image window..."); readline()
+#     closeall()
+# end
+
+function display_mnist_digit(digit_data, dims=[])
+    if length(dims) == 0
+        xside = yside = convert(Int,(sqrt(length(digit_data))))
+    elseif length(dims) == 1
+        xside = yside = dims[1]
+    elseif length(dims) >= 2
+        xside = dims[1]
+        yside = dims[2]
+    end
+    imshow(reshape(digit_data,xside,yside), cmap=plt.cm.gray, interpolation="nearest")
+    axis("off")
     println("Press enter to close image window..."); readline()
-    closeall()
+    close("all")        
 end
 
 
@@ -291,18 +306,6 @@ function output_stats(train, nnw, bn, hp, training_time, statsdat)
 end
 
 function _output_stats(train, test, nnw, bn, hp, training_time, statsdat; dotest=false)
-
-    # if size(datalist, 1) == 1
-    #     train = datalist[1]
-    #     dotest = false
-    # elseif size(datalist,1) == 2
-    #     train = datalist[1]
-    #     test = datalist[2]
-    #     dotest = true
-    # else
-    #     error("Datalist contains wrong number of elements.")
-    # end
-
 
     # file for simple training stats
     fname = repr(Dates.now())
@@ -397,35 +400,41 @@ function plot_output(statsdat::Dict)
     # plot the progress of training cost and/or learning
     if (statsdat["stats_sel"]["train"] || statsdat["stats_sel"]["test"])
         # plotlyjs(size=(600,400)) # set chart size defaults
-        gr()
+        # gr()
 
         if statsdat["stats_sel"]["cost"]
-            plt_cost = plot(
-                statsdat["cost_history"], 
-                title="Cost Function",
-                labels=statsdat["stats_labels"], 
-                legend=:bottomright,
-                ylims=(0.0, Inf), 
-                bottom_margin=7mm, 
-                size=(600,400))
-            display(plt_cost)  # or can use gui()
+            # plt_cost = plot(
+            #     statsdat["cost_history"], 
+            #     title="Cost Function",
+            #     labels=statsdat["stats_labels"], 
+            #     legend=:bottomright,
+            #     ylims=(0.0, Inf), 
+            #     bottom_margin=7mm, 
+            #     size=(600,400))
+            # display(plt_cost)  # or can use gui()
+            plot(statsdat["cost_history"],label="cost")
+            title("Cost Function")
+            # show()
         end
 
         if statsdat["stats_sel"]["learning"]
-            plt_learning = plot(
-                statsdat["accuracy"], 
-                title="Learning Progress",
-                labels=statsdat["stats_labels"], 
-                legend=:bottomright,
-                ylims=(0.0, 1.05), 
-                bottom_margin=7mm,
-                size=(600,400)) 
-            display(plt_learning)
+            # plt_learning = plot(
+            #     statsdat["accuracy"], 
+            #     title="Learning Progress",
+            #     labels=statsdat["stats_labels"], 
+            #     legend=:bottomright,
+            #     ylims=(0.0, 1.05), 
+            #     bottom_margin=7mm,
+            #     size=(600,400)) 
+            # display(plt_learning)
+            plot(statsdat["accuracy"],label="accuracy") 
+                title("Learning Progress")
+                legend(loc="lower right")
         end
 
         if (statsdat["stats_sel"]["cost"] || statsdat["stats_sel"]["learning"])
             println("Press enter to close plot window..."); readline()
-            closeall()
+            close("all")
         end
     end
 end
@@ -442,7 +451,7 @@ function dodigit(n, test_wrongs, test_inputs, test_targets, predmax)
     predicted = predicted == 10 ? 0 : predicted
     println("\n\nThe neural network predicted: $predicted")
     println("The correct value is: $correct")
-    GeneralNN.display_mnist_digit(digit_data, [28,28])
+    GeneralNN.display_mnist_digit(digit_data)  # , [28,28]
 end
 
 
@@ -631,7 +640,7 @@ Returns a vector of Any. There is no direct way to get back to the input as
 structure is not encoded in any way.
 """    
 Coll = Union{Array,Tuple}
-flat(arr::Coll) = mapreduce(x -> isa(x, Coll) ? flat(x) : x, append!, arr,init=[])
+flat(arr::Coll) = mapreduce(x -> isa(x, Coll) ? flat(x) : x, append!, arr, init=[])
 
 ##############################################################
 #
