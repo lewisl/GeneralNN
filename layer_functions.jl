@@ -6,7 +6,7 @@
 #  cost functions
 ###############################################################################
 
-function cross_entropy_cost(targets, predictions, n, theta, lambda, reg, output_layer)
+function cross_entropy_cost(targets, predictions, n, theta=[], lambda=1.0, reg="", output_layer=3)
     # n is count of all samples in data set--use with regularization term
     # mb_size is count of all samples used in training batch--use with cost
     # these may be equal
@@ -21,7 +21,7 @@ function cross_entropy_cost(targets, predictions, n, theta, lambda, reg, output_
 end
 
 
-function mse_cost(targets, predictions, n, theta, lambda, reg, output_layer)
+function mse_cost(targets, predictions, n, theta=[], lambda=1.0, reg="", output_layer=3)
     @fastmath cost = (1.0 / (2.0 * n)) .* sum((targets .- predictions) .^ 2.0)
     @fastmath if reg == "L2"  # set reg="" if not using regularization
         regterm = lambda/(2.0 * n) .* sum([dot(th, th) for th in theta[2:output_layer]])
@@ -81,6 +81,8 @@ end
 #  layer functions:  back propagation chain rule
 ###########################################################################
 
+    # Choice of function determined in setup_functions! in setup_training.jl
+
     # uses delta_z from the backnorm calculations
     function backprop_weights_nobias!(delta_w, delta_b, delta_z, epsilon, a_prev)
         mul!(delta_w, delta_z, a_prev')
@@ -92,12 +94,6 @@ end
         delta_b[:] = sum(epsilon, dims=2)
     end
 
-
-        #     mul!(nnw.delta_w[hl], dat.delta_z[hl], dat.a[hl-1]')
-        # else
-        #     # @inbounds nnw.delta_w[hl][:] = dat.epsilon[hl] * dat.a[hl-1]'  
-        #     mul!(nnw.delta_w[hl], dat.epsilon[hl], dat.a[hl-1]')  
-        #     @inbounds nnw.delta_b[hl][:] = sum(dat.epsilon[hl],dims=2)
 
 
 ###########################################################################

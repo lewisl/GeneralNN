@@ -90,7 +90,7 @@ end
 
 
 # iterator for minibatches of training examples
-    struct MBrng
+    struct MBrng  # values are set once to define the iterator stop point=cnt, and increment=incr
         cnt::Int
         incr::Int
     end
@@ -262,7 +262,7 @@ function setup_functions!(hp, nnw, bn, dat)
 
     backprop_weights_function! = 
         if hp.do_batch_norm
-            backprop_weights_nobias!
+            backprop_weights_batch_norm!
         else
             backprop_weights!
         end

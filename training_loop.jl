@@ -151,20 +151,22 @@ function backprop!(nnw, dat, hp)
         @inbounds dat.epsilon[hl][:] = dat.epsilon[hl] .* dat.grad[hl] 
             !hp.quiet && println("what is epsilon $hl? ", mean(dat.epsilon[hl]))
 
+        # noop if not applicable
         dropout_back_function![hl](dat, hl)
         batch_norm_back_function!(dat, hl)
+
         backprop_weights_function!(nnw.delta_w[hl], nnw.delta_b[hl], dat.delta_z[hl], 
                                    dat.epsilon[hl], dat.a[hl-1])
 
-        !hp.quiet && println("what is delta_w $hl? ", mean(nnw.delta_w[hl]))
-        !hp.quiet && println("what is delta_b $hl? ", mean(nnw.delta_w[hl]))
+        !hp.quiet && println("what is delta_w $hl? ", nnw.delta_w[hl])
+        !hp.quiet && println("what is delta_b $hl? ", nnw.delta_b[hl])
 
     end
 
 end
 
 
-function update_parameters!(nnw, hp, bn)
+function update_parameters!(nnw, hp, bn=Batch_norm_params())
 !hp.quiet && println("update_parameters!(nnw, hp, bn)")
     # update Wgts, bias, and batch_norm parameters
     @fastmath for hl = 2:nnw.output_layer       
@@ -215,7 +217,6 @@ function r_squared(targets, preds)
 end
 
 
-
 """
     Create views for the training data in minibatches
 """
@@ -226,36 +227,32 @@ function update_batch_views!(mb::Batch_view, train::Model_data, nnw::Wgts,
 
     # colrng refers to the set of training examples included in the minibatch
     n_layers = nnw.output_layer
-    mb_cols = 1:hp.mb_size  # only reason for this is that the last minibatch might be smaller
 
     # feedforward:   minibatch views update the underlying data
     # TODO put @inbounds back after testing
     for i = 1:n_layers
         mb.a[i] = view(train.a[i],:,colrng)   # sel is random order of example indices
         mb.z[i] = view(train.z[i],:,colrng) 
-        mb.epsilon[i] = view(train.epsilon[i], :, colrng) # NOTE: use mb_cols!  mb_cols
-        mb.grad[i] = view(train.grad[i], :, colrng)   # mb_cols
+        mb.epsilon[i] = view(train.epsilon[i], :, colrng) 
+        mb.grad[i] = view(train.grad[i], :, colrng)   
     end
     mb.targets = view(train.targets,:,colrng)  # only at the output layer
-
-    # training / backprop:  don't need this data and only use minibatch size
-    # TEST
     
     if hp.do_batch_norm
         for i = 1:n_layers
             # feedforward
             mb.z_norm[i] = view(train.z_norm[i],:, colrng) 
             # backprop
-            mb.delta_z_norm[i] = view(train.delta_z_norm[i], :, colrng)   # mb_cols
-            mb.delta_z[i] = view(train.delta_z[i], :, colrng)   # mb_cols
+            mb.delta_z_norm[i] = view(train.delta_z_norm[i], :, colrng)   
+            mb.delta_z[i] = view(train.delta_z[i], :, colrng)   
         end
     end
 
     if hp.dropout
         for i = 1:n_layers
             # training:  applied to feedforward, but only for training
-            mb.dropout_random[i] = view(train.dropout_random[i], :, colrng)  # mb_cols
-            mb.dropout_mask_units[i] = view(train.dropout_mask_units[i], :, colrng)  # mb_cols
+            mb.dropout_random[i] = view(train.dropout_random[i], :, colrng)  
+            mb.dropout_mask_units[i] = view(train.dropout_mask_units[i], :, colrng)  
         end
     end
 

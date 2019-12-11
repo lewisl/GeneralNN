@@ -1,5 +1,5 @@
 #DONE
-    # go back to PyPlot--needs more testing
+
    
 
 
@@ -13,8 +13,9 @@
 # LSTM networks
 
 #TODO
+#   get rid of alphaovermb so that we use the correct batch size as divisor for delta weights calculation
 #   implement a gradient checking function with option to run it
-#   need a simple way to do predictions with small number of examples (inc. 1 example)
+#   make a global called quiet so we don't have to pass around hp just to pick up quiet
 #   see if I can eliminate some of the function trickiness with clever use of optional args (or named args with defaults)
 #       for example, this should make it easy with cost functions that don't need L2 regularization
 #   can't plot both learning and cost
