@@ -84,14 +84,16 @@ end
     # Choice of function determined in setup_functions! in setup_training.jl
 
     # uses delta_z from the backnorm calculations
-    function backprop_weights_nobias!(delta_w, delta_b, delta_z, epsilon, a_prev)
+    function backprop_weights_nobias!(delta_w, delta_b, delta_z, epsilon, a_prev, n)
         mul!(delta_w, delta_z, a_prev')
+        delta_w[:] = delta_w .* (1.0 / n)
     end
 
     # ignores delta_z terms because no batchnorm 
-    function backprop_weights!(delta_w, delta_b, delta_z, epsilon, a_prev)
+    function backprop_weights!(delta_w, delta_b, delta_z, epsilon, a_prev, n)
         mul!(delta_w, epsilon, a_prev')
-        delta_b[:] = sum(epsilon, dims=2)
+        delta_w[:] = delta_w .* (1.0 / n)
+        delta_b[:] = sum(epsilon, dims=2) .* (1.0 / n)
     end
 
 
@@ -200,7 +202,7 @@ function step_learn_decay!(hp, ep_i)
         return
     elseif (rem(ep_i,stepsize) == 0.0)
         hp.alpha *= decay_rate
-        hp.alphaovermb *= decay_rate
+        # hp.alphaovern *= decay_rate
         println("     **** at epoch $ep_i stepping down learning rate to $(hp.alpha)")
     else
         return
@@ -271,11 +273,11 @@ function maxnorm_reg!(nnw, hp, hl)    # (theta, maxnorm_lim)
 end
 
 function l2_reg!(nnw, hp, hl)
-    @inbounds nnw.theta[hl] .= nnw.theta[hl] .+ (hp.alphaovermb .* (hp.lambda .* nnw.theta[hl]))
+    @inbounds nnw.theta[hl] .= nnw.theta[hl] .+ (hp.lambda / hp.mb_size .* nnw.theta[hl])
 end
 
 function l1_reg!(nnw, hp, hl)
-    @inbounds nnw.theta[hl] .= nnw.theta[hl] .+ (hp.alphaovermb .* (hp.lambda .* sign.(nnw.theta[hl])))
+    @inbounds nnw.theta[hl] .= nnw.theta[hl] .+ (hp.lambda / hp.mb_size .* sign.(nnw.theta[hl]))
 end
 
 

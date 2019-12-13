@@ -43,7 +43,6 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
     b1::Float64                 # 1st optimization for momentum or Adam
     b2::Float64                 # 2nd optimization parameter for Adam
     ltl_eps::Float64            # use in denominator with division of very small values to prevent overflow
-    alphaovermb::Float64        # calculate outside the learning loop
     dobatch::Bool               # simple flag on whether to do minibatch training
     do_batch_norm::Bool         # true or false
     norm_mode::String           # "", "none", "standard", or "minmax"
@@ -76,7 +75,6 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         0.9,            # b1
         0.999,          # b2
         1e-8,           # ltl_eps
-        0.35,           # alphaovermb -- calculated->not a valid default
         false,          # dobatch
         false,          # do_batch_norm
         "none",         # norm_mode

@@ -642,6 +642,15 @@ structure is not encoded in any way.
 Coll = Union{Array,Tuple}
 flat(arr::Coll) = mapreduce(x -> isa(x, Coll) ? flat(x) : x, append!, arr, init=[])
 
+
+function printstruct(st)
+    for it in propertynames(st)
+        println(it, " ", getproperty(st, it))
+    end
+end
+
+
+
 ##############################################################
 #
 #    TEST EVERYTHING BELOW:  PROBABLY DON'T WORK

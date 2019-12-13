@@ -16,18 +16,18 @@ function prep_training!(mb, hp, nnw, bn, n)
     if hp.dobatch
         @info("Be sure to shuffle training data when using minibatches.  Use utility function shuffle_data! or your own.")
         if hp.mb_size_in < 1
-            hp.mb_size = hp.mb_size_in = n  
+            hp.mb_size_in = n  
             hp.dobatch = false    # user provided incompatible inputs
         elseif hp.mb_size_in >= n
-            hp.mb_size = hp.mb_size_in = n
+            hp.mb_size_in = n
             hp.dobatch = false   # user provided incompatible inputs
-        else 
-            hp.mb_size = hp.mb_size_in
-        end
-        hp.alphaovermb = hp.alpha / hp.mb_size  # calc once, use in hot loop
+        end 
+        hp.mb_size = hp.mb_size_in  # start value for hp.mb_size; changes if last minibatch is smaller
+        # hp.alphaovern = hp.alpha / hp.mb_size  # calc once, use in hot loop
         hp.do_batch_norm = hp.dobatch ? hp.do_batch_norm : false  
     else
-        hp.alphaovermb = hp.alpha / n 
+        hp.mb_size_in = n
+        hp.mb_size = float(n)
     end
 
     hp.do_learn_decay = 
@@ -262,7 +262,7 @@ function setup_functions!(hp, nnw, bn, dat)
 
     backprop_weights_function! = 
         if hp.do_batch_norm
-            backprop_weights_batch_norm!
+            backprop_weights_nobias!
         else
             backprop_weights!
         end

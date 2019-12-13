@@ -1,5 +1,5 @@
 #DONE
-
+#   
    
 
 
@@ -13,7 +13,7 @@
 # LSTM networks
 
 #TODO
-#   get rid of alphaovermb so that we use the correct batch size as divisor for delta weights calculation
+#   get rid of alphaovern so that we use the correct batch size as divisor for delta weights calculation
 #   implement a gradient checking function with option to run it
 #   make a global called quiet so we don't have to pass around hp just to pick up quiet
 #   see if I can eliminate some of the function trickiness with clever use of optional args (or named args with defaults)

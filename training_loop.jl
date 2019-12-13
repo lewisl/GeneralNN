@@ -16,7 +16,6 @@ function _training_loop!(hp, train, test, mb, nnw, bn, statsdat; dotest=false)
 
     training_time = @elapsed begin # start the cpu clock and begin block for training process
         t = 0  # counter:  number of times parameters will have been updated: minibatches * epochs
-        mbszin = hp.mb_size_in
 
         for ep_i = 1:hp.epochs  # loop for "epochs" with counter epoch i as ep_i
             !hp.quiet && println("Start epoch $ep_i")
@@ -24,8 +23,9 @@ function _training_loop!(hp, train, test, mb, nnw, bn, statsdat; dotest=false)
 
             if hp.dobatch  # minibatch training
 
-                for colrng in MBrng(train.n, mbszin)  # set setup.jl for definition of iterator
-                    hp.mb_size = size(colrng, 1)   
+                for colrng in MBrng(train.n, hp.mb_size_in)  # set setup.jl for definition of iterator
+                    hp.mb_size = float(size(colrng, 1)) 
+  
                     !hp.quiet && println("   Start minibatch for ", colrng)           
                     
                     update_batch_views!(mb, train, nnw, hp, colrng)  # select data columns for the minibatch   
@@ -141,7 +141,7 @@ function backprop!(nnw, dat, hp)
     dat.epsilon[nnw.output_layer][:] = dat.a[nnw.output_layer] .- dat.targets  
         !hp.quiet && println("What is epsilon of output layer? ", mean(dat.epsilon[nnw.output_layer]))
     backprop_weights!(nnw.delta_w[nnw.output_layer], nnw.delta_b[nnw.output_layer], dat.delta_z[nnw.output_layer], 
-        dat.epsilon[nnw.output_layer], dat.a[nnw.output_layer-1])      
+        dat.epsilon[nnw.output_layer], dat.a[nnw.output_layer-1], hp.mb_size)      
 
     # loop over hidden layers
     @fastmath for hl = (nnw.output_layer - 1):-1:2  
@@ -156,7 +156,7 @@ function backprop!(nnw, dat, hp)
         batch_norm_back_function!(dat, hl)
 
         backprop_weights_function!(nnw.delta_w[hl], nnw.delta_b[hl], dat.delta_z[hl], 
-                                   dat.epsilon[hl], dat.a[hl-1])
+                                   dat.epsilon[hl], dat.a[hl-1], hp.mb_size)
 
         !hp.quiet && println("what is delta_w $hl? ", nnw.delta_w[hl])
         !hp.quiet && println("what is delta_b $hl? ", nnw.delta_b[hl])
@@ -170,15 +170,17 @@ function update_parameters!(nnw, hp, bn=Batch_norm_params())
 !hp.quiet && println("update_parameters!(nnw, hp, bn)")
     # update Wgts, bias, and batch_norm parameters
     @fastmath for hl = 2:nnw.output_layer       
-        @inbounds nnw.theta[hl] .= nnw.theta[hl] .- (hp.alphaovermb .* nnw.delta_w[hl])
+        @inbounds nnw.theta[hl] .= nnw.theta[hl] .- (hp.alpha .* nnw.delta_w[hl])
         
         reg_function![hl](nnw, hp, hl)  # regularize function per setup.jl setup_functions!
 
+        @bp
+
         if hp.do_batch_norm  # update batch normalization parameters
-            @inbounds bn.gam[hl][:] .= bn.gam[hl][:] .- (hp.alphaovermb .* bn.delta_gam[hl])
-            @inbounds bn.bet[hl][:] .= bn.bet[hl][:] .- (hp.alphaovermb .* bn.delta_bet[hl])
+            @inbounds bn.gam[hl][:] .= bn.gam[hl][:] .- (hp.alpha .* bn.delta_gam[hl])
+            @inbounds bn.bet[hl][:] .= bn.bet[hl][:] .- (hp.alpha .* bn.delta_bet[hl])
         else  # update bias
-            @inbounds nnw.bias[hl] .= nnw.bias[hl] .- (hp.alphaovermb .* nnw.delta_b[hl])
+            @inbounds nnw.bias[hl] .= nnw.bias[hl] .- (hp.alpha .* nnw.delta_b[hl])
         end
 
     end  

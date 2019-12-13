@@ -207,22 +207,17 @@ function run_check_grads(hp, wgts, dat; samplepct=.015, tweak=1e-6, quiet=false,
                         thetagradidx, biasgradidx, wgts, dat, hp; tweak=tweak)
     numgrad = (numgradtheta,numgradbias)
 
+    #recover starting data structures
+    wgts = deepcopy(startwgts)
+    dat = deepcopy(startdat)
+
     # compute_modelgrad!()
     println("  ****** Calculating feedfwd/backprop gradients")
     @bp
     modcost, modpreds = compute_modelgrad!(dat, wgts, hp)  # changes dat and wgts
     modgrad = (deepcopy(wgts.delta_w), deepcopy(wgts.delta_b))  # do I need to copy since compute_numgrad! does no backprop?
 
-    #recover starting data structures
-    wgts = deepcopy(startwgts)
-    dat = deepcopy(startdat)
-
-   # compute_modelgrad!()
-    println("  ****** Calculating feedfwd/backprop gradients")
-    @bp
-    modcost, modpreds = compute_modelgrad!(dat, wgts, hp)  # changes dat and wgts
-    modgrad = (deepcopy(wgts.delta_w), deepcopy(wgts.delta_b))  # do I need to copy since compute_numgrad! does no backprop?
-
+    
     # compare results from modgrads and numgrads
      println("  ****** Are costs the same? (model, num cost) ")
      println(modcost, " ", numcost)
@@ -302,7 +297,7 @@ function set_hp(hp)
         minihp.learn_decay = [1.0, 1.0]  # no optimization
         minihp.do_batch_norm = false   # no batches
         minihp.dobatch = false         # no batches
-        minihp.alpha = 0.1             # low learning rate
+        minihp.alpha = 0.2             # low learning rate
         minihp.dropout = false
         minihp.norm_mode = "minmax"  # only used with minimodel
         minihp.bias_initializer = hp.bias_initializer  # only used with minimodel
@@ -313,6 +308,9 @@ function set_hp(hp)
         # use the real models params here
         minihp.hidden = hp.hidden
         minihp.classify = hp.classify
+
+        printstruct(minihp)
+        printstruct(hp)
 
     return minihp
 end
@@ -373,90 +371,54 @@ function compute_numgrad!(numgradtheta, numgradbias, thetagradidx, biasgradidx, 
 
         for (idx,bi) in enumerate(biasgradidx[lr])   # eachindex(wgts.bias[lr])  # tweak each bias, compute partial diff for each bias
 
-            # println("bias: ","layer: ", lr, " index: ", idx)
-            wgts.bias[lr][bi] -= tweak
-
-            # tbias1 = wgts.bias[lr][bi]
+            wgts.bias[lr][bi] += tweak
 
             feedfwd_predict!(dat, wgts, hp)       #feedfwd_predict!(dat, wgts, hp)
-
             kinktst1 = findkink(olddat, dat, output_layer)
-            # pred1 = dat.a[wgts.output_layer] # pred1 = flat(dat.z)
             loss1 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n) 
 
-            # if idx == 1 && lr == 2
-            #     println("first pass of numgrad for bias tweak")
-            #     println(dat.a)
-                # println("cost of first prediction in modelgrad")
-                # println(loss1)
-            # end
-
-
-            wgts.bias[lr][bi] += 2.0 * tweak
-            # tbias2 = wgts.bias[lr][bi]
+            wgts.bias[lr][bi] -= 2.0 * tweak
 
             feedfwd_predict!(dat, wgts, hp)
             kinktst2 = findkink(olddat, dat, output_layer)
-            # pred1 = dat.a[wgts.output_layer] pred2 = flat(dat.z)
             loss2 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n)   
-            wgts.bias[lr][bi] -= tweak   
-            # special check for relu activation kinks in gradient
-            # kinktst = sign(tbias1) != sign(tbias2) 
-            
+
+            wgts.bias[lr][bi] += tweak   
 
             if kinktst1  || kinktst2 
                 kinkcnt += 1
                 push!(kinkrejectbias, (lr, bi))
-                # println("Compare tweaked weights for bias kink +: ",wgts.bias[lr][bi]+tweak, " -: ",wgts.bias[lr][bi]-tweak)
             end
 
-            numgradbias[lr][idx] = (loss2 - loss1) / (2.0 * tweak)  
+            numgradbias[lr][idx] = (loss1 - loss2) / (2.0 * tweak)  
 
             # if idx == 1
                 @printf("loss1: %f loss2: %f grad: %f kink: %d\n", loss1, loss2, numgradbias[lr][idx], kinkcnt)
             # end
-
-            # if ((loss1 < 0) & (loss2 < 0)) || ((loss1 > 0.0) & (loss2 > 0.0))
-            #     numgradbias[lr][idx] = (loss2 - loss1) / (2.0 * tweak)
-            # else 
-            #     # analytic gradient is zero in this case
-            #     numgradbias[lr][idx] = 0.0
-            #     kinkcnt += 1
-            # end
         end
-        # end
+
         println("kink errors for bias = ", kinkcnt)
 
-        # for lr in 2:wgts.output_layer  # loop by layer
         @printf("  ****** Calculating numeric theta gradients layer: %d\n", lr)
 
         for (idx,thi) in enumerate(thetagradidx[lr])  # eachindex(wgts.theta[lr])  # tweak each theta, compute partial diff for each theta
 
             # println("theta: ","layer: ", lr, " index: ", idx)
 
-            wgts.theta[lr][thi] -= tweak
-            # ttheta1 = wgts.theta[lr][thi]
+            wgts.theta[lr][thi] += tweak
 
             feedfwd_predict!(dat, wgts, hp)
             kinktst1 = findkink(olddat, dat, output_layer)
-            # pred1 = flat(dat.z)
             loss1 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n) 
 
-            wgts.theta[lr][thi] += 2.0 * tweak
-            # ttheta2 = wgts.theta[lr][thi]
+            wgts.theta[lr][thi] -= 2.0 * tweak
 
             feedfwd_predict!(dat, wgts, hp)
             kinktst2 = findkink(olddat, dat, output_layer)
-            # pred2 = flat(dat.z)
             loss2 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n)
 
-            wgts.theta[lr][thi] -= tweak   
+            wgts.theta[lr][thi] += tweak   
             comploss = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n) 
-
-            # special check for relu activation kinks in gradient
-            # kinktst = sign(ttheta1) != sign(ttheta2)
-            # kinktst && println("we found one!")
-            # println("any kinks for theta gradients? ",kinktst)
 
             if kinktst1 || kinktst2 
                 kinkcnt += 1
@@ -469,7 +431,7 @@ function compute_numgrad!(numgradtheta, numgradbias, thetagradidx, biasgradidx, 
 
             # end
 
-            numgradtheta[lr][idx] = (loss2 - loss1) / (2.0 * tweak)
+            numgradtheta[lr][idx] = (loss1 - loss2) / (2.0 * tweak)
 
             # if idx % 20 == 0
                 @printf("loss1: %f loss2: %f grad: %f kink: %d\n", loss1, loss2, numgradtheta[lr][idx], kinkcnt)
@@ -477,13 +439,6 @@ function compute_numgrad!(numgradtheta, numgradbias, thetagradidx, biasgradidx, 
             # end
 
             numpreds = dat.a[wgts.output_layer]
-
-            # if ((loss1 < 0) & (loss2 < 0)) || ((loss1 > 0.0) & (loss2 > 0.0))
-            #     numgradtheta[lr][idx] = (loss2 - loss1) / (2.0 * tweak)
-            # else
-            #     numgradtheta[lr][idx] = 0.0
-            #     kinkcnt += 1
-            # end
         end
     end
     println("count of gradients rejected: ", kinkcnt)
@@ -513,15 +468,16 @@ function compute_modelgrad!(dat, nnw, hp)
     # println("first pass of modelgrad calc")
     # println(dat.a)
 
-    basecost = cost_function(dat.targets, dat.a[nnw.output_layer], dat.n, nnw.theta, hp.lambda, hp.reg,
-                                  nnw.output_layer)
+    basecost = cost_function(dat.targets, dat.a[nnw.output_layer], dat.n)
 
     # println("cost of first prediction in modelgrad")
     # println(basecost)
 
+    @bp
+
     backprop!(nnw, dat, hp)  # for all layers   
 
-    # now we just need 1/n .* nnw.delta_w   and 1/mb .* nnw.delta_b
+    # now we just need 1/n .* nnw.delta_w   and 1/n .* nnw.delta_b
     nnw.delta_b[:] ./= dat.n
     nnw.delta_w[:] ./= dat.n
 
