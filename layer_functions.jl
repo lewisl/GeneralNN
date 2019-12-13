@@ -73,7 +73,7 @@ end
 
 
 function relu!(a::AbstractArray{Float64}, z::AbstractArray{Float64})
-    a[:] = max.(z, 0.0)
+    @fastmath a[:] = max.(z, 0.0)
 end
 
 
@@ -86,14 +86,14 @@ end
     # uses delta_z from the backnorm calculations
     function backprop_weights_nobias!(delta_w, delta_b, delta_z, epsilon, a_prev, n)
         mul!(delta_w, delta_z, a_prev')
-        delta_w[:] = delta_w .* (1.0 / n)
+        @fastmath delta_w[:] = delta_w .* (1.0 / n)
     end
 
     # ignores delta_z terms because no batchnorm 
     function backprop_weights!(delta_w, delta_b, delta_z, epsilon, a_prev, n)
         mul!(delta_w, epsilon, a_prev')
-        delta_w[:] = delta_w .* (1.0 / n)
-        delta_b[:] = sum(epsilon, dims=2) .* (1.0 / n)
+        @fastmath delta_w[:] = delta_w .* (1.0 / n)
+        @fastmath delta_b[:] = sum(epsilon, dims=2) .* (1.0 / n)
     end
 
 
@@ -127,10 +127,12 @@ end
 
 
 function relu_gradient!(grad::AbstractArray{Float64}, z::AbstractArray{Float64})
-    fill!(grad, 0.0)
+    # fill!(grad, 0.0)
     @simd for i = eachindex(z)
         if z[i] > 0.0
             grad[i] = 1.0
+        else
+            grad[i] = 0.0
         end
     end
 end

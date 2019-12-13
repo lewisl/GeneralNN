@@ -170,7 +170,7 @@ function update_parameters!(nnw, hp, bn=Batch_norm_params())
 !hp.quiet && println("update_parameters!(nnw, hp, bn)")
     # update Wgts, bias, and batch_norm parameters
     @fastmath for hl = 2:nnw.output_layer       
-        @inbounds nnw.theta[hl] .= nnw.theta[hl] .- (hp.alpha .* nnw.delta_w[hl])
+        @inbounds nnw.theta[hl][:] = nnw.theta[hl] .- (hp.alpha .* nnw.delta_w[hl])
         
         reg_function![hl](nnw, hp, hl)  # regularize function per setup.jl setup_functions!
 
@@ -180,7 +180,7 @@ function update_parameters!(nnw, hp, bn=Batch_norm_params())
             @inbounds bn.gam[hl][:] .= bn.gam[hl][:] .- (hp.alpha .* bn.delta_gam[hl])
             @inbounds bn.bet[hl][:] .= bn.bet[hl][:] .- (hp.alpha .* bn.delta_bet[hl])
         else  # update bias
-            @inbounds nnw.bias[hl] .= nnw.bias[hl] .- (hp.alpha .* nnw.delta_b[hl])
+            @inbounds nnw.bias[hl][:] .= nnw.bias[hl] .- (hp.alpha .* nnw.delta_b[hl])
         end
 
     end  
@@ -286,8 +286,8 @@ end
 function batch_norm_back!(nnw, dat, bn, hl, hp)
 !hp.quiet && println("batch_norm_back!(nnw, dat, bn, hl, hp)")
     mb = hp.mb_size
-    @inbounds bn.delta_bet[hl][:] = sum(dat.epsilon[hl], dims=2)
-    @inbounds bn.delta_gam[hl][:] = sum(dat.epsilon[hl] .* dat.z_norm[hl], dims=2)
+    @inbounds bn.delta_bet[hl][:] = (1.0/mb) * sum(dat.epsilon[hl], dims=2)
+    @inbounds bn.delta_gam[hl][:] = (1.0/mb) * sum(dat.epsilon[hl] .* dat.z_norm[hl], dims=2)
 
     @inbounds dat.delta_z_norm[hl][:] = bn.gam[hl] .* dat.epsilon[hl]  
 

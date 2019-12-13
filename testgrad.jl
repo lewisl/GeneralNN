@@ -309,8 +309,8 @@ function set_hp(hp)
         minihp.hidden = hp.hidden
         minihp.classify = hp.classify
 
-        printstruct(minihp)
-        printstruct(hp)
+        # printstruct(minihp)
+        # printstruct(hp)
 
     return minihp
 end
@@ -476,10 +476,6 @@ function compute_modelgrad!(dat, nnw, hp)
     @bp
 
     backprop!(nnw, dat, hp)  # for all layers   
-
-    # now we just need 1/n .* nnw.delta_w   and 1/n .* nnw.delta_b
-    nnw.delta_b[:] ./= dat.n
-    nnw.delta_w[:] ./= dat.n
 
     return basecost, dat.a[nnw.output_layer]
 end

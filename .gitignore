@@ -1,0 +1,6 @@
+*.jld2
+*.jld
+nnstats*.*
+digits60000by784.mat
+digits5000by400.mat
+*.pdf
