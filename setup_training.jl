@@ -228,6 +228,8 @@ function setup_functions!(hp, nnw, bn, dat)
     cost_function = 
         if hp.classify=="regression" 
             mse_cost 
+        elseif hp.classify == "softmax"
+            softmax_cost
         else
             cross_entropy_cost
         end

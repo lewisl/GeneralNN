@@ -12,7 +12,7 @@ function cross_entropy_cost(targets, predictions, n, theta=[], lambda=1.0, reg="
     # these may be equal
     cost = (-1.0 / n) * (dot(targets,log.(predictions .+ 1e-50)) +
         dot((1.0 .- targets), log.(1.0 .- predictions .+ 1e-50)))
-
+        
     @fastmath if reg == "L2"  # set reg="" if not using regularization
         regterm = lambda/(2.0 * n) .* sum([dot(th, th) for th in theta[2:output_layer]])
         cost = cost + regterm
@@ -20,6 +20,15 @@ function cross_entropy_cost(targets, predictions, n, theta=[], lambda=1.0, reg="
     return cost
 end
 
+function softmax_cost(targets, predictions, n, theta=[], lambda=1.0, reg="", output_layer=3)
+    cost = (-1.0 / n) * dot(targets,log.(predictions .+ 1e-50)) 
+        
+    @fastmath if reg == "L2"  # set reg="" if not using regularization
+        regterm = lambda/(2.0 * n) .* sum([dot(th, th) for th in theta[2:output_layer]])
+        cost = cost + regterm
+    end
+    return cost
+end
 
 function mse_cost(targets, predictions, n, theta=[], lambda=1.0, reg="", output_layer=3)
     @fastmath cost = (1.0 / (2.0 * n)) .* sum((targets .- predictions) .^ 2.0)
@@ -111,7 +120,7 @@ end
 
 
 function sigmoid_gradient!(grad::AbstractArray{Float64}, z::AbstractArray{Float64})
-    sigmoid!(z, grad)
+    sigmoid!(grad, z)
     @fastmath grad[:] = grad .* (1.0 .- grad)
 end
 
@@ -144,7 +153,7 @@ end
 
 function softmax!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
     expf = similar(a)
-    @fastmath expf .= exp.(z .- maximum(z,dims=1))
+    @fastmath expf .= exp.(z .- maximum(z))  # inside maximum: ,dims=1  maximum(z)
     @fastmath a .= expf ./ sum(expf, dims=1)
 end
 
