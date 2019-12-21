@@ -60,7 +60,7 @@ function prep_check(hp; in_k=3, out_k=3, m=5, hid=5, iters=100, samplepct=1.0, t
     minihp = set_hp(hp)
 
     # create minidata and mini-model
-    @bp
+    # @bp
     minidat, minimb, miniwgts, minibn, ministats = use_minidata(minihp;
         in_k=in_k, out_k=out_k, m=m, hid=hid)   
 
@@ -81,12 +81,12 @@ function check_grads(hp; in_k=3, out_k=3, m=5, hid=5, iters=30, samplepct=1.0, t
 
     println("  ****** Setting up model and test data")
 
-    @bp
+    # @bp
     # run prep_check
     minihp, miniwgts, minidat = prep_check(hp; in_k=in_k, out_k=out_k, m=m, hid=hid, iters=iters,
         samplepct=samplepct, tweak=tweak, quiet=false)
 
-    @bp
+    # @bp
     run_check_grads(minihp, miniwgts, minidat; samplepct=samplepct, tweak=tweak, quiet=quiet)
 end
 
@@ -213,7 +213,7 @@ function run_check_grads(hp, wgts, dat; samplepct=.015, tweak=1e-6, quiet=false,
 
     # compute_modelgrad!()
     println("  ****** Calculating feedfwd/backprop gradients")
-    @bp
+    # @bp
     modcost, modpreds = compute_modelgrad!(dat, wgts, hp)  # changes dat and wgts
     modgrad = (deepcopy(wgts.delta_w), deepcopy(wgts.delta_b))  # do I need to copy since compute_numgrad! does no backprop?
 
@@ -355,7 +355,7 @@ Note that it is possible to know if a kink was crossed in the evaluation of the 
 
 function compute_numgrad!(numgradtheta, numgradbias, thetagradidx, biasgradidx, wgts, dat, hp; tweak = 1e-7)
 
-    @bp
+    # @bp
 
     kinkcnt = 0
     kinkrejectbias = Tuple{Int64, Int64}[]
@@ -461,7 +461,7 @@ end
 function compute_modelgrad!(dat, nnw, hp)
     # no optimization, no reg, no batch normalization, no minibatches, no learning rate (e.g. alpha = 1)
 
-    @bp
+    # @bp
 
     feedfwd_predict!(dat, nnw, hp)  # for all layers
 
@@ -473,7 +473,7 @@ function compute_modelgrad!(dat, nnw, hp)
     # println("cost of first prediction in modelgrad")
     # println(basecost)
 
-    @bp
+    # @bp
 
     backprop!(nnw, dat, hp)  # for all layers   
 

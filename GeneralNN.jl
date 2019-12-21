@@ -13,17 +13,12 @@
 # LSTM networks
 
 #TODO
-#   get rid of alphaovern so that we use the correct batch size as divisor for delta weights calculation
-#   implement a gradient checking function with option to run it
-#   make a global called quiet so we don't have to pass around hp just to pick up quiet
+#   check what happens to test cost with regularization:  it gets very big
+#   implement a gradient checking function: fix the full model version 
 #   see if I can eliminate some of the function trickiness with clever use of optional args (or named args with defaults)
-#       for example, this should make it easy with cost functions that don't need L2 regularization
 #   can't plot both learning and cost
-#   save some memory by making dat.z of input layer something small (actually, this might not matter)
-#   save some memory:  don't think we need layer 1 for dat.epsilon, grad, delta_z
 #   should we have a normalize data option built-in (as we do)? or make the user do it when
          # preparing their own data?
-#   bad path for statsdat naming--bug in Julia 1.1 and 1.2, fixed in Julia 1.3
 #   fix approach to weights inititalization:  set sizes with zeros, then update to initial values
 #   export onehot--decide how to transpose data
 #   create a cost function method without L2 regularization
@@ -61,6 +56,7 @@
         #        to get rid of all of the temporaries in there. 
         # To use an infix operator, you can use \cdot, as in view(A,:,j)⋅r.
 #   figure out memory use between train set and minibatch set
+#   someday, maybe, allow stats tracking for both batch and epoch--need up to 4 arrays
 
 #Document
 #   say which properties in hyper_parameters are "calculated" and which are directly from user input
@@ -146,7 +142,7 @@ using LinearAlgebra
 using SparseArrays
 # for TOML support for arguments file
 using TOML  # we might need private TOML for Julia < 1.3
-using Debugger
+# using Debugger
 
 # using Plots   # Plots broken by Julia 1.3
 # gr()

@@ -206,12 +206,13 @@ end
 
 
 """
-function train(datalist, hp)
+function train(train_x, train_y, hp, testgrad=false)
 
 This is the one function and only method that really does the work.  It runs
 the model training or as many frameworks refer to it, "fits" the model.
 """
 function train(train_x, train_y, hp, testgrad=false)
+# method with no test data
     !hp.quiet && println("Training setup beginning")
     dotest = false
 
@@ -234,12 +235,13 @@ function train(train_x, train_y, hp, testgrad=false)
                 "hyper_params" => hp
                 )
 
-    return ret
+    return ret, statsdat
 
 end # _run_training_core, method with test data
 
 
 function train(train_x, train_y, test_x, test_y, hp, testgrad=false)
+# method that includes test data
     !hp.quiet && println("Training setup beginning")
     dotest = true
 
@@ -267,7 +269,7 @@ function train(train_x, train_y, test_x, test_y, hp, testgrad=false)
                 "test_preds" => test.a[nnw.output_layer]  
                 )
 
-    return ret
+    return ret, statsdat
 
 end # _run_training_core, method with test data
 

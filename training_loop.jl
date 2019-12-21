@@ -3,16 +3,19 @@ using StatsBase
 
 # method with no input test data
 function training_loop!(hp, train, mb, nnw, bn, statsdat)
-    _training_loop!(hp, train, Model_data(), mb, nnw, bn, statsdat; dotest=false)
+    _training_loop!(hp, train, Model_data(), mb, nnw, bn, statsdat)
+        # Model_data() passes an empty test data object
 end
 
 # method with input of train and test data: test data used for training stats
 function training_loop!(hp, train, test, mb, nnw, bn, statsdat)
-    _training_loop!(hp, train, test, mb, nnw, bn, statsdat; dotest=true)
+    _training_loop!(hp, train, test, mb, nnw, bn, statsdat)
 end
 
-function _training_loop!(hp, train, test, mb, nnw, bn, statsdat; dotest=false)
+function _training_loop!(hp, train, test, mb, nnw, bn, statsdat)
 !hp.quiet && println("training_loop(hp, train, test mb, nnw, bn, statsdat; dotest=false)")
+    
+    dotest = isempty(test.inputs) ? false : true
 
     training_time = @elapsed begin # start the cpu clock and begin block for training process
         t = 0  # counter:  number of times parameters will have been updated: minibatches * epochs
@@ -24,7 +27,7 @@ function _training_loop!(hp, train, test, mb, nnw, bn, statsdat; dotest=false)
             if hp.dobatch  # minibatch training
 
                 for colrng in MBrng(train.n, hp.mb_size_in)  # set setup.jl for definition of iterator
-                    hp.mb_size = float(size(colrng, 1)) 
+                    hp.mb_size = mbsize(colrng)
   
                     !hp.quiet && println("   Start minibatch for ", colrng)           
                     
@@ -34,7 +37,7 @@ function _training_loop!(hp, train, test, mb, nnw, bn, statsdat; dotest=false)
                     train_one_step!(mb, nnw, bn, hp, t)
 
                     # stats for each minibatch--expensive!!!
-                    hp.plotperbatch && begin
+                    statsdat["period"] == "batch" && begin
                         gather_stats!(statsdat, "train", t, train, nnw, cost_function, hp)  
                         dotest && gather_stats!(statsdat, "test", t, test, nnw, cost_function, hp) 
                     end
@@ -47,7 +50,7 @@ function _training_loop!(hp, train, test, mb, nnw, bn, statsdat; dotest=false)
             end
 
             # stats across all mini-batches of one epoch (e.g.--no stats per minibatch)
-            hp.plotperepoch && begin
+            statsdat["period"] == "epoch" && begin
                 gather_stats!(statsdat, "train", ep_i, train, nnw, cost_function, hp)  
                 dotest && gather_stats!(statsdat, "test", ep_i, test, nnw, cost_function, hp) 
             end
@@ -69,6 +72,8 @@ function train_one_step!(dat, nnw, bn, hp, t)
 end
 
 
+# little helper function
+mbsize(colrng) = float(size(colrng, 1))
 
 #########################################################
 #  functions inside the training loop
@@ -174,7 +179,7 @@ function update_parameters!(nnw, hp, bn=Batch_norm_params())
         
         reg_function![hl](nnw, hp, hl)  # regularize function per setup.jl setup_functions!
 
-        @bp
+        # @bp
 
         if hp.do_batch_norm  # update batch normalization parameters
             @inbounds bn.gam[hl][:] .= bn.gam[hl][:] .- (hp.alpha .* bn.delta_gam[hl])
@@ -286,8 +291,8 @@ end
 function batch_norm_back!(nnw, dat, bn, hl, hp)
 !hp.quiet && println("batch_norm_back!(nnw, dat, bn, hl, hp)")
     mb = hp.mb_size
-    @inbounds bn.delta_bet[hl][:] = (1.0/mb) * sum(dat.epsilon[hl], dims=2)
-    @inbounds bn.delta_gam[hl][:] = (1.0/mb) * sum(dat.epsilon[hl] .* dat.z_norm[hl], dims=2)
+    @inbounds bn.delta_bet[hl][:] = sum(dat.epsilon[hl], dims=2) ./ mb
+    @inbounds bn.delta_gam[hl][:] = sum(dat.epsilon[hl] .* dat.z_norm[hl], dims=2) ./ mb
 
     @inbounds dat.delta_z_norm[hl][:] = bn.gam[hl] .* dat.epsilon[hl]  
 
@@ -300,17 +305,17 @@ function batch_norm_back!(nnw, dat, bn, hl, hp)
 end
 
  
-function gather_stats!(statsdat, train_or_test, i, dat, nnw, cost_function, hp)
+function gather_stats!(statsdat, series, i, dat, nnw, cost_function, hp)
 
-    if statsdat["stats_sel"][train_or_test]
+    if statsdat["track"][series]
         feedfwd_predict!(dat, nnw, hp)
 
-        if statsdat["stats_sel"]["cost"]
-            statsdat["cost_history"][i, statsdat[train_or_test]] = cost_function(dat.targets,
+        if statsdat["track"]["cost"]
+            statsdat["cost"][i, statsdat["col_" * series]] = cost_function(dat.targets,
                 dat.a[nnw.output_layer], dat.n, nnw.theta, hp.lambda, hp.reg, nnw.output_layer)
         end
-        if statsdat["stats_sel"]["learning"]
-            statsdat["accuracy"][i, statsdat[train_or_test]] = (  hp.classify == "regression"
+        if statsdat["track"]["learning"]
+            statsdat["accuracy"][i, statsdat["col_" * series]] = (  hp.classify == "regression"
                     ? r_squared(dat.targets, dat.a[nnw.output_layer])
                     : accuracy(dat.targets, dat.a[nnw.output_layer])  )
         end

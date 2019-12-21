@@ -14,7 +14,7 @@ function prep_training!(mb, hp, nnw, bn, n)
 
     #setup mini-batch
     if hp.dobatch
-        @info("Be sure to shuffle training data when using minibatches.  Use utility function shuffle_data! or your own.")
+        @info("Be sure to shuffle training data when using minibatches.\n  Use utility function shuffle_data! or your own.")
         if hp.mb_size_in < 1
             hp.mb_size_in = n  
             hp.dobatch = false    # user provided incompatible inputs
@@ -306,19 +306,20 @@ neural net training by iteration.
 
 A statsdat is a dict containing:
 
-    "stats_sel"=>stats_sel: Dict of bools to select each type of results to be collected.
-        Currently used are: "Training", "Test", "Learning", "Cost".  This determines what
+    "track"=>Dict of bools to select each type of results to be collected.
+        Currently used are: "train", "test", "learning", "cost".  This determines what
         data will be collected during training iterations and what data series will be
         plotted.
-    "stats_labels"=>stats_labels: array of strings provides the labels to be used in the
+    "labels"=>array of strings provides the labels to be used in the
         plot legend.
-    "cost_history"=>cost_history: an array of calculated cost at each iteration
-        with iterations as rows and result types ("Training", "Test") as columns.
-    "accuracy"=>accuracy: an array of percentage of correct classification
+    "cost"=>array of calculated cost at each iteration
+        with iterations as rows and data types ("train", "test") as columns.
+    "accuracy"=>array of percentage of correct classification
         at each iteration with iterations as rows and result types as columns ("Training", "Test").
         This plots a so-called learning curve.  Very interesting indeed.
     "col_train"=>col_train: column of the arrays above to be used for Training results
     "col_test"=>col_test: column of the arrays above to be used for Test results
+    "period"=>single string of "epoch" or "batch" chooses interval of data, or "" or "none" for none
 
 """
 function setup_stats(hp, dotest::Bool)
@@ -328,59 +329,68 @@ function setup_stats(hp, dotest::Bool)
         @warn("Only 4 plot requests permitted. Proceeding with up to 4.")
     end
 
-    valid_stats = ["train", "test", "learning", "cost", "epoch", "batch"]
+    valid_inputs = ["train", "test", "learning", "cost", "epoch", "batch"]
     if in(hp.stats, ["None", "none", ""])
-        stats_sel = Dict(pl => false for pl in valid_stats) # set all to false
+        track = Dict(item => false for item in valid_stats) # set all to false
     else
-        stats_sel = Dict(pl => in(pl, hp.stats) for pl in valid_stats)
+        track = Dict(item => in(item, hp.stats) for item in valid_stats)
     end
 
     # determine whether to plot per batch or per epoch
-    if in(hp.stats, ["None", "none", ""])
-        hp.plotperbatch = false
-        hp.plotperepoch = false        
-    elseif !hp.dobatch # no batches--must plot by epoch
-        hp.plotperbatch = false
-        hp.plotperepoch = true
-    elseif in("epoch", hp.stats) # this is the default and overrides conflicting choice
-        hp.plotperbatch = false
-        hp.plotperepoch = true
-    elseif in("batch", hp.stats)
-        hp.plotperbatch = true
-        hp.plotperepoch = false
-    else # even when NOT plotting we still gather stats in the statsdat for default epoch
-        hp.plotperbatch = false
-        hp.plotperepoch = true
+    period = ""
+    if in(hp.stats, ["None", "none", ""]) || isempty(hp.stats)
+        period = ""      
+    elseif in("epoch", hp.stats) # this is the default and overrides choosing both, which isn't supported
+        period = "epoch"
+    elseif in("batch", hp.stats) && hp.dobatch
+        period = "batch"
     end
 
-    pointcnt = hp.plotperepoch ? hp.epochs : hp.n_mb * hp.epochs
+    pointcnt = if period == "epoch" 
+                    hp.epochs 
+                elseif period == "batch" 
+                    hp.n_mb * hp.epochs
+                else
+                    0
+                end
 
     # must have test data to plot test results
     if !dotest  # no test data
-        if stats_sel["test"]  # input requested plotting test data results
+        if track["test"]  # input requested plotting test data results
             @warn("Can't plot test data. No test data. Proceeding.")
-            stats_sel["test"] = false
+            track["test"] = false
         end
     end
 
-    stats_labels = dotest ? ["Train", "Test"] : ["Train"]
-    stats_labels = reshape(stats_labels,1,size(stats_labels,1)) # 1 x N row array required by pyplot
-
-    statsdat = Dict("stats_sel"=>stats_sel, "stats_labels"=>stats_labels)
-
-    if stats_sel["cost"]
-        statsdat["cost_history"] = zeros(pointcnt, size(stats_labels,2)) # cost history initialized to 0's
-    end
-    if stats_sel["learning"]
-        statsdat["accuracy"] = zeros(pointcnt, size(stats_labels,2))
-    end
-
     # set column in cost_history for each data series
-    col_train = stats_sel["train"] ? 1 : 0
-    col_test = stats_sel["test"] ? col_train + 1 : 0
+    col_train = track["train"] ? 1 : 0
+    col_test = track["test"] ? col_train + 1 : 0
 
-    statsdat["train"] = col_train
-    statsdat["test"] = col_test
+    labels = if col_train == 1 && col_test == 2
+                ("Train", "Test")
+            elseif col_train == 0 && col_test ==1
+                ("Test")
+            elseif col_train == 1 && col_test == 0
+                ("Train")
+            else
+                ()
+            end
+    # labels = reshape(labels,1,size(labels,1)) # 1 x N row array required by pyplot
+
+    # create all keys and values for dict statsdat
+        statsdat = Dict("track"=>track, "labels"=>labels)
+
+        if track["cost"]
+            statsdat["cost"] = zeros(pointcnt, size(labels,1)) # cost history initialized to 0's
+        end
+        if track["learning"]
+            statsdat["accuracy"] = zeros(pointcnt, size(labels,1))
+        end
+
+        statsdat["col_train"] = col_train
+        statsdat["col_test"] = col_test
+
+        statsdat["period"] = period
 
     return statsdat
 end

@@ -206,7 +206,7 @@ function save_statsdat(statsdat; fname="")
     if fname == ""  # build a filename
         fname = repr(Dates.now())
         fname = "statsdat-" * replace(fname, r"[.:]" => "-") * ".jld2"
-        println(fname)
+        # println(fname)
     end
     jldopen(fname, "w") do f
         f["statsdat"] = statsdat
@@ -297,20 +297,23 @@ end
 
 """
 function output_stats(train, test, nnw, bn, hp, training_time, statsdat)
-    _output_stats(train, test, nnw, bn, hp, training_time, statsdat; dotest=true)
+    _output_stats(train, test, nnw, bn, hp, training_time, statsdat)
 end
 
 # TODO maybe we don't need a valid Model_data object
 function output_stats(train, nnw, bn, hp, training_time, statsdat)
-    _output_stats(train, Model_data(), nnw, bn, hp, training_time, statsdat; dotest=false)
+    _output_stats(train, Model_data(), nnw, bn, hp, training_time, statsdat)
+        # Model_data passes an empty test object
 end
 
-function _output_stats(train, test, nnw, bn, hp, training_time, statsdat; dotest=false)
+function _output_stats(train, test, nnw, bn, hp, training_time, statsdat)
+
+    dotest = isempty(test.inputs) ? false : true
 
     # file for simple training stats
     fname = repr(Dates.now())
     fname = "nnstats-" * replace(fname, r"[.:]" => "-") * ".txt"
-    println(fname)
+    # println(fname)
 
     # print to file and console
     open(fname, "w") do stats
@@ -325,11 +328,11 @@ function _output_stats(train, test, nnw, bn, hp, training_time, statsdat; dotest
                         nnw.theta, hp.lambda, hp.reg, nnw.output_layer))
 
         # output improvement of last few iterations for training data
-        if statsdat["stats_sel"]["train"]
-            if statsdat["stats_sel"]["learning"]
+        if statsdat["track"]["train"]
+            if statsdat["track"]["learning"]
                 tailcount = min(10, hp.epochs)
                 println(stats, "Training data accuracy in final $tailcount iterations:")
-                printdata = statsdat["accuracy"][end-tailcount+1:end, statsdat["train"]]
+                printdata = statsdat["accuracy"][end-tailcount+1:end, statsdat["col_train"]]
                 for i=1:tailcount
                     @printf(stats, "%0.3f : ", printdata[i])
                 end
@@ -348,11 +351,11 @@ function _output_stats(train, test, nnw, bn, hp, training_time, statsdat; dotest
         end
 
         # output improvement of last 10 iterations for test data
-        if statsdat["stats_sel"]["test"]
-            if statsdat["stats_sel"]["learning"]
+        if statsdat["track"]["test"]
+            if statsdat["track"]["learning"]
                 tailcount = min(10, hp.epochs)
                 println(stats, "Test data accuracy in final $tailcount iterations:")
-                printdata = statsdat["accuracy"][end-tailcount+1:end, statsdat["test"]]
+                printdata = statsdat["accuracy"][end-tailcount+1:end, statsdat["col_test"]]
                 for i=1:tailcount
                     @printf(stats, "%0.3f : ", printdata[i])
                 end
@@ -368,7 +371,7 @@ function _output_stats(train, test, nnw, bn, hp, training_time, statsdat; dotest
             println(stats, "\nThere are ", length(test_wrongs), " incorrect test predictions.")
         end
 
-        # output hyper hyper_parameters
+        # output hyper_parameters
         hp.alpha = (   hp.do_learn_decay   # back out alpha to original input
                         ? round(hp.alpha * (1.0 / hp.learn_decay[1]) ^ (hp.learn_decay[2] - 1.0), digits=5) 
                         : hp.alpha    )
@@ -378,6 +381,7 @@ function _output_stats(train, test, nnw, bn, hp, training_time, statsdat; dotest
     end  # end do stats  --  done with stats stream->closed
 
     # print the stats
+    println("printing training statistics")
     println(read(fname, String))
 
     # save cost and accuracy from training
@@ -398,44 +402,27 @@ end
 """
 function plot_output(statsdat::Dict)
     # plot the progress of training cost and/or learning
-    if (statsdat["stats_sel"]["train"] || statsdat["stats_sel"]["test"])
-        # plotlyjs(size=(600,400)) # set chart size defaults
-        # gr()
 
-        if statsdat["stats_sel"]["cost"]
-            # plt_cost = plot(
-            #     statsdat["cost_history"], 
-            #     title="Cost Function",
-            #     labels=statsdat["stats_labels"], 
-            #     legend=:bottomright,
-            #     ylims=(0.0, Inf), 
-            #     bottom_margin=7mm, 
-            #     size=(600,400))
-            # display(plt_cost)  # or can use gui()
-            plot(statsdat["cost_history"],label="cost")
-            title("Cost Function")
-            # show()
-        end
+    if statsdat["track"]["cost"]
+        figure()
+        plot(1:size(statsdat["cost"],1),statsdat["cost"])  
+        xticks(2:4:size(statsdat["cost"],1))
+        title("Cost Function")
+        legend(statsdat["labels"])
+    end
 
-        if statsdat["stats_sel"]["learning"]
-            # plt_learning = plot(
-            #     statsdat["accuracy"], 
-            #     title="Learning Progress",
-            #     labels=statsdat["stats_labels"], 
-            #     legend=:bottomright,
-            #     ylims=(0.0, 1.05), 
-            #     bottom_margin=7mm,
-            #     size=(600,400)) 
-            # display(plt_learning)
-            plot(statsdat["accuracy"],label="accuracy") 
-                title("Learning Progress")
-                legend(loc="lower right")
-        end
+    if statsdat["track"]["learning"]
+        figure()
+        plot(1:size(statsdat["accuracy"],1), statsdat["accuracy"]) 
+        title("Learning Progress")
+        xticks(2:4:size(statsdat["accuracy"], 1))
+        legend(statsdat["labels"])
+    end
 
-        if (statsdat["stats_sel"]["cost"] || statsdat["stats_sel"]["learning"])
-            println("Press enter to close plot window..."); readline()
-            close("all")
-        end
+    if (statsdat["track"]["cost"] || statsdat["track"]["learning"])
+        println("Press enter to close plot window...") 
+        readline(keep=true)
+        close("all")
     end
 end
 

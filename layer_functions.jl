@@ -21,7 +21,8 @@ function cross_entropy_cost(targets, predictions, n, theta=[], lambda=1.0, reg="
 end
 
 function softmax_cost(targets, predictions, n, theta=[], lambda=1.0, reg="", output_layer=3)
-    cost = (-1.0 / n) * dot(targets,log.(predictions .+ 1e-50)) 
+    # this is the negative log likelihood cost for a multi-category output layer
+    cost = (-1.0 / n) * dot(targets,log.(max.(predictions, 1e-50))) 
         
     @fastmath if reg == "L2"  # set reg="" if not using regularization
         regterm = lambda/(2.0 * n) .* sum([dot(th, th) for th in theta[2:output_layer]])
@@ -29,6 +30,7 @@ function softmax_cost(targets, predictions, n, theta=[], lambda=1.0, reg="", out
     end
     return cost
 end
+
 
 function mse_cost(targets, predictions, n, theta=[], lambda=1.0, reg="", output_layer=3)
     @fastmath cost = (1.0 / (2.0 * n)) .* sum((targets .- predictions) .^ 2.0)
@@ -39,7 +41,14 @@ function mse_cost(targets, predictions, n, theta=[], lambda=1.0, reg="", output_
     return cost
 end
 
+# testing behavior of cross_entropy_cost
+function cost_target_one(targets, predictions, n, theta=[], lambda=1.0, reg="", output_layer=3)
+    cost = (-1.0 / n) * dot(targets,log.(predictions .+ 1e-50)) 
+end
 
+function cost_target_zero(targets, predictions, n, theta=[], lambda=1.0, reg="", output_layer=3)
+   cost = (-1.0 / n) * dot((1.0 .- targets), log.(1.0 .- predictions .+ 1e-50))
+end
 
 ###########################################################################
 #  layer functions:  activation for feed forward
@@ -95,14 +104,14 @@ end
     # uses delta_z from the backnorm calculations
     function backprop_weights_nobias!(delta_w, delta_b, delta_z, epsilon, a_prev, n)
         mul!(delta_w, delta_z, a_prev')
-        @fastmath delta_w[:] = delta_w .* (1.0 / n)
+        @fastmath delta_w[:] = delta_w ./ n
     end
 
     # ignores delta_z terms because no batchnorm 
     function backprop_weights!(delta_w, delta_b, delta_z, epsilon, a_prev, n)
         mul!(delta_w, epsilon, a_prev')
         @fastmath delta_w[:] = delta_w .* (1.0 / n)
-        @fastmath delta_b[:] = sum(epsilon, dims=2) .* (1.0 / n)
+        @fastmath delta_b[:] = sum(epsilon, dims=2) ./ n
     end
 
 

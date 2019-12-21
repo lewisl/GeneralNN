@@ -129,13 +129,13 @@ end
     lengtheq(item, check) = length(item) == check
     lrndecay(item, check) = ininterval(item[1],check[1]) && ininterval(item[2], check[2])
 
-# for plots
+# for stats
 valid_stats = ["learning", "cost", "train", "test", "batch", "epoch"]
 function checkstats(item, _)
     if length(item) > 1
         ok1 = all(i -> i in valid_stats, lowercase.(item)) 
         ok2 = allunique(item) 
-        ok3 = !("batch" in item || "epoch" in item)  # can't have both, ok to have neither
+        ok3 = !("batch" in item && "epoch" in item)  # can't have both, ok to have neither
         ok = all([ok1, ok2, ok3])
     elseif length(item) == 1
         ok = item[1] in ["", "none"] 

@@ -65,8 +65,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
     quiet::Bool                 # display progress messages or not
     stats::Array{String, 1}     # not a hyper_parameter, choice of stats data to collect during training
     plot_now::Bool
-    plotperbatch::Bool
-    plotperepoch::Bool
+
 
     Hyper_parameters() = new(       # constructor with defaults--we use hp as the struct variable
         0.35,           # alpha -- OK for nn. way too high for linear regression
@@ -96,9 +95,8 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         0.0,            # bias_initializer
         true,           # quiet
         ["None"],       # stats
-        false,          # plot_now
-        false,          # plotperbatch
-        true            # plotperepoch
+        false          # plot_now
+
     )
 end
 
