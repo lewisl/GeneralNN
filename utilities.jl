@@ -202,29 +202,29 @@ function load_params(jld_fname)
 end
 
 
-function save_statsdat(statsdat; fname="")
+function save_stats(stats; fname="")
     if fname == ""  # build a filename
         fname = repr(Dates.now())
-        fname = "statsdat-" * replace(fname, r"[.:]" => "-") * ".jld2"
+        fname = "stats-" * replace(fname, r"[.:]" => "-") * ".jld2"
         # println(fname)
     end
     jldopen(fname, "w") do f
-        f["statsdat"] = statsdat
+        f["stats"] = stats
     end
 end
 
 
-function load_statsdat(fname::String)
+function load_stats(fname::String)
     f = jldopen(fname, "r")
-    statsdat = f["statsdat"]
+    stats = f["stats"]
     close(f)
-    return statsdat
+    return stats
 end
 
 
 function printby2(nby2)  
     for i = 1:size(nby2,1)
-        @printf("  %9.6f    %9.6f\n", nby2[i,1], nby2[i,2])
+        @printf("  %12.9f    %12.9f\n", nby2[i,1], nby2[i,2])
     end
 end
 
@@ -296,17 +296,17 @@ end
     Save, print and plot training statistics after all epochs
 
 """
-function output_stats(train, test, nnw, bn, hp, training_time, statsdat)
-    _output_stats(train, test, nnw, bn, hp, training_time, statsdat)
+function output_stats(train, test, nnw, hp, training_time, stats)
+    _output_stats(train, test, nnw, hp, training_time, stats)
 end
 
 # TODO maybe we don't need a valid Model_data object
-function output_stats(train, nnw, bn, hp, training_time, statsdat)
-    _output_stats(train, Model_data(), nnw, bn, hp, training_time, statsdat)
+function output_stats(train, nnw, hp, training_time, stats)
+    _output_stats(train, Model_data(), nnw, hp, training_time, stats)
         # Model_data passes an empty test object
 end
 
-function _output_stats(train, test, nnw, bn, hp, training_time, statsdat)
+function _output_stats(train, test, nnw, hp, training_time, stats)
 
     dotest = isempty(test.inputs) ? false : true
 
@@ -316,25 +316,25 @@ function _output_stats(train, test, nnw, bn, hp, training_time, statsdat)
     # println(fname)
 
     # print to file and console
-    open(fname, "w") do stats
-        println(stats, "Training time: ",training_time, " seconds")  # cpu time since tic() =>  toq() returns secs without printing
+    open(fname, "w") do outfile
+        println(outfile, "Training time: ",training_time, " seconds")  # cpu time since tic() =>  toq() returns secs without printing
 
         # output for entire training set
         feedfwd_predict!(train, nnw, hp)  
-        println(stats, "Fraction correct labels predicted training: ",
+        println(outfile, "Fraction correct labels predicted training: ",
                 hp.classify == "regression" ? r_squared(train.targets, train.a[nnw.output_layer])
                     : accuracy(train.targets, train.a[nnw.output_layer]))
-        println(stats, "Final cost training: ", cost_function(train.targets, train.a[nnw.output_layer], train.n,
+        println(outfile, "Final cost training: ", cost_function(train.targets, train.a[nnw.output_layer], train.n,
                         nnw.theta, hp.lambda, hp.reg, nnw.output_layer))
 
         # output improvement of last few iterations for training data
-        if statsdat["track"]["train"]
-            if statsdat["track"]["learning"]
+        if stats["track"]["train"]
+            if stats["track"]["learning"]
                 tailcount = min(10, hp.epochs)
-                println(stats, "Training data accuracy in final $tailcount iterations:")
-                printdata = statsdat["accuracy"][end-tailcount+1:end, statsdat["col_train"]]
+                println(outfile, "Training data accuracy in final $tailcount iterations:")
+                printdata = stats["accuracy"][end-tailcount+1:end, stats["col_train"]]
                 for i=1:tailcount
-                    @printf(stats, "%0.3f : ", printdata[i])
+                    @printf(outfile, "%0.3f : ", printdata[i])
                 end
                 print("\n\n")
             end
@@ -343,19 +343,19 @@ function _output_stats(train, test, nnw, bn, hp, training_time, statsdat)
         # output test statistics
         if dotest
             feedfwd_predict!(test, nnw, hp)
-            println(stats, "\n\nFraction correct labels predicted test: ",
+            println(outfile, "\n\nFraction correct labels predicted test: ",
                     hp.classify == "regression" ? r_squared(test.targets, test.a[nnw.output_layer])
                         : accuracy(test.targets, test.a[nnw.output_layer]))
-            println(stats, "Final cost test: ", cost_function(test.targets, test.a[nnw.output_layer], test.n,
+            println(outfile, "Final cost test: ", cost_function(test.targets, test.a[nnw.output_layer], test.n,
                 nnw.theta, hp.lambda, hp.reg, nnw.output_layer))
         end
 
         # output improvement of last 10 iterations for test data
-        if statsdat["track"]["test"]
-            if statsdat["track"]["learning"]
+        if stats["track"]["test"]
+            if stats["track"]["learning"]
                 tailcount = min(10, hp.epochs)
-                println(stats, "Test data accuracy in final $tailcount iterations:")
-                printdata = statsdat["accuracy"][end-tailcount+1:end, statsdat["col_test"]]
+                println(outfile, "Test data accuracy in final $tailcount iterations:")
+                printdata = stats["accuracy"][end-tailcount+1:end, stats["col_test"]]
                 for i=1:tailcount
                     @printf(stats, "%0.3f : ", printdata[i])
                 end
@@ -365,18 +365,18 @@ function _output_stats(train, test, nnw, bn, hp, training_time, statsdat)
 
         # output number of incorrect predictions
         train_wrongs = GeneralNN.wrong_preds(train.targets, train.a[nnw.output_layer]);
-        println(stats, "\nThere are ", length(train_wrongs), " incorrect training predictions.")
+        println(outfile, "\nThere are ", length(train_wrongs), " incorrect training predictions.")
         if dotest
             test_wrongs = GeneralNN.wrong_preds(test.targets, test.a[nnw.output_layer]);
-            println(stats, "\nThere are ", length(test_wrongs), " incorrect test predictions.")
+            println(outfile, "\nThere are ", length(test_wrongs), " incorrect test predictions.")
         end
 
         # output hyper_parameters
         hp.alpha = (   hp.do_learn_decay   # back out alpha to original input
                         ? round(hp.alpha * (1.0 / hp.learn_decay[1]) ^ (hp.learn_decay[2] - 1.0), digits=5) 
                         : hp.alpha    )
-        println(stats, "\nHyper-parameters")
-        pretty_print_hp(stats, hp)
+        println(outfile, "\nHyper-parameters")
+        pretty_print_hp(outfile, hp)
 
     end  # end do stats  --  done with stats stream->closed
 
@@ -385,41 +385,41 @@ function _output_stats(train, test, nnw, bn, hp, training_time, statsdat)
     println(read(fname, String))
 
     # save cost and accuracy from training
-    save_statsdat(statsdat)
+    save_stats(stats)
     
     # plot now?
-    hp.plot_now && plot_output(statsdat)
+    hp.plot_now && plot_output(stats)
 
 end
 
 
 """
-    plot_output(statsdat::Dict)
+    plot_output(stats::Dict)
 
-    Plots the statsdat and creates 1 or 2  plot windows of the learning (accuracy)
+    Plots the stats and creates 1 or 2  plot windows of the learning (accuracy)
     and/or cost from each training epoch.
 
 """
-function plot_output(statsdat::Dict)
+function plot_output(stats::Dict)
     # plot the progress of training cost and/or learning
 
-    if statsdat["track"]["cost"]
+    if stats["track"]["cost"]
         figure()
-        plot(1:size(statsdat["cost"],1),statsdat["cost"])  
-        xticks(2:4:size(statsdat["cost"],1))
+        plot(1:size(stats["cost"],1),stats["cost"])  
+        xticks(2:4:size(stats["cost"],1))
         title("Cost Function")
-        legend(statsdat["labels"])
+        legend(stats["labels"])
     end
 
-    if statsdat["track"]["learning"]
+    if stats["track"]["learning"]
         figure()
-        plot(1:size(statsdat["accuracy"],1), statsdat["accuracy"]) 
+        plot(1:size(stats["accuracy"],1), stats["accuracy"]) 
         title("Learning Progress")
-        xticks(2:4:size(statsdat["accuracy"], 1))
-        legend(statsdat["labels"])
+        xticks(2:4:size(stats["accuracy"], 1))
+        legend(stats["labels"])
     end
 
-    if (statsdat["track"]["cost"] || statsdat["track"]["learning"])
+    if (stats["track"]["cost"] || stats["track"]["learning"])
         println("Press enter to close plot window...") 
         readline(keep=true)
         close("all")
@@ -451,17 +451,14 @@ contains the category number from 1 to cnt.
 Elements of the returned matrix will have eltype of vect or of the
 argument result_type.
 """
-function onehot(vect, cnt; dim=1)
+function onehot(vect, cnt; dims=1)
     et = eltype(vect)
-    onehot(vect, cnt, et, dim=dim)
+    onehot(vect, cnt, et, dims=dims)
 end
 
 
-function onehot(vect,cnt,result_type; dim=1)
+function onehot(vect,cnt,result_type; dims=1)
     et = result_type
-
-    # if ndims(vect) == 1
-    # end
 
     eye = zeros(et, cnt,cnt)
     setone = convert(et,1)
@@ -469,7 +466,7 @@ function onehot(vect,cnt,result_type; dim=1)
         eye[i,i] = setone
     end
     vect = convert.(Int, vect)
-    if dim == 1
+    if dims == 1
         return eye[vect,:]
     else
         return eye[:,vect]
@@ -632,7 +629,7 @@ flat(arr::Coll) = mapreduce(x -> isa(x, Coll) ? flat(x) : x, append!, arr, init=
 
 function printstruct(st)
     for it in propertynames(st)
-        println(it, " ", getproperty(st, it))
+        @printf(" %20s %s\n",it, getproperty(st, it))
     end
 end
 

@@ -68,7 +68,7 @@ all of the input parameters to be read from a TOML file.  This is further explai
                             reduce learning rate (alpha).  Ex: [.5, 2.0] reduces alpha in 1/2 after 1/2 of the
                             epochs.
                             [1.0, 1.0] signals don't do learning decay
-        plot_now        ::Bool.  If true, plot training stats immediately and save the statsdat that contains stats 
+        plot_now        ::Bool.  If true, plot training stats immediately and save the stats that contains stats 
                             gathered while running the training.  You can plot the file separately, later.
         sparse          ::Bool. If true, input data will be treated and maintained as SparseArrays.
         initializer     ::= "xavier", "uniform", "normal" or "zero" used to set how Wgts, not including bias, are initialized.
@@ -217,14 +217,14 @@ function train(train_x, train_y, hp, testgrad=false)
     dotest = false
 
     train, mb, nnw, bn = pretrain(train_x, train_y, hp)
-    statsdat = setup_stats(hp, dotest)  
+    stats = setup_stats(hp, dotest)  
 
     !hp.quiet && println("Training setup complete")
 
-    training_time = training_loop!(hp, train, mb, nnw, bn, statsdat)
+    training_time = training_loop!(hp, train, mb, nnw, bn, stats)
 
     # save, print and plot training statistics
-    output_stats(train, nnw, bn, hp, training_time, statsdat)
+    output_stats(train, nnw, hp, training_time, stats)
 
     ret = Dict(
                 "train_inputs" => train_x, 
@@ -235,7 +235,7 @@ function train(train_x, train_y, hp, testgrad=false)
                 "hyper_params" => hp
                 )
 
-    return ret, statsdat
+    return ret, stats
 
 end # _run_training_core, method with test data
 
@@ -248,14 +248,14 @@ function train(train_x, train_y, test_x, test_y, hp, testgrad=false)
     train, mb, nnw, bn = pretrain(train_x, train_y, hp)
     test = prepredict(test_x, test_y, hp, nnw, notrain=false)
         # use notrain=false because the test data is used during training
-    statsdat = setup_stats(hp, dotest)  
+    stats = setup_stats(hp, dotest)  
 
     !hp.quiet && println("Training setup complete")
 
-    training_time = training_loop!(hp, train, test, mb, nnw, bn, statsdat)
+    training_time = training_loop!(hp, train, test, mb, nnw, bn, stats)
 
     # save, print and plot training statistics
-    output_stats(train, test, nnw, bn, hp, training_time, statsdat)
+    output_stats(train, test, nnw, hp, training_time, stats)
 
     ret = Dict(
                 "train_inputs" => train_x, 
@@ -269,7 +269,7 @@ function train(train_x, train_y, test_x, test_y, hp, testgrad=false)
                 "test_preds" => test.a[nnw.output_layer]  
                 )
 
-    return ret, statsdat
+    return ret, stats
 
 end # _run_training_core, method with test data
 

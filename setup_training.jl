@@ -304,7 +304,7 @@ Function setup_stats(hp, dotest::Bool)
 Creates data structure to hold everything needed to plot progress of
 neural net training by iteration.
 
-A statsdat is a dict containing:
+Training statistics are tracked in a dict containing:
 
     "track"=>Dict of bools to select each type of results to be collected.
         Currently used are: "train", "test", "learning", "cost".  This determines what
@@ -366,31 +366,33 @@ function setup_stats(hp, dotest::Bool)
     col_train = track["train"] ? 1 : 0
     col_test = track["test"] ? col_train + 1 : 0
 
+    no_of_cols = max(col_train, col_test)
+
     labels = if col_train == 1 && col_test == 2
                 ("Train", "Test")
             elseif col_train == 0 && col_test ==1
-                ("Test")
+                ("Test",)    # trailing comma needed because a one-element tuple generates to its element
             elseif col_train == 1 && col_test == 0
-                ("Train")
+                ("Train",)   # trailing comma needed because a one-element tuple generates to its element
             else
                 ()
             end
     # labels = reshape(labels,1,size(labels,1)) # 1 x N row array required by pyplot
 
-    # create all keys and values for dict statsdat
-        statsdat = Dict("track"=>track, "labels"=>labels)
+    # create all keys and values for dict stats
+        stats = Dict("track"=>track, "labels"=>labels)
 
         if track["cost"]
-            statsdat["cost"] = zeros(pointcnt, size(labels,1)) # cost history initialized to 0's
+            stats["cost"] = zeros(pointcnt, no_of_cols) # cost history initialized to 0's
         end
         if track["learning"]
-            statsdat["accuracy"] = zeros(pointcnt, size(labels,1))
+            stats["accuracy"] = zeros(pointcnt, no_of_cols)
         end
 
-        statsdat["col_train"] = col_train
-        statsdat["col_test"] = col_test
+        stats["col_train"] = col_train
+        stats["col_test"] = col_test
 
-        statsdat["period"] = period
+        stats["period"] = period
 
-    return statsdat
+    return stats
 end

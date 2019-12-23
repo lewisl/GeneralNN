@@ -2,18 +2,18 @@
 using StatsBase
 
 # method with no input test data
-function training_loop!(hp, train, mb, nnw, bn, statsdat)
-    _training_loop!(hp, train, Model_data(), mb, nnw, bn, statsdat)
+function training_loop!(hp, train, mb, nnw, bn, stats)
+    _training_loop!(hp, train, Model_data(), mb, nnw, bn, stats)
         # Model_data() passes an empty test data object
 end
 
 # method with input of train and test data: test data used for training stats
-function training_loop!(hp, train, test, mb, nnw, bn, statsdat)
-    _training_loop!(hp, train, test, mb, nnw, bn, statsdat)
+function training_loop!(hp, train, test, mb, nnw, bn, stats)
+    _training_loop!(hp, train, test, mb, nnw, bn, stats)
 end
 
-function _training_loop!(hp, train, test, mb, nnw, bn, statsdat)
-!hp.quiet && println("training_loop(hp, train, test mb, nnw, bn, statsdat; dotest=false)")
+function _training_loop!(hp, train, test, mb, nnw, bn, stats)
+!hp.quiet && println("training_loop(hp, train, test mb, nnw, bn, stats; dotest=false)")
     
     dotest = isempty(test.inputs) ? false : true
 
@@ -37,9 +37,9 @@ function _training_loop!(hp, train, test, mb, nnw, bn, statsdat)
                     train_one_step!(mb, nnw, bn, hp, t)
 
                     # stats for each minibatch--expensive!!!
-                    statsdat["period"] == "batch" && begin
-                        gather_stats!(statsdat, "train", t, train, nnw, cost_function, hp)  
-                        dotest && gather_stats!(statsdat, "test", t, test, nnw, cost_function, hp) 
+                    stats["period"] == "batch" && begin
+                        gather_stats!(stats, "train", t, train, nnw, cost_function, hp)  
+                        dotest && gather_stats!(stats, "test", t, test, nnw, cost_function, hp) 
                     end
 
                 end # mini-batch loop
@@ -50,9 +50,9 @@ function _training_loop!(hp, train, test, mb, nnw, bn, statsdat)
             end
 
             # stats across all mini-batches of one epoch (e.g.--no stats per minibatch)
-            statsdat["period"] == "epoch" && begin
-                gather_stats!(statsdat, "train", ep_i, train, nnw, cost_function, hp)  
-                dotest && gather_stats!(statsdat, "test", ep_i, test, nnw, cost_function, hp) 
+            stats["period"] == "epoch" && begin
+                gather_stats!(stats, "train", ep_i, train, nnw, cost_function, hp)  
+                dotest && gather_stats!(stats, "test", ep_i, test, nnw, cost_function, hp) 
             end
 
         end # epoch loop
@@ -156,9 +156,8 @@ function backprop!(nnw, dat, hp)
         @inbounds dat.epsilon[hl][:] = dat.epsilon[hl] .* dat.grad[hl] 
             !hp.quiet && println("what is epsilon $hl? ", mean(dat.epsilon[hl]))
 
-        # noop if not applicable
-        dropout_back_function![hl](dat, hl)
-        batch_norm_back_function!(dat, hl)
+        dropout_back_function![hl](dat, hl)  # noop if not applicable
+        batch_norm_back_function!(dat, hl)   # noop if not applicable
 
         backprop_weights_function!(nnw.delta_w[hl], nnw.delta_b[hl], dat.delta_z[hl], 
                                    dat.epsilon[hl], dat.a[hl-1], hp.mb_size)
@@ -305,17 +304,17 @@ function batch_norm_back!(nnw, dat, bn, hl, hp)
 end
 
  
-function gather_stats!(statsdat, series, i, dat, nnw, cost_function, hp)
+function gather_stats!(stats, series, i, dat, nnw, cost_function, hp)
 
-    if statsdat["track"][series]
+    if stats["track"][series]
         feedfwd_predict!(dat, nnw, hp)
 
-        if statsdat["track"]["cost"]
-            statsdat["cost"][i, statsdat["col_" * series]] = cost_function(dat.targets,
+        if stats["track"]["cost"]
+            stats["cost"][i, stats["col_" * series]] = cost_function(dat.targets,
                 dat.a[nnw.output_layer], dat.n, nnw.theta, hp.lambda, hp.reg, nnw.output_layer)
         end
-        if statsdat["track"]["learning"]
-            statsdat["accuracy"][i, statsdat["col_" * series]] = (  hp.classify == "regression"
+        if stats["track"]["learning"]
+            stats["accuracy"][i, stats["col_" * series]] = (  hp.classify == "regression"
                     ? r_squared(dat.targets, dat.a[nnw.output_layer])
                     : accuracy(dat.targets, dat.a[nnw.output_layer])  )
         end
@@ -324,3 +323,16 @@ function gather_stats!(statsdat, series, i, dat, nnw, cost_function, hp)
 end
 
 
+function quick_stats(dat, nnw, hp, cost_function=cost_function)
+
+    feedfwd_predict!(dat, nnw, hp)
+
+    cost = cost_function(dat.targets,
+            dat.a[nnw.output_layer], dat.n, nnw.theta, hp.lambda, hp.reg, nnw.output_layer)
+
+    correct = (  hp.classify == "regression"
+                ? r_squared(dat.targets, dat.a[nnw.output_layer])
+                : accuracy(dat.targets, dat.a[nnw.output_layer])  )
+
+    return cost, correct
+end

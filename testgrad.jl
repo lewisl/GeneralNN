@@ -2,59 +2,51 @@
 # train_x, train_y = extract_data("digits5000by400.mat")
 # shuffle_data!(train_x, train_y)
 # train, mb, nnw, bn = pretrain(train_x, train_y, hp)
-# statsdat = setup_stats(hp, dotest)  
+# stats = setup_stats(hp, dotest)  
 # training_loop to run some epochs--start with minibatch, optimization, etc.
 #     then check grads in one epoch without that stuff
 
 
 # method for using the full model and training data to check grads
 function prep_check(hp, train_x, train_y, iters; samplepct=.005, quiet=false, tweak=1e-6)
-    # advance the training loop with model hyper-parameters
+
+    # prepare the model (sub-steps that are part of train() )
     dotest = false
     train, mb, nnw, bn = pretrain(train_x, train_y, hp)
-    statsdat = setup_stats(hp, dotest)  
+    # stats = setup_stats(hp, dotest)  
 
-    # set iters to train before grad testing
-    @printf("  ****** Advancing model %d iterations\n", iters)
-        olditers = hp.epochs
-        oldalpha = hp.alpha
-        oldstats = hp.stats
+    # advance the training loop with model hyper-parameters
+        @printf("  ****** Advancing model %d iterations\n", iters)
+        hp.epochs = iters  # set iters to train before grad testing
+        stats = setup_stats(hp, dotest)
+        training_time = training_loop!(hp, train, mb, nnw, bn, stats)
+        output_stats(train, nnw, hp, 1.1, stats)
 
-        hp.epochs = iters
-        hp.stats = []
-        training_time = training_loop!(hp, train, mb, nnw, bn, statsdat)
-        output_stats(train,nnw, bn, hp,1.1, statsdat)
-
-        hp.epochs = olditers
-        hp.alpha = oldalpha
-        hp.stats = oldstats
 
     # set new hyper-parameters for gradient checking
-    # minihp = set_hp(hp)
-    minihp = hp
+    minihp = set_hp(hp)
     setup_functions!(minihp, nnw, bn, train)  
 
-    return minihp, nnw, train # TODO do we also need to return  mb, bn, statsdat?
+    return minihp, nnw, train 
 end
 
 
-# TODO test the full model version again
-# method to use fully built model with real training data
+# method to use full model with real training data
 function check_grads(hp, train_x, train_y, iters; samplepct=.005, quiet=false, tweak=1e-6, post_iters=0,
     biasidx = [], thetaidx = [])
     println("  ****** Testing gradient calculation on input training dataset")
 
     println("  ****** Setting up model and data")
 
-    minihp, nnw, train = prep_check(hp, train_x, train_y, iters; samplepct=samplepct, quiet=quiet, tweak=tweak)
+    hp, nnw, train = prep_check(hp, train_x, train_y, iters; samplepct=samplepct, quiet=quiet, tweak=tweak)
 
-    run_check_grads(minihp, nnw, train; samplepct=samplepct, tweak=tweak, quiet=quiet, iters=post_iters,
+    run_check_grads(hp, nnw, train; samplepct=samplepct, tweak=tweak, quiet=quiet, iters=post_iters,
                     biasgradidx = biasidx, thetagradidx = thetaidx)
 end
 
 
 # method to use mini-model with same number/type of hidden layers as designed model
-function prep_check(hp; in_k=3, out_k=3, m=5, hid=5, iters=100, samplepct=1.0, tweak=1e-4, quiet=false)
+function prep_check(hp; in_k=3, out_k=3, m=5, hid=5, iters=30, samplepct=1.0, tweak=1e-4, quiet=false)
 
     # set new hyper-parameters for gradient checking
     minihp = set_hp(hp)
@@ -69,6 +61,9 @@ function prep_check(hp; in_k=3, out_k=3, m=5, hid=5, iters=100, samplepct=1.0, t
     minihp.epochs = iters
 
     training_time = training_loop!(minihp, minidat, minimb, miniwgts, minibn, ministats)
+
+    # TODO do we want this?  minihp and setup_stats currently setup so that no training stats get collected
+    quiet && output_stats(minidat, miniwgts, minihp, training_time, ministats)
 
     return minihp, miniwgts, minidat
 end
@@ -163,7 +158,7 @@ end
 
 
 function run_check_grads(hp, wgts, dat; samplepct=.015, tweak=1e-6, quiet=false, iters=0,
-    biasgradidx = [], thetagradidx = [])
+    biasgradidx = [], thetagradidx = [])  # last 2 args are the indices of the bias and theta we sample
 
     if !(samplepct > 0.0 && samplepct <= 1.0)
         error("input samplepct must be greater than zero and less than or equal to 1.0")
@@ -175,7 +170,7 @@ function run_check_grads(hp, wgts, dat; samplepct=.015, tweak=1e-6, quiet=false,
         else  # must be in (0.0,1.0)
             biasgradidx = [sample_idx(samplepct,x) for x in wgts.bias[2:wgts.output_layer]]
         end
-        insert!(biasgradidx, 1, eachindex([]))  # placeholder for layer 1
+        insert!(biasgradidx, 1, eachindex([]))  # we need this placeholder for layer 1
     end
 
     if length(thetagradidx) == 0  # no input of pre-selected indices
@@ -184,10 +179,11 @@ function run_check_grads(hp, wgts, dat; samplepct=.015, tweak=1e-6, quiet=false,
         else  # must be in (0.0,1.0)
             thetagradidx = [sample_idx(samplepct,x) for x in wgts.theta[2:wgts.output_layer]]
         end
-        insert!(thetagradidx, 1, eachindex([]))  # placeholder for layer 1
+        insert!(thetagradidx, 1, eachindex([]))  # we need this placeholder for layer 1
     end
     
     # run model a few more iterations:  especially valuable if full model uses minibatches
+    # TODO  does this work or mess things up?
     for i = 1:iters
         feedfwd_predict!(dat, wgts, hp) # no batches, no batchnorm, no dropout
         backprop!(wgts, dat, hp)
@@ -199,8 +195,8 @@ function run_check_grads(hp, wgts, dat; samplepct=.015, tweak=1e-6, quiet=false,
     numgradbias  = [zeros(length(x)) for x in biasgradidx]  # deepcopy(wgts.bias)       # deepcopy(miniwgts.bias)
 
     # capture starting data structures
-    startwgts = deepcopy(wgts)
-    startdat = deepcopy(dat)  # do we need this?
+    # startwgts = deepcopy(wgts)
+    # startdat = deepcopy(dat)  # do we need this?
 
     # compute numgrad
     kinkrejecttheta, kinkrejectbias, numcost,  numpreds = compute_numgrad!(numgradtheta, numgradbias, 
@@ -208,8 +204,8 @@ function run_check_grads(hp, wgts, dat; samplepct=.015, tweak=1e-6, quiet=false,
     numgrad = (numgradtheta,numgradbias)
 
     #recover starting data structures
-    wgts = deepcopy(startwgts)
-    dat = deepcopy(startdat)
+    # wgts = deepcopy(startwgts)
+    # dat = deepcopy(startdat)
 
     # compute_modelgrad!()
     println("  ****** Calculating feedfwd/backprop gradients")
@@ -286,12 +282,12 @@ end
 
 
 function set_hp(hp)
-    # set appropriate bogus hyper-parameters for mini-model
+    # set appropriate bogus hyper-parameters for mini-model AND FOR FINAL GRAD CALCULATION RUN???
     minihp = Hyper_parameters()
 
         # change parameters to special values for grad checking
         minihp.reg = ""                # no reg
-        minihp.stats = []              # no stats
+        # minihp.stats = []              # no stats    STATS ARE OK. DON'T HURT ANYTHING OR COST THAT MUCH IN PERF FOR THIS
         minihp.plot_now = false        # no plots
         minihp.opt = "none"            # no optimization
         minihp.learn_decay = [1.0, 1.0]  # no optimization
@@ -353,7 +349,7 @@ Note that it is possible to know if a kink was crossed in the evaluation of the 
 """
 
 
-function compute_numgrad!(numgradtheta, numgradbias, thetagradidx, biasgradidx, wgts, dat, hp; tweak = 1e-7)
+function compute_numgrad!(numgradtheta, numgradbias, thetagradidx, biasgradidx, wgts, dat, hp; tweak = 1e-7, quiet=true)
 
     # @bp
 
@@ -392,9 +388,8 @@ function compute_numgrad!(numgradtheta, numgradbias, thetagradidx, biasgradidx, 
 
             numgradbias[lr][idx] = (loss1 - loss2) / (2.0 * tweak)  
 
-            # if idx == 1
-                @printf("loss1: %f loss2: %f grad: %f kink: %d\n", loss1, loss2, numgradbias[lr][idx], kinkcnt)
-            # end
+            !quiet &&  @printf("loss1: %f loss2: %f grad: %f kink: %d\n", loss1, loss2, numgradbias[lr][idx], kinkcnt)
+
         end
 
         println("kink errors for bias = ", kinkcnt)
@@ -402,8 +397,6 @@ function compute_numgrad!(numgradtheta, numgradbias, thetagradidx, biasgradidx, 
         @printf("  ****** Calculating numeric theta gradients layer: %d\n", lr)
 
         for (idx,thi) in enumerate(thetagradidx[lr])  # eachindex(wgts.theta[lr])  # tweak each theta, compute partial diff for each theta
-
-            # println("theta: ","layer: ", lr, " index: ", idx)
 
             wgts.theta[lr][thi] += tweak
 
@@ -417,8 +410,8 @@ function compute_numgrad!(numgradtheta, numgradbias, thetagradidx, biasgradidx, 
             kinktst2 = findkink(olddat, dat, output_layer)
             loss2 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n)
 
-            wgts.theta[lr][thi] += tweak   
-            comploss = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n) 
+            wgts.theta[lr][thi] += tweak   # set it back to starting value
+            comploss = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n) # diagnostic
 
             if kinktst1 || kinktst2 
                 kinkcnt += 1
@@ -426,17 +419,9 @@ function compute_numgrad!(numgradtheta, numgradbias, thetagradidx, biasgradidx, 
                 # println("Compare tweaked weights for theta kink +: ",wgts.theta[lr][thi]+tweak, " -: ",wgts.theta[lr][thi]-tweak)
             end
 
-            # if idx % 20 == 0
-                @printf("loss1: %f loss2: %f grad: %f kink: %d\n", loss1, loss2, numgradtheta[lr][idx], kinkcnt)
-
-            # end
-
             numgradtheta[lr][idx] = (loss1 - loss2) / (2.0 * tweak)
 
-            # if idx % 20 == 0
-                @printf("loss1: %f loss2: %f grad: %f kink: %d\n", loss1, loss2, numgradtheta[lr][idx], kinkcnt)
-
-            # end
+            !quiet &&    @printf("loss1: %f loss2: %f grad: %f kink: %d\n", loss1, loss2, numgradtheta[lr][idx], kinkcnt)
 
             numpreds = dat.a[wgts.output_layer]
         end
@@ -463,21 +448,16 @@ function compute_modelgrad!(dat, nnw, hp)
 
     # @bp
 
-    feedfwd_predict!(dat, nnw, hp)  # for all layers
-
-    # println("first pass of modelgrad calc")
-    # println(dat.a)
-
-    basecost = cost_function(dat.targets, dat.a[nnw.output_layer], dat.n)
-
-    # println("cost of first prediction in modelgrad")
-    # println(basecost)
+    cost, accuracy = quick_stats(dat, nnw, hp)
+    println("accuracy: ", accuracy)
+    println("cost: ", cost)
 
     # @bp
-
+    hp.mb_size = dat.n
+    feedfwd_predict!(dat, nnw, hp)
     backprop!(nnw, dat, hp)  # for all layers   
 
-    return basecost, dat.a[nnw.output_layer]
+    return cost, dat.a[nnw.output_layer]
 end
 
 
@@ -506,7 +486,7 @@ function bias_rand!(bias, val)
 end
 
 
-# method works on the number of elements you want sampled indices for 
+# method works on the number of elements you want to sample from
 function sample_idx(xpct, lx::Int)
     xcnt = ceil(Int, xpct * lx) + 2
     sort!(randperm(lx)[1:xcnt])

@@ -13,10 +13,9 @@
 # LSTM networks
 
 #TODO
+#   should we move setup_stats to pretrain?
 #   check what happens to test cost with regularization:  it gets very big
-#   implement a gradient checking function: fix the full model version 
 #   see if I can eliminate some of the function trickiness with clever use of optional args (or named args with defaults)
-#   can't plot both learning and cost
 #   should we have a normalize data option built-in (as we do)? or make the user do it when
          # preparing their own data?
 #   fix approach to weights inititalization:  set sizes with zeros, then update to initial values
@@ -25,15 +24,12 @@
 #   create a cost prediction method that embeds the feedfwd predictions
 #   figure out memory requirements of pre-allocation.  is there someway to reduce and still get speed benefit?
 #   in testgrad, test for categorical data or provide other way to do onehot encoding if needed
-#   compare testing gradients with real model size vs tiny model
-#   utilities for plotdef will break on old plotdefs because they are now called statsdat
+#   utilities for plotdef will break on old plotdefs because they are now called stats
 #   look for places to try performance benefit of @views when doing dot operations on arrays
-#   factor out preparing all of the datafiles before running training
 #   make sure we have a valid default for lambda
-#   make sure we have default for initializer: xavier
 #   evolve parameters without reloading data, etc.
 #   try to speed up saving the plot stats
-#   use goodness function to hold either accuracy or r_squared
+#   use goodness function to hold either accuracy or r_squared?
 #   implement incremental load and train for massive datasets?
 #   fix dropout: should delta_theta be averaged using number of included units?
         #   are we scaling units during training?

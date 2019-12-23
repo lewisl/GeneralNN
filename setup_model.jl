@@ -229,8 +229,8 @@ function build_hyper_parameters(argsdict)
     hp = Hyper_parameters()  # hyper_parameters constructor:  sets defaults
 
     for (k,v) in argsdict
-        if k == "hidden"  # special case because of TOML limitation
-            setproperty!(hp, Symbol(k), map(x -> (x[1], parse(Int, x[2])), v)) # change [["relu", "80"]] to [("relu", 80)]
+        if k == "hidden"  # special case because of TOML limitation:  change [["relu", "80"]] to [("relu", 80)]
+            setproperty!(hp, Symbol(k), map( x -> (x[1], parse(Int, x[2])), v) ) 
         else
             setproperty!(hp, Symbol(k), v)
         end
