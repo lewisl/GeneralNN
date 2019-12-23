@@ -13,7 +13,6 @@ function prep_check(hp, train_x, train_y, iters; samplepct=.005, quiet=false, tw
     # prepare the model (sub-steps that are part of train() )
     dotest = false
     train, mb, nnw, bn = pretrain(train_x, train_y, hp)
-    # stats = setup_stats(hp, dotest)  
 
     # advance the training loop with model hyper-parameters
         @printf("  ****** Advancing model %d iterations\n", iters)
@@ -194,18 +193,10 @@ function run_check_grads(hp, wgts, dat; samplepct=.015, tweak=1e-6, quiet=false,
     numgradtheta = [zeros(length(x)) for x in thetagradidx]  # deepcopy(wgts.theta)      # deepcopy(miniwgts.theta)
     numgradbias  = [zeros(length(x)) for x in biasgradidx]  # deepcopy(wgts.bias)       # deepcopy(miniwgts.bias)
 
-    # capture starting data structures
-    # startwgts = deepcopy(wgts)
-    # startdat = deepcopy(dat)  # do we need this?
-
     # compute numgrad
     kinkrejecttheta, kinkrejectbias, numcost,  numpreds = compute_numgrad!(numgradtheta, numgradbias, 
                         thetagradidx, biasgradidx, wgts, dat, hp; tweak=tweak)
     numgrad = (numgradtheta,numgradbias)
-
-    #recover starting data structures
-    # wgts = deepcopy(startwgts)
-    # dat = deepcopy(startdat)
 
     # compute_modelgrad!()
     println("  ****** Calculating feedfwd/backprop gradients")
@@ -224,10 +215,6 @@ function run_check_grads(hp, wgts, dat; samplepct=.015, tweak=1e-6, quiet=false,
     # filter modgrads to match sample of numgrads
     modgrad = [   [modgrad[1][i][thetagradidx[i]] for i in 2:wgts.output_layer],     
                   [modgrad[2][i][biasgradidx[i]] for i in 2:wgts.output_layer]     ]
-
-    # filter gradients where kink encountered
-    # println(kinkrejecttheta)
-    # println(kinkrejectbias)
 
     deltacols = hcat(flat(modgrad), flat(numgrad))
     relative_error = map(x -> abs(x[1]-x[2]) / (maximum(abs.(x)) + 1e-15), eachrow(deltacols))

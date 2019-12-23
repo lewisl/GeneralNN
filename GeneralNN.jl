@@ -13,7 +13,8 @@
 # LSTM networks
 
 #TODO
-#   should we move setup_stats to pretrain?
+#   should we move setup_stats to pretrain?  probably
+#   
 #   check what happens to test cost with regularization:  it gets very big
 #   see if I can eliminate some of the function trickiness with clever use of optional args (or named args with defaults)
 #   should we have a normalize data option built-in (as we do)? or make the user do it when
