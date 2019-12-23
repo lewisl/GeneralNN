@@ -1,5 +1,7 @@
 #DONE
 
+   
+
 
 #BRANCH TODO: layer-based API 
 #   change to layer based api, with simplified api as alternate front-end
@@ -11,11 +13,24 @@
 # LSTM networks
 
 #TODO
+#   should we move setup_stats to pretrain?  probably
+#   
+#   check what happens to test cost with regularization:  it gets very big
+#   see if I can eliminate some of the function trickiness with clever use of optional args (or named args with defaults)
+#   should we have a normalize data option built-in (as we do)? or make the user do it when
+         # preparing their own data?
+#   fix approach to weights inititalization:  set sizes with zeros, then update to initial values
+#   export onehot--decide how to transpose data
+#   create a cost function method without L2 regularization
+#   create a cost prediction method that embeds the feedfwd predictions
+#   figure out memory requirements of pre-allocation.  is there someway to reduce and still get speed benefit?
+#   in testgrad, test for categorical data or provide other way to do onehot encoding if needed
+#   utilities for plotdef will break on old plotdefs because they are now called stats
+#   look for places to try performance benefit of @views when doing dot operations on arrays
 #   make sure we have a valid default for lambda
-#   make sure we have default for initializer: xavier
 #   evolve parameters without reloading data, etc.
 #   try to speed up saving the plot stats
-#   use goodness function to hold either accuracy or r_squared
+#   use goodness function to hold either accuracy or r_squared?
 #   implement incremental load and train for massive datasets?
 #   fix dropout: should delta_theta be averaged using number of included units?
         #   are we scaling units during training?
@@ -38,7 +53,10 @@
         #        to get rid of all of the temporaries in there. 
         # To use an infix operator, you can use \cdot, as in view(A,:,j)⋅r.
 #   figure out memory use between train set and minibatch set
-#   implement a gradient checking function with option to run it
+#   someday, maybe, allow stats tracking for both batch and epoch--need up to 4 arrays
+
+#Document
+#   say which properties in hyper_parameters are "calculated" and which are directly from user input
 
 
 
@@ -66,7 +84,7 @@ To use, include() the file.  Then enter using .GeneralNN to use the module.
 
 These data structures are used to hold parameters and data:
 
-- NN_weights holds theta, bias, delta_w, delta_b, theta_dims, output_layer, k
+- Wgts holds theta, bias, delta_w, delta_b, theta_dims, output_layer, k
 - Model_data holds inputs, targets, a, z, z_norm, epsilon, gradient_function
 - Batch_norm_params holds gam (gamma), bet (beta) for batch normalization and intermediate
     data used for backprop with batch normalization: delta_gam, delta_bet, 
@@ -84,14 +102,17 @@ module GeneralNN
 # data structures for neural network
 export 
     Batch_view,
-    NN_weights, 
+    Wgts, 
     Model_data, 
     Batch_norm_params, 
     Hyper_parameters
 
 # functions you can use
 export 
+    train,
     setup_training, 
+    pretrain,
+    prepredict,
     test_score, 
     save_params, 
     load_params, 
@@ -104,7 +125,8 @@ export
     wrong_preds,
     right_preds,
     plot_output,
-    dodigit
+    dodigit,
+    check_grads
 
 using MAT
 using JLD2
@@ -117,10 +139,12 @@ using LinearAlgebra
 using SparseArrays
 # for TOML support for arguments file
 using TOML  # we might need private TOML for Julia < 1.3
+# using Debugger
 
-using Plots
-# plotlyjs()  # PlotlyJS backend to local electron window
-pyplot()
+# using Plots   # Plots broken by Julia 1.3
+# gr()
+
+using PyPlot
 
 import Measures: mm # for some plot dimensioning
 
@@ -133,6 +157,7 @@ include("setup_data.jl")
 include("setup_training.jl")
 include("utilities.jl")
 include("training.jl")
+include("testgrad.jl")
 
 
 

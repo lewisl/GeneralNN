@@ -1,22 +1,24 @@
 
 using StatsBase
 
-function training_loop!(hp, datalist, mb, nnw, bn, plotdef)
-!hp.quiet && println("training_loop(hp, datalist, mb, nnw, bn, plotdef)")
-    if size(datalist, 1) == 1
-        train = datalist[1]
-        dotest = false
-    elseif size(datalist,1) == 2
-        train = datalist[1]
-        test = datalist[2]
-        dotest = true
-    else
-        error("Datalist contains wrong number of elements.")
-    end
+# method with no input test data
+function training_loop!(hp, train, mb, nnw, bn, stats)
+    _training_loop!(hp, train, Model_data(), mb, nnw, bn, stats)
+        # Model_data() passes an empty test data object
+end
+
+# method with input of train and test data: test data used for training stats
+function training_loop!(hp, train, test, mb, nnw, bn, stats)
+    _training_loop!(hp, train, test, mb, nnw, bn, stats)
+end
+
+function _training_loop!(hp, train, test, mb, nnw, bn, stats)
+!hp.quiet && println("training_loop(hp, train, test mb, nnw, bn, stats; dotest=false)")
+    
+    dotest = isempty(test.inputs) ? false : true
 
     training_time = @elapsed begin # start the cpu clock and begin block for training process
         t = 0  # counter:  number of times parameters will have been updated: minibatches * epochs
-        mbszin = hp.mb_size_in
 
         for ep_i = 1:hp.epochs  # loop for "epochs" with counter epoch i as ep_i
             !hp.quiet && println("Start epoch $ep_i")
@@ -24,8 +26,9 @@ function training_loop!(hp, datalist, mb, nnw, bn, plotdef)
 
             if hp.dobatch  # minibatch training
 
-                for colrng in MBrng(train.n, mbszin)  # set setup.jl for definition of iterator
-                    hp.mb_size = size(colrng, 1)   
+                for colrng in MBrng(train.n, hp.mb_size_in)  # set setup.jl for definition of iterator
+                    hp.mb_size = mbsize(colrng)
+  
                     !hp.quiet && println("   Start minibatch for ", colrng)           
                     
                     update_batch_views!(mb, train, nnw, hp, colrng)  # select data columns for the minibatch   
@@ -34,24 +37,22 @@ function training_loop!(hp, datalist, mb, nnw, bn, plotdef)
                     train_one_step!(mb, nnw, bn, hp, t)
 
                     # stats for each minibatch--expensive!!!
-                    hp.plotperbatch && begin
-                        gather_stats!(plotdef, "train", t, train, nnw, bn, cost_function, hp)  
-                        dotest && gather_stats!(plotdef, "test", t, test, nnw, bn, cost_function, hp) 
+                    stats["period"] == "batch" && begin
+                        gather_stats!(stats, "train", t, train, nnw, cost_function, hp)  
+                        dotest && gather_stats!(stats, "test", t, test, nnw, cost_function, hp) 
                     end
 
                 end # mini-batch loop
 
             else
-
                 t += 1
                 train_one_step!(train, nnw, bn, hp, t)
-
             end
 
             # stats across all mini-batches of one epoch (e.g.--no stats per minibatch)
-            hp.plotperepoch && begin
-                gather_stats!(plotdef, "train", ep_i, train, nnw, bn, cost_function, hp)  
-                dotest && gather_stats!(plotdef, "test", ep_i, test, nnw, bn,cost_function, hp) 
+            stats["period"] == "epoch" && begin
+                gather_stats!(stats, "train", ep_i, train, nnw, cost_function, hp)  
+                dotest && gather_stats!(stats, "test", ep_i, test, nnw, cost_function, hp) 
             end
 
         end # epoch loop
@@ -63,14 +64,16 @@ end # function training_loop
 
 function train_one_step!(dat, nnw, bn, hp, t)
 
-    feedfwd!(dat, nnw, bn,  hp)  # for all layers
-    backprop!(nnw, bn, dat, hp)  # for all layers   
+    feedfwd!(dat, nnw, hp)  # for all layers
+    backprop!(nnw, dat, hp)  # for all layers   
     optimization_function!(nnw, hp, t)
     update_parameters!(nnw, hp, bn)
 
 end
 
 
+# little helper function
+mbsize(colrng) = float(size(colrng, 1))
 
 #########################################################
 #  functions inside the training loop
@@ -78,103 +81,110 @@ end
 
 
 """
-function feedfwd!(dat, nnw, bn, do_batch_norm; istrain)
+function feedfwd!(dat, nnw, do_batch_norm)
     modifies a, a_wb, z in place to reduce memory allocations
     send it all of the data or a mini-batch
 
     feed forward from inputs to output layer predictions
 """
-function feedfwd!(dat::Union{Batch_view,Batch_slice,Model_data}, nnw, bn,  hp; istrain=true)
-!hp.quiet && println("feedfwd!(dat::Union{Batch_view,Batch_slice,Model_data}, nnw, bn,  hp; istrain=true)")
+function feedfwd!(dat::Union{Batch_view,Model_data}, nnw, hp)  
+!hp.quiet && println("feedfwd!(dat::Union{Batch_view, Model_data}, nnw, hp)")
 
-    # dropout for input layer (if probability < 1.0)
-    if istrain && hp.dropout && (hp.droplim[1] < 1.0)
-        dropout!(dat, hp, 1)
-    end
+    # dropout for input layer (if probability < 1.0) or noop
+    dropout_fwd_function![1](dat,hp,1)  
 
     # hidden layers
     @fastmath for hl = 2:nnw.output_layer-1  
-        if hp.do_batch_norm 
-            affine!(dat.z[hl], dat.a[hl-1], nnw.theta[hl])
-            batch_norm_fwd!(hp, bn, dat, hl, istrain)
-        else
-            affine!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
-        end
-
-        unit_function!(dat.a[hl], dat.z[hl])
-
-        if istrain && hp.dropout && (hp.droplim[hl] < 1.0)
-            dropout!(dat,hp,hl)
-        end
+        affine_function!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl]) # if do_batch_norm, ignores bias arg
+        batch_norm_fwd_function!(dat, hl)  # do it or noop
+        unit_function![hl](dat.a[hl], dat.z[hl])
+        dropout_fwd_function![hl](dat,hp,hl)  # do it or noop
     end
 
     # output layer
     @inbounds affine!(dat.z[nnw.output_layer], dat.a[nnw.output_layer-1], 
                       nnw.theta[nnw.output_layer], nnw.bias[nnw.output_layer])
-
     classify_function!(dat.a[nnw.output_layer], dat.z[nnw.output_layer])  # a = activations = predictions
 
 end
 
 
+function feedfwd_predict!(dat::Union{Batch_view, Model_data}, nnw, hp)
+!hp.quiet && println("feedfwd_predict!(dat::Union{Batch_view, Model_data}, nnw, hp)")
+
+    # hidden layers
+    @fastmath for hl = 2:nnw.output_layer-1  
+        affine_function!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
+        batch_norm_fwd_predict_function!(dat, hl)
+        unit_function![hl](dat.a[hl], dat.z[hl])
+    end
+
+    # output layer
+    @inbounds affine!(dat.z[nnw.output_layer], dat.a[nnw.output_layer-1], 
+                      nnw.theta[nnw.output_layer], nnw.bias[nnw.output_layer])
+    classify_function!(dat.a[nnw.output_layer], dat.z[nnw.output_layer])  # a = activations = predictions
+end
+
+
+
 """
-function backprop!(nnw, dat, do_batch_norm)
-    Argument nnw.delta_w holds the computed gradients for weights, delta_b for bias
+function backprop!(nnw, dat, hp)
+    Argument nnw.delta_w holds the computed gradients for Wgts, delta_b for bias
     Modifies dat.epsilon, nnw.delta_w, nnw.delta_b in place--caller uses nnw.delta_w, nnw.delta_b
     Use for training iterations
     Send it all of the data or a mini-batch
     Intermediate storage of dat.a, dat.z, dat.epsilon, nnw.delta_w, nnw.delta_b reduces memory allocations
 """
-function backprop!(nnw, bn, dat, hp)
-!hp.quiet && println("backprop!(nnw, bn, dat, hp)")
+function backprop!(nnw, dat, hp)
+    !hp.quiet && println("backprop!(nnw, dat, hp)")
 
-    # for output layer if cross_entropy_cost or mean squared error???
+    # println("size epsilon of output: ", size(dat.epsilon[nnw.output_layer]))
+    # println("size predictions: ", size(dat.a[nnw.output_layer]))
+    # println("size targets: ", size(dat.targets))
+
+    # for output layer if cross_entropy_cost or mean squared error???    
     dat.epsilon[nnw.output_layer][:] = dat.a[nnw.output_layer] .- dat.targets  
-    !hp.quiet && println("What is epsilon of output layer? ", mean(dat.epsilon[nnw.output_layer]))
-    @fastmath nnw.delta_w[nnw.output_layer][:] = dat.epsilon[nnw.output_layer] * dat.a[nnw.output_layer-1]' # 2nd term is effectively the grad for error   
-    @fastmath nnw.delta_b[nnw.output_layer][:] = sum(dat.epsilon[nnw.output_layer],dims=2)  
+        !hp.quiet && println("What is epsilon of output layer? ", mean(dat.epsilon[nnw.output_layer]))
+    backprop_weights!(nnw.delta_w[nnw.output_layer], nnw.delta_b[nnw.output_layer], dat.delta_z[nnw.output_layer], 
+        dat.epsilon[nnw.output_layer], dat.a[nnw.output_layer-1], hp.mb_size)      
 
     # loop over hidden layers
     @fastmath for hl = (nnw.output_layer - 1):-1:2  
-        gradient_function!(dat.grad[hl], dat.z[hl])
-        !hp.quiet && println("What is gradient $hl? ", mean(dat.grad[hl]))
-        @inbounds dat.epsilon[hl][:] = nnw.theta[hl+1]' * dat.epsilon[hl+1] .* dat.grad[hl] 
-        !hp.quiet && println("what is epsilon $hl? ", mean(dat.epsilon[hl]))
+        gradient_function![hl](dat.grad[hl], dat.z[hl])  
+            !hp.quiet && println("What is gradient $hl? ", mean(dat.grad[hl]))
+        mul!(dat.epsilon[hl], nnw.theta[hl+1]', dat.epsilon[hl+1])
+        @inbounds dat.epsilon[hl][:] = dat.epsilon[hl] .* dat.grad[hl] 
+            !hp.quiet && println("what is epsilon $hl? ", mean(dat.epsilon[hl]))
 
-        if hp.dropout && (hp.droplim[hl] < 1.0)
-            @inbounds dat.epsilon[hl][:] = dat.epsilon[hl] .* dat.dropout_mask_units[hl]
-        end
+        dropout_back_function![hl](dat, hl)  # noop if not applicable
+        batch_norm_back_function!(dat, hl)   # noop if not applicable
 
-        if hp.do_batch_norm
-            batch_norm_back!(nnw, dat, bn, hl, hp)
-            @inbounds nnw.delta_w[hl][:] = dat.delta_z[hl] * dat.a[hl-1]'  
+        backprop_weights_function!(nnw.delta_w[hl], nnw.delta_b[hl], dat.delta_z[hl], 
+                                   dat.epsilon[hl], dat.a[hl-1], hp.mb_size)
 
-        else
-            @inbounds nnw.delta_w[hl][:] = dat.epsilon[hl] * dat.a[hl-1]'  
-            @inbounds nnw.delta_b[hl][:] = sum(dat.epsilon[hl],dims=2)  #  times a column of 1's = sum(row)
-        end
-
-        !hp.quiet && println("what is delta_w $hl? ", mean(nnw.delta_w[hl]))
-        !hp.quiet && println("what is delta_b $hl? ", mean(nnw.delta_w[hl]))
+        !hp.quiet && println("what is delta_w $hl? ", nnw.delta_w[hl])
+        !hp.quiet && println("what is delta_b $hl? ", nnw.delta_b[hl])
 
     end
 
 end
 
 
-function update_parameters!(nnw, hp, bn)
+function update_parameters!(nnw, hp, bn=Batch_norm_params())
 !hp.quiet && println("update_parameters!(nnw, hp, bn)")
-    # update weights, bias, and batch_norm parameters
+    # update Wgts, bias, and batch_norm parameters
     @fastmath for hl = 2:nnw.output_layer       
-        @inbounds nnw.theta[hl] .= nnw.theta[hl] .- (hp.alphaovermb .* nnw.delta_w[hl])
+        @inbounds nnw.theta[hl][:] = nnw.theta[hl] .- (hp.alpha .* nnw.delta_w[hl])
         
-        reg_function!(nnw, hp, hl)  # regularize function per setup.jl setup_functions!
+        reg_function![hl](nnw, hp, hl)  # regularize function per setup.jl setup_functions!
+
+        # @bp
 
         if hp.do_batch_norm  # update batch normalization parameters
-            @inbounds bn.gam[hl][:] .= bn.gam[hl][:] .- (hp.alphaovermb .* bn.delta_gam[hl])
-            @inbounds bn.bet[hl][:] .= bn.bet[hl][:] .- (hp.alphaovermb .* bn.delta_bet[hl])
+            @inbounds bn.gam[hl][:] .= bn.gam[hl][:] .- (hp.alpha .* bn.delta_gam[hl])
+            @inbounds bn.bet[hl][:] .= bn.bet[hl][:] .- (hp.alpha .* bn.delta_bet[hl])
         else  # update bias
-            @inbounds nnw.bias[hl] .= nnw.bias[hl] .- (hp.alphaovermb .* nnw.delta_b[hl])
+            @inbounds nnw.bias[hl][:] .= nnw.bias[hl] .- (hp.alpha .* nnw.delta_b[hl])
         end
 
     end  
@@ -213,77 +223,75 @@ function r_squared(targets, preds)
 end
 
 
-
 """
     Create views for the training data in minibatches
 """
-function update_batch_views!(mb::Batch_view, train::Model_data, nnw::NN_weights, 
+function update_batch_views!(mb::Batch_view, train::Model_data, nnw::Wgts, 
     hp::Hyper_parameters, colrng::UnitRange{Int64})
-!hp.quiet && println("update_batch_views!(mb::Batch_view, train::Model_data, nnw::NN_weights, 
+!hp.quiet && println("update_batch_views!(mb::Batch_view, train::Model_data, nnw::Wgts, 
     hp::Hyper_parameters, colrng::UnitRange{Int64})")
 
     # colrng refers to the set of training examples included in the minibatch
     n_layers = nnw.output_layer
-    mb_cols = 1:hp.mb_size  # only reason for this is that the last minibatch might be smaller
 
     # feedforward:   minibatch views update the underlying data
     # TODO put @inbounds back after testing
     for i = 1:n_layers
         mb.a[i] = view(train.a[i],:,colrng)   # sel is random order of example indices
         mb.z[i] = view(train.z[i],:,colrng) 
-        mb.epsilon[i] = view(train.epsilon[i], :, mb_cols) # NOTE: use mb_cols!
-        mb.grad[i] = view(train.grad[i], :, mb_cols) 
+        mb.epsilon[i] = view(train.epsilon[i], :, colrng) 
+        mb.grad[i] = view(train.grad[i], :, colrng)   
     end
     mb.targets = view(train.targets,:,colrng)  # only at the output layer
-
-    # training / backprop:  don't need this data and only use minibatch size
-    # TEST
     
     if hp.do_batch_norm
         for i = 1:n_layers
             # feedforward
             mb.z_norm[i] = view(train.z_norm[i],:, colrng) 
             # backprop
-            mb.delta_z_norm[i] = view(train.delta_z_norm[i], :, mb_cols) 
-            mb.delta_z[i] = view(train.delta_z[i], :, mb_cols) 
+            mb.delta_z_norm[i] = view(train.delta_z_norm[i], :, colrng)   
+            mb.delta_z[i] = view(train.delta_z[i], :, colrng)   
         end
     end
 
     if hp.dropout
         for i = 1:n_layers
             # training:  applied to feedforward, but only for training
-            mb.dropout_random[i] = view(train.dropout_random[i], :, mb_cols)
-            mb.dropout_mask_units[i] = view(train.dropout_mask_units[i], :, mb_cols)
+            mb.dropout_random[i] = view(train.dropout_random[i], :, colrng)  
+            mb.dropout_mask_units[i] = view(train.dropout_mask_units[i], :, colrng)  
         end
     end
 
 end
 
 
-function batch_norm_fwd!(hp, bn, dat, hl, istrain=true)
-!hp.quiet && println("batch_norm_fwd!(hp, bn, dat, hl, istrain=true)")
-    # in_k,mb = size(dat.z[hl])
-    if istrain
-        @inbounds bn.mu[hl][:] = mean(dat.z[hl], dims=2)          # use in backprop
-        @inbounds bn.stddev[hl][:] = std(dat.z[hl], dims=2)
-        @inbounds dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu[hl]) ./ (bn.stddev[hl] .+ hp.ltl_eps) # normalized: 'aka' xhat or zhat  @inbounds 
-        @inbounds dat.z[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y  @inbounds 
-        @inbounds bn.mu_run[hl][:] = (  bn.mu_run[hl][1] == 0.0 ? bn.mu[hl] :  # @inbounds 
-            0.9 .* bn.mu_run[hl] .+ 0.1 .* bn.mu[hl]  )
-        @inbounds bn.std_run[hl][:] = (  bn.std_run[hl][1] == 0.0 ? bn.stddev[hl] :  # @inbounds 
-            0.9 .* bn.std_run[hl] + 0.1 .* bn.stddev[hl]  )
-    else  # predictions with existing parameters
-        @inbounds dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu_run[hl]) ./ (bn.std_run[hl] .+ hp.ltl_eps) # normalized: 'aka' xhat or zhat  @inbounds 
-        @inbounds dat.z[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y  @inbounds 
-    end
+function batch_norm_fwd!(hp, bn, dat, hl)
+!hp.quiet && println("batch_norm_fwd!(hp, bn, dat, hl)")
+
+    @inbounds bn.mu[hl][:] = mean(dat.z[hl], dims=2)          # use in backprop
+    @inbounds bn.stddev[hl][:] = std(dat.z[hl], dims=2)
+    @inbounds dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu[hl]) ./ (bn.stddev[hl] .+ hp.ltl_eps) # normalized: 'aka' xhat or zhat  @inbounds 
+    @inbounds dat.z[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y  @inbounds 
+    @inbounds bn.mu_run[hl][:] = (  bn.mu_run[hl][1] == 0.0 ? bn.mu[hl] :  # @inbounds 
+        0.9 .* bn.mu_run[hl] .+ 0.1 .* bn.mu[hl]  )
+    @inbounds bn.std_run[hl][:] = (  bn.std_run[hl][1] == 0.0 ? bn.stddev[hl] :  # @inbounds 
+        0.9 .* bn.std_run[hl] + 0.1 .* bn.stddev[hl]  )
+end
+
+
+function batch_norm_fwd_predict!(hp, bn, dat, hl)
+!hp.quiet && println("batch_norm_fwd_predict!(hp, bn, dat, hl)")
+
+    @inbounds dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu_run[hl]) ./ (bn.std_run[hl] .+ hp.ltl_eps) # normalized: 'aka' xhat or zhat  @inbounds 
+    @inbounds dat.z[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y  @inbounds 
 end
 
 
 function batch_norm_back!(nnw, dat, bn, hl, hp)
 !hp.quiet && println("batch_norm_back!(nnw, dat, bn, hl, hp)")
     mb = hp.mb_size
-    @inbounds bn.delta_bet[hl][:] = sum(dat.epsilon[hl], dims=2)
-    @inbounds bn.delta_gam[hl][:] = sum(dat.epsilon[hl] .* dat.z_norm[hl], dims=2)
+    @inbounds bn.delta_bet[hl][:] = sum(dat.epsilon[hl], dims=2) ./ mb
+    @inbounds bn.delta_gam[hl][:] = sum(dat.epsilon[hl] .* dat.z_norm[hl], dims=2) ./ mb
 
     @inbounds dat.delta_z_norm[hl][:] = bn.gam[hl] .* dat.epsilon[hl]  
 
@@ -295,18 +303,18 @@ function batch_norm_back!(nnw, dat, bn, hl, hp)
         )
 end
 
-# this method includes bn argument
-function gather_stats!(plotdef, train_or_test, i, dat, nnw, bn, cost_function, hp)
+ 
+function gather_stats!(stats, series, i, dat, nnw, cost_function, hp)
 
-    if plotdef["plot_switch"][train_or_test]
-        feedfwd!(dat, nnw, bn, hp, istrain=false)
+    if stats["track"][series]
+        feedfwd_predict!(dat, nnw, hp)
 
-        if plotdef["plot_switch"]["cost"]
-            plotdef["cost_history"][i, plotdef[train_or_test]] = cost_function(dat.targets,
-                dat.a[nnw.output_layer], dat.n, nnw.theta, hp, nnw.output_layer)
+        if stats["track"]["cost"]
+            stats["cost"][i, stats["col_" * series]] = cost_function(dat.targets,
+                dat.a[nnw.output_layer], dat.n, nnw.theta, hp.lambda, hp.reg, nnw.output_layer)
         end
-        if plotdef["plot_switch"]["learning"]
-            plotdef["accuracy"][i, plotdef[train_or_test]] = (  hp.classify == "regression"
+        if stats["track"]["learning"]
+            stats["accuracy"][i, stats["col_" * series]] = (  hp.classify == "regression"
                     ? r_squared(dat.targets, dat.a[nnw.output_layer])
                     : accuracy(dat.targets, dat.a[nnw.output_layer])  )
         end
@@ -315,43 +323,16 @@ function gather_stats!(plotdef, train_or_test, i, dat, nnw, bn, cost_function, h
 end
 
 
-##############################################################################
-#  this is a slice approach for performance comparison
-##############################################################################
+function quick_stats(dat, nnw, hp, cost_function=cost_function)
 
-# # This method dispatches on minibatches that are slices
-# function update_batch_views!(mb::Batch_slice, train::Model_data, nnw::NN_weights, 
-#     hp::Hyper_parameters, colrng::UnitRange{Int64})
-# !hp.quiet && println("update_batch_views!(mb::Batch_slice, train::Model_data, nnw::NN_weights, 
-#     hp::Hyper_parameters, colrng::UnitRange{Int64})")
+    feedfwd_predict!(dat, nnw, hp)
 
-#     # colrng refers to the set of training examples included in the minibatch
-#     n_layers = nnw.output_layer
-#     mb_cols = 1:hp.mb_size  # only reason for this is that the last minibatch might be smaller
+    cost = cost_function(dat.targets,
+            dat.a[nnw.output_layer], dat.n, nnw.theta, hp.lambda, hp.reg, nnw.output_layer)
 
-#     # feedforward:   minibatch slices update the underlying data
-#     @inbounds for i = 1:n_layers
-#         mb.a[i][:] = train.a[i][:,colrng]
-#         mb.targets[:] = train.targets[:,colrng]  
-#         mb.z[i][:] = train.z[i][:,colrng]
+    correct = (  hp.classify == "regression"
+                ? r_squared(dat.targets, dat.a[nnw.output_layer])
+                : accuracy(dat.targets, dat.a[nnw.output_layer])  )
 
-#         # training / backprop:  don't need this data and only use minibatch size
-#         mb.epsilon[i][:] = train.epsilon[i][:, mb_cols]
-#         mb.grad[i][:] = train.grad[i][:, mb_cols]
-#         mb.delta_z[i][:] = train.delta_z[i][:, mb_cols]
-
-#         if hp.do_batch_norm
-#             # feedforward
-#             mb.z_norm[i][:] = train.z_norm[i][:, colrng]
-#             # backprop
-#             mb.delta_z_norm[i][:] = train.delta_z_norm[i][:, mb_cols]
-#         end
-
-#         if hp.dropout
-#             # training:  applied to feedforward, but only for training
-#             mb.dropout_random[i][:] = train.dropout_random[i][:, mb_cols]
-#             mb.dropout_mask_units[i][:] = train.dropout_mask_units[i][:, mb_cols]
-#         end
-#     end
-# end
-
+    return cost, correct
+end

@@ -6,35 +6,52 @@
 #  cost functions
 ###############################################################################
 
-function cross_entropy_cost(targets, predictions, n, theta, hp, output_layer)
+function cross_entropy_cost(targets, predictions, n, theta=[], lambda=1.0, reg="", output_layer=3)
     # n is count of all samples in data set--use with regularization term
     # mb_size is count of all samples used in training batch--use with cost
     # these may be equal
     cost = (-1.0 / n) * (dot(targets,log.(predictions .+ 1e-50)) +
         dot((1.0 .- targets), log.(1.0 .- predictions .+ 1e-50)))
+        
+    @fastmath if reg == "L2"  # set reg="" if not using regularization
+        regterm = lambda/(2.0 * n) .* sum([dot(th, th) for th in theta[2:output_layer]])
+        cost = cost + regterm
+    end
+    return cost
+end
 
-    @fastmath if hp.reg == "L2"  # set reg="" if not using regularization
-        # regterm = hp.lambda/(2.0 * n) .* sum([sum(th .* th) for th in theta[2:output_layer]])
-        regterm = hp.lambda/(2.0 * n) .* sum([dot(th, th) for th in theta[2:output_layer]])
+function softmax_cost(targets, predictions, n, theta=[], lambda=1.0, reg="", output_layer=3)
+    # this is the negative log likelihood cost for a multi-category output layer
+    cost = (-1.0 / n) * dot(targets,log.(max.(predictions, 1e-50))) 
+        
+    @fastmath if reg == "L2"  # set reg="" if not using regularization
+        regterm = lambda/(2.0 * n) .* sum([dot(th, th) for th in theta[2:output_layer]])
         cost = cost + regterm
     end
     return cost
 end
 
 
-function mse_cost(targets, predictions, n, theta, hp, output_layer)
+function mse_cost(targets, predictions, n, theta=[], lambda=1.0, reg="", output_layer=3)
     @fastmath cost = (1.0 / (2.0 * n)) .* sum((targets .- predictions) .^ 2.0)
-    @fastmath if hp.reg == "L2"  # set reg="" if not using regularization
-        regterm = hp.lambda/(2.0 * n) .* sum([dot(th, th) for th in theta[2:output_layer]])
+    @fastmath if reg == "L2"  # set reg="" if not using regularization
+        regterm = lambda/(2.0 * n) .* sum([dot(th, th) for th in theta[2:output_layer]])
         cost = cost + regterm
     end
     return cost
 end
 
+# testing behavior of cross_entropy_cost
+function cost_target_one(targets, predictions, n, theta=[], lambda=1.0, reg="", output_layer=3)
+    cost = (-1.0 / n) * dot(targets,log.(predictions .+ 1e-50)) 
+end
 
+function cost_target_zero(targets, predictions, n, theta=[], lambda=1.0, reg="", output_layer=3)
+   cost = (-1.0 / n) * dot((1.0 .- targets), log.(1.0 .- predictions .+ 1e-50))
+end
 
 ###########################################################################
-#  layer functions:  activation 
+#  layer functions:  activation for feed forward
 ###########################################################################
 
 
@@ -43,7 +60,7 @@ end
 #     @inbounds z[:] = theta * a .+ bias
 # end
 
-function affine!(z, a, theta)  # no bias
+function affine_nobias!(z, a, theta, bias)  # just ignore the bias term
     mul!(z, theta, a)  # crazy fast; no allocations
 end
 
@@ -58,22 +75,45 @@ function affine!(z, a, theta, bias)
 end
 
 
-function sigmoid!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
+function sigmoid!(a::AbstractArray{Float64}, z::AbstractArray{Float64})
     @fastmath a[:] = 1.0 ./ (1.0 .+ exp.(.-z))  
 end
 
-function tanh_act!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
+
+function tanh_act!(a::AbstractArray{Float64}, z::AbstractArray{Float64})
     @fastmath a[:] = tanh.(z)
 end
 
-function l_relu!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2}) # leaky relu
+
+function l_relu!(a::AbstractArray{Float64}, z::AbstractArray{Float64}) # leaky relu
     @fastmath a[:] = map(j -> j >= 0.0 ? j : l_relu_neg * j, z)
 end
 
 
 function relu!(a::AbstractArray{Float64}, z::AbstractArray{Float64})
-    a[:] = max.(z, 0.0)
+    @fastmath a[:] = max.(z, 0.0)
 end
+
+
+###########################################################################
+#  layer functions:  back propagation chain rule
+###########################################################################
+
+    # Choice of function determined in setup_functions! in setup_training.jl
+
+    # uses delta_z from the backnorm calculations
+    function backprop_weights_nobias!(delta_w, delta_b, delta_z, epsilon, a_prev, n)
+        mul!(delta_w, delta_z, a_prev')
+        @fastmath delta_w[:] = delta_w ./ n
+    end
+
+    # ignores delta_z terms because no batchnorm 
+    function backprop_weights!(delta_w, delta_b, delta_z, epsilon, a_prev, n)
+        mul!(delta_w, epsilon, a_prev')
+        @fastmath delta_w[:] = delta_w .* (1.0 / n)
+        @fastmath delta_b[:] = sum(epsilon, dims=2) ./ n
+    end
+
 
 
 ###########################################################################
@@ -88,27 +128,29 @@ function affine_gradient(data, layer)  # no bias
 end
 
 
-function sigmoid_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
-    sigmoid!(z, grad)
+function sigmoid_gradient!(grad::AbstractArray{Float64}, z::AbstractArray{Float64})
+    sigmoid!(grad, z)
     @fastmath grad[:] = grad .* (1.0 .- grad)
 end
 
 
-function tanh_act_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
+function tanh_act_gradient!(grad::AbstractArray{Float64}, z::AbstractArray{Float64})
     @fastmath grad[:] = 1.0 .- tanh.(z).^2
 end
 
 
-function l_relu_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
+function l_relu_gradient!(grad::AbstractArray{Float64}, z::AbstractArray{Float64})
     grad[:] = map(j -> j > 0.0 ? 1.0 : l_relu_neg, z);
 end
 
 
-function relu_gradient!(grad::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
-    fill!(grad, 0.0)
+function relu_gradient!(grad::AbstractArray{Float64}, z::AbstractArray{Float64})
+    # fill!(grad, 0.0)
     @simd for i = eachindex(z)
         if z[i] > 0.0
             grad[i] = 1.0
+        else
+            grad[i] = 0.0
         end
     end
 end
@@ -120,7 +162,7 @@ end
 
 function softmax!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
     expf = similar(a)
-    @fastmath expf .= exp.(z .- maximum(z,dims=1))
+    @fastmath expf .= exp.(z .- maximum(z))  # inside maximum: ,dims=1  maximum(z)
     @fastmath a .= expf ./ sum(expf, dims=1)
 end
 
@@ -159,11 +201,16 @@ end
 ##########################################################################
 
 
-function dropout!(dat,hp,hl)  # applied per layer
+function dropout_fwd!(dat,hp,hl)  # applied per layer
     @inbounds dat.dropout_random[hl][:] = rand(Float64, size(dat.dropout_random[hl]))
     @inbounds dat.dropout_mask_units[hl][:] = dat.dropout_random[hl] .< hp.droplim[hl]
     # choose activations to remain and scale
     @inbounds dat.a[hl][:] = dat.a[hl] .* (dat.dropout_mask_units[hl] ./ hp.droplim[hl])
+end
+
+
+function dropout_back!(dat, hl)
+    @inbounds dat.epsilon[hl][:] = dat.epsilon[hl] .* dat.dropout_mask_units[hl]
 end
 
 
@@ -175,7 +222,7 @@ function step_learn_decay!(hp, ep_i)
         return
     elseif (rem(ep_i,stepsize) == 0.0)
         hp.alpha *= decay_rate
-        hp.alphaovermb *= decay_rate
+        # hp.alphaovern *= decay_rate
         println("     **** at epoch $ep_i stepping down learning rate to $(hp.alpha)")
     else
         return
@@ -228,9 +275,6 @@ function adam!(nnw, hp, t)
 end
 
 
-
-
-
 ##########################################################################
 # Regularization
 ##########################################################################
@@ -249,14 +293,14 @@ function maxnorm_reg!(nnw, hp, hl)    # (theta, maxnorm_lim)
 end
 
 function l2_reg!(nnw, hp, hl)
-    @inbounds nnw.theta[hl] .= nnw.theta[hl] .+ (hp.alphaovermb .* (hp.lambda .* nnw.theta[hl]))
+    @inbounds nnw.theta[hl] .= nnw.theta[hl] .+ (hp.lambda / hp.mb_size .* nnw.theta[hl])
 end
 
 function l1_reg!(nnw, hp, hl)
-    @inbounds nnw.theta[hl] .= nnw.theta[hl] .+ (hp.alphaovermb .* (hp.lambda .* sign.(nnw.theta[hl])))
+    @inbounds nnw.theta[hl] .= nnw.theta[hl] .+ (hp.lambda / hp.mb_size .* sign.(nnw.theta[hl]))
 end
 
 
-############## noop stubb
+############## noop stub
 function noop(args...)
 end

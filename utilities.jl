@@ -1,4 +1,4 @@
-using Plots
+using PyPlot
 using JLD2
 using Printf
 using LinearAlgebra
@@ -50,7 +50,63 @@ function extract_data(matfname::String)
         test_targets = zeros(0,0)
     end
 
+    # fix the funny thing that MAT file extraction does to the type of the arrays
+    inputs = convert(Array{Float64,2}, inputs)
+    targets = convert(Array{Float64,2}, targets)
+    test_inputs = convert(Array{Float64,2}, test_inputs)
+    test_targets = convert(Array{Float64,2}, test_targets)
+
     return inputs, targets, test_inputs, test_targets
+end
+
+
+# TODO do we need to compare the test and train features, labels
+function validate_datafiles(dat_x, dat_y)
+   # if size(datalist,1) == 4
+   #      train_x = datalist[1]
+   #      train_y = datalist[2]
+   #      test_x = datalist[3]
+   #      test_y = datalist[4]
+   #      dotest = size(test_x, 1) > 0  # there is testing data -> true, else false
+   #  elseif size(datalist, 1) == 2
+   #      train_x = datalist[1]
+   #      train_y = datalist[2]
+   #      dotest = false
+   #  else
+   #      error("Datalist input contained wrong number of input arrays")
+   #  end
+    
+    # training data
+    (dat_m, dat_n) = size(dat_x)
+    (target_m, target_n) = size(dat_y)
+    if dat_m >= dat_n
+        @warn("No. of features is greater than no. of samples. Maybe the training array must be tranposed.")
+    end
+    if target_m >= target_n
+        error("No. of output labels is greater than no. of samples. Probably the label array must be transposed.")
+    end
+    if target_n != dat_n
+        error("No. of training inputs does not match no. of training label outputs.")
+    end
+    
+    # # test or validation data
+    # if dotest
+    #     (test_m, test_n) = size(test_x)
+    #     (testy_m, testy_n) = size(test_y)
+    #     if test_m >= test_n
+    #         error("No. of features is greater than no. of samples. Probably the test array must be tranposed.")
+    #     end
+    #     if testy_m >= testy_n
+    #         error("No. of test output labels is greater than no. of samples. Probably the test label array must be transposed.")
+    #     end
+    #     if testy_n != test_n
+    #         error("No. of test inputs does not match no. of test label outputs.")
+    #     end
+        
+    #     if train_m != test_m
+    #         error("No. of training features does not match test features.")
+    #     end   
+    # end
 end
 
 
@@ -77,7 +133,9 @@ function shuffle_data!(x,y;returnidx = false)
     randidx = Random.randperm(size(x,2))
     x[:] = x[:,randidx]
     y[:] = y[:,randidx]
-    returnidx && return randidx # return the permuted indices if true
+    if returnidx 
+        return randidx # return the permuted indices if true
+    end
 end
 
 
@@ -144,29 +202,53 @@ function load_params(jld_fname)
 end
 
 
-function save_plotdef(plotdef; fname="")
+function save_stats(stats; fname="")
     if fname == ""  # build a filename
         fname = repr(Dates.now())
-        fname = "plotdef-" * replace(fname, r"[.:]" => "-") * ".jld2"
+        fname = "stats-" * replace(fname, r"[.:]" => "-") * ".jld2"
+        # println(fname)
     end
     jldopen(fname, "w") do f
-        f["plotdef"] = plotdef
+        f["stats"] = stats
     end
 end
 
 
-function load_plotdef(fname::String)
+function load_stats(fname::String)
     f = jldopen(fname, "r")
-    plotdef = f["plotdef"]
+    stats = f["stats"]
     close(f)
-    return plotdef
+    return stats
 end
 
 
-function printby2(nby2)  # not used currently
+function printby2(nby2)  
     for i = 1:size(nby2,1)
-        println(nby2[i,1], "    ", nby2[i,2])
+        @printf("  %12.9f    %12.9f\n", nby2[i,1], nby2[i,2])
     end
+end
+
+
+function count_weights(wgts; skip1=true)
+    cnt_theta = 0
+    cnt_bias = 0
+    skip = skip1
+    for th in wgts.theta
+        if skip
+            skip=false
+            continue
+        end
+        cnt_theta += product(size(th))
+    end
+    skip = skip1
+    for bi in wgts.bias
+        if skip
+            skip=false
+            continue
+        end
+        cnt_bias += size(bi,1)
+    end
+    return cnt_theta, cnt_bias
 end
 
 
@@ -184,16 +266,29 @@ end
 Pass a dim1 x dim2 by 1 column vector holding the image data to display it.
 Also pass the dimensions as 2 element vector (default is [28,28]).
 """
-function display_mnist_digit(digit_data, digit_dims=[28,28])
-    # plotlyjs(size=(400,400))
-    pyplot()
-    clibrary(:misc)  # collection of color palettes
-    img = reshape(digit_data, digit_dims...)'
-    pldigit = plot(img, seriestype=:heatmap, color=:grays,  
-        showaxis=false, legend=false, yflip=true, size=(400,400)) # right_margin=6mm, bottom_margin=6mm
-    display(pldigit)
+# function display_mnist_digit(digit_data, digit_dims=[28,28])
+#     clibrary(:misc)  # collection of color palettes
+#     img = reshape(digit_data, digit_dims...)'
+#     pldigit = plot(img, seriestype=:heatmap, color=:grays,  
+#         showaxis=false, legend=false, yflip=true, size=(500,500)) # right_margin=6mm, bottom_margin=6mm
+#     display(pldigit)
+#     println("Press enter to close image window..."); readline()
+#     closeall()
+# end
+
+function display_mnist_digit(digit_data, dims=[])
+    if length(dims) == 0
+        xside = yside = convert(Int,(sqrt(length(digit_data))))
+    elseif length(dims) == 1
+        xside = yside = dims[1]
+    elseif length(dims) >= 2
+        xside = dims[1]
+        yside = dims[2]
+    end
+    imshow(reshape(digit_data,xside,yside), cmap=plt.cm.gray, interpolation="nearest")
+    axis("off")
     println("Press enter to close image window..."); readline()
-    closeall()
+    close("all")        
 end
 
 
@@ -201,45 +296,45 @@ end
     Save, print and plot training statistics after all epochs
 
 """
-function output_stats(datalist, nnw, bn, hp, training_time, plotdef)
+function output_stats(train, test, nnw, hp, training_time, stats)
+    _output_stats(train, test, nnw, hp, training_time, stats)
+end
 
-    if size(datalist, 1) == 1
-        train = datalist[1]
-        dotest = false
-    elseif size(datalist,1) == 2
-        train = datalist[1]
-        test = datalist[2]
-        dotest = true
-    else
-        error("Datalist contains wrong number of elements.")
-    end
+# TODO maybe we don't need a valid Model_data object
+function output_stats(train, nnw, hp, training_time, stats)
+    _output_stats(train, Model_data(), nnw, hp, training_time, stats)
+        # Model_data passes an empty test object
+end
 
+function _output_stats(train, test, nnw, hp, training_time, stats)
+
+    dotest = isempty(test.inputs) ? false : true
 
     # file for simple training stats
     fname = repr(Dates.now())
     fname = "nnstats-" * replace(fname, r"[.:]" => "-") * ".txt"
-    println(fname)
+    # println(fname)
 
     # print to file and console
-    open(fname, "w") do stats
-        println(stats, "Training time: ",training_time, " seconds")  # cpu time since tic() =>  toq() returns secs without printing
+    open(fname, "w") do outfile
+        println(outfile, "Training time: ",training_time, " seconds")  # cpu time since tic() =>  toq() returns secs without printing
 
         # output for entire training set
-        feedfwd!(train, nnw, bn, hp, istrain=false)  
-        println(stats, "Fraction correct labels predicted training: ",
+        feedfwd_predict!(train, nnw, hp)  
+        println(outfile, "Fraction correct labels predicted training: ",
                 hp.classify == "regression" ? r_squared(train.targets, train.a[nnw.output_layer])
                     : accuracy(train.targets, train.a[nnw.output_layer]))
-        println(stats, "Final cost training: ", cost_function(train.targets, train.a[nnw.output_layer], train.n,
-                        nnw.theta, hp, nnw.output_layer))
+        println(outfile, "Final cost training: ", cost_function(train.targets, train.a[nnw.output_layer], train.n,
+                        nnw.theta, hp.lambda, hp.reg, nnw.output_layer))
 
         # output improvement of last few iterations for training data
-        if plotdef["plot_switch"]["train"]
-            if plotdef["plot_switch"]["learning"]
+        if stats["track"]["train"]
+            if stats["track"]["learning"]
                 tailcount = min(10, hp.epochs)
-                println(stats, "Training data accuracy in final $tailcount iterations:")
-                printdata = plotdef["accuracy"][end-tailcount+1:end, plotdef["train"]]
+                println(outfile, "Training data accuracy in final $tailcount iterations:")
+                printdata = stats["accuracy"][end-tailcount+1:end, stats["col_train"]]
                 for i=1:tailcount
-                    @printf(stats, "%0.3f : ", printdata[i])
+                    @printf(outfile, "%0.3f : ", printdata[i])
                 end
                 print("\n\n")
             end
@@ -247,20 +342,20 @@ function output_stats(datalist, nnw, bn, hp, training_time, plotdef)
 
         # output test statistics
         if dotest
-            feedfwd!(test, nnw, bn,  hp, istrain=false)
-            println(stats, "\n\nFraction correct labels predicted test: ",
+            feedfwd_predict!(test, nnw, hp)
+            println(outfile, "\n\nFraction correct labels predicted test: ",
                     hp.classify == "regression" ? r_squared(test.targets, test.a[nnw.output_layer])
                         : accuracy(test.targets, test.a[nnw.output_layer]))
-            println(stats, "Final cost test: ", cost_function(test.targets, test.a[nnw.output_layer], test.n,
-                nnw.theta, hp, nnw.output_layer))
+            println(outfile, "Final cost test: ", cost_function(test.targets, test.a[nnw.output_layer], test.n,
+                nnw.theta, hp.lambda, hp.reg, nnw.output_layer))
         end
 
         # output improvement of last 10 iterations for test data
-        if plotdef["plot_switch"]["test"]
-            if plotdef["plot_switch"]["learning"]
+        if stats["track"]["test"]
+            if stats["track"]["learning"]
                 tailcount = min(10, hp.epochs)
-                println(stats, "Test data accuracy in final $tailcount iterations:")
-                printdata = plotdef["accuracy"][end-tailcount+1:end, plotdef["test"]]
+                println(outfile, "Test data accuracy in final $tailcount iterations:")
+                printdata = stats["accuracy"][end-tailcount+1:end, stats["col_test"]]
                 for i=1:tailcount
                     @printf(stats, "%0.3f : ", printdata[i])
                 end
@@ -270,74 +365,64 @@ function output_stats(datalist, nnw, bn, hp, training_time, plotdef)
 
         # output number of incorrect predictions
         train_wrongs = GeneralNN.wrong_preds(train.targets, train.a[nnw.output_layer]);
-        println(stats, "\nThere are ", length(train_wrongs), " incorrect training predictions.")
+        println(outfile, "\nThere are ", length(train_wrongs), " incorrect training predictions.")
         if dotest
             test_wrongs = GeneralNN.wrong_preds(test.targets, test.a[nnw.output_layer]);
-            println(stats, "\nThere are ", length(test_wrongs), " incorrect test predictions.")
+            println(outfile, "\nThere are ", length(test_wrongs), " incorrect test predictions.")
         end
 
-        # output hyper hyper_parameters
+        # output hyper_parameters
         hp.alpha = (   hp.do_learn_decay   # back out alpha to original input
                         ? round(hp.alpha * (1.0 / hp.learn_decay[1]) ^ (hp.learn_decay[2] - 1.0), digits=5) 
                         : hp.alpha    )
-        println(stats, "\nHyper-parameters")
-        pretty_print_hp(stats, hp)
+        println(outfile, "\nHyper-parameters")
+        pretty_print_hp(outfile, hp)
 
     end  # end do stats  --  done with stats stream->closed
 
     # print the stats
+    println("printing training statistics")
     println(read(fname, String))
 
     # save cost and accuracy from training
-    save_plotdef(plotdef)
+    save_stats(stats)
     
     # plot now?
-    hp.plot_now && plot_output(plotdef)
+    hp.plot_now && plot_output(stats)
 
 end
 
 
 """
-    plot_output(plotdef::Dict)
+    plot_output(stats::Dict)
 
-    Plots the plotdef and creates 1 or 2 PyPlot plot windows of the learning (accuracy)
+    Plots the stats and creates 1 or 2  plot windows of the learning (accuracy)
     and/or cost from each training epoch.
 
 """
-function plot_output(plotdef::Dict)
+function plot_output(stats::Dict)
     # plot the progress of training cost and/or learning
-    if (plotdef["plot_switch"]["train"] || plotdef["plot_switch"]["test"])
-        # plotlyjs(size=(600,400)) # set chart size defaults
-        pyplot()
 
-        if plotdef["plot_switch"]["cost"]
-            plt_cost = plot(
-                plotdef["cost_history"], 
-                title="Cost Function",
-                labels=plotdef["plot_labels"], 
-                legend=:bottomright,
-                ylims=(0.0, Inf), 
-                bottom_margin=7mm, 
-                size=(600,400))
-            display(plt_cost)  # or can use gui()
-        end
+    if stats["track"]["cost"]
+        figure()
+        plot(1:size(stats["cost"],1),stats["cost"])  
+        xticks(2:4:size(stats["cost"],1))
+        title("Cost Function")
+        legend(stats["labels"])
+    end
 
-        if plotdef["plot_switch"]["learning"]
-            plt_learning = plot(
-                plotdef["accuracy"], 
-                title="Learning Progress",
-                labels=plotdef["plot_labels"], 
-                legend=:bottomright,
-                ylims=(0.0, 1.05), 
-                bottom_margin=7mm,
-                size=(600,400)) 
-            display(plt_learning)
-        end
+    if stats["track"]["learning"]
+        figure()
+        plot(1:size(stats["accuracy"],1), stats["accuracy"]) 
+        title("Learning Progress")
+        xticks(2:4:size(stats["accuracy"], 1))
+        legend(stats["labels"])
+    end
 
-        if (plotdef["plot_switch"]["cost"] || plotdef["plot_switch"]["learning"])
-            println("Press enter to close plot window..."); readline()
-            closeall()
-        end
+    if (stats["track"]["cost"] || stats["track"]["learning"])
+        println("Press enter to close plot window...") 
+        readline(keep=true)
+        close("all")
     end
 end
 
@@ -353,7 +438,7 @@ function dodigit(n, test_wrongs, test_inputs, test_targets, predmax)
     predicted = predicted == 10 ? 0 : predicted
     println("\n\nThe neural network predicted: $predicted")
     println("The correct value is: $correct")
-    GeneralNN.display_mnist_digit(digit_data, [28,28])
+    GeneralNN.display_mnist_digit(digit_data)  # , [28,28]
 end
 
 
@@ -366,24 +451,22 @@ contains the category number from 1 to cnt.
 Elements of the returned matrix will have eltype of vect or of the
 argument result_type.
 """
-function onehot(vect, cnt; dim=1)
+function onehot(vect, cnt; dims=1)
     et = eltype(vect)
-    onehot(vect, cnt, et, dim=dim)
+    onehot(vect, cnt, et, dims=dims)
 end
 
 
-function onehot(vect,cnt,result_type; dim=1)
+function onehot(vect,cnt,result_type; dims=1)
     et = result_type
-
-    # if ndims(vect) == 1
-    # end
 
     eye = zeros(et, cnt,cnt)
     setone = convert(et,1)
     for i = 1:cnt
         eye[i,i] = setone
     end
-    if dim == 1
+    vect = convert.(Int, vect)
+    if dims == 1
         return eye[vect,:]
     else
         return eye[:,vect]
@@ -424,6 +507,130 @@ end
 
 function toml_test(fn)
     return TOML.parsefile(fn)
+end
+
+
+
+"""
+**compute_numerical_gradient** Computes the gradient using "finite differences"
+and gives us a numerical estimate of the gradient.
+numgrad = compute_numerical_gradient(J, theta) computes the numerical
+gradient of the function J around theta. Calling y = J(theta) must
+return the function value at theta.
+
+Notes: The following code implements numerical gradient checking, and
+returns the numerical gradient.It sets numgrad(i) to (a numerical
+approximation of) the partial derivative of J with respect to the
+i-th input argument, evaluated at theta. (i.e., numgrad(i) should
+be  (approximately) the partial derivative of J with respect
+to theta(i).)
+"""
+function compute_numerical_gradient(dat, nnw, bn, hp)
+    # calculate the numgrad for all of the weights: thetas and biases
+        # this is the delta of cost for small perturbation of weights
+        # calculate the cost for 2 values of weights
+    # need to calculate the cost perturbing each weight INDIVIDUALLY
+    # THIS IS REALLY SLOW: A LOT OF FEEDFORWARD CALCULATIONS
+
+
+    # TODO warn if this is a big model:  calculate the number of weights!
+
+    println("****** Calculating numerical equivalents to weight gradients")
+
+    tweak = 1e-4
+
+    # initialize result matrices
+    gradtheta = deepcopy(nnw.delta_w)
+    for l = 2:nnw.output_layer
+        gradtheta[l][:] = zeros(nnw.theta_dims[l]...)
+    end      
+    gradbias = [zeros(i) for i in nnw.ks]
+
+    # don't do dropout
+    # hold_dropout = hp.dropout
+    # hp.dropout = false
+
+    for hl = 2:nnw.output_layer
+        # perturb one value of theta
+        println("****** perturbing each individual weight in theta layer $hl")
+        for i in eachindex(nnw.theta[hl])
+            nnw.theta[hl][i] += tweak   # this should be scalar
+            feedfwd_predict!(dat, nnw, hp)
+            cost_plus = cost_function(dat.targets, dat.a[nnw.output_layer], dat.n,
+                        nnw.theta, hp.lambda, hp.reg, nnw.output_layer)
+            nnw.theta[hl][i] -= 2 * tweak   # this should be scalar
+            feedfwd_predict!(dat, nnw, hp)
+            cost_minus = cost_function(dat.targets, dat.a[nnw.output_layer], dat.n,
+                         nnw.theta, hp.lambda, hp.reg, nnw.output_layer)
+            gradtheta[hl][i] = (cost_plus - cost_minus) / (2 * tweak)
+            nnw.theta[hl][i] =+ tweak # back to starting value
+        end
+        # perturb one value of bias
+        println("****** perturbing each individual weight in bias layer $hl")
+        for i in eachindex(nnw.bias[hl])
+            nnw.bias[hl][i] += tweak   # this should be scalar
+            feedfwd_predict!(dat, nnw, hp)
+            cost_plus = cost_function(dat.targets, dat.a[nnw.output_layer], dat.n,
+                        nnw.theta, hp.lambda, hp.reg, nnw.output_layer)  # cost uses theta, not bias for regularization
+            nnw.bias[hl][i] -= 2 * tweak   # this should be scalar
+            feedfwd_predict!(dat, nnw, hp)
+            cost_minus = cost_function(dat.targets, dat.a[nnw.output_layer], dat.n,
+                         nnw.theta, hp.lambda, hp.reg, nnw.output_layer)
+            gradbias[hl][i] = (cost_plus - cost_minus) / (2 * tweak)
+            nnw.bias[hl][i] =+ tweak # back to starting value
+        end
+    end
+
+    # set dropout and weights back to inputs
+    hp.dropout = hold_dropout
+
+    return gradtheta, gradbias
+end
+
+# TODO make sure we don't use batchnorm here:  do setup functions again or use feedfwd_predict
+function compute_backprop_gradient(dat, nnw, hp)
+    println("****** computing backprop gradients")
+    feedfwd!(dat, nnw, hp)
+    backprop!(nnw, dat, hp)
+    return nnw.delta_w, nnw.delta_b
+end
+
+
+# TODO handle batch norm: limit test to first batch, include batchnorm_params
+function verify_gradient(dat, nnw, bn, hp)
+    # compare numgrads to backprop gradients
+    # calculate the numgrad for all of the weights: thetas and biases
+    # calculate the backprop gradients
+        # backprop does this: the delta for each weight: delta_w and delta_b
+    # for both, use the initialization of the weights--e.g., before training
+
+    numtheta, numbias = compute_numerical_gradient(dat, nnw, bn, hp)
+    backtheta, backbias = compute_backprop_gradient(dat, nnw, bn, hp)
+    # println(size(numtheta))
+    # println(size(backtheta))
+
+    for hl = 1:size(numtheta,1)
+        for i in eachindex(numtheta[hl])
+            @printf "%+1.6f %+1.6f\n" numtheta[hl][i] backtheta[hl][i]
+        end
+    end
+end
+
+
+"""
+    flat(arr::Array)
+Flatten any mess of nested arrays of arbitrary depth, number of indices or type.
+Returns a vector of Any. There is no direct way to get back to the input as 
+structure is not encoded in any way.
+"""    
+Coll = Union{Array,Tuple}
+flat(arr::Coll) = mapreduce(x -> isa(x, Coll) ? flat(x) : x, append!, arr, init=[])
+
+
+function printstruct(st)
+    for it in propertynames(st)
+        @printf(" %20s %s\n",it, getproperty(st, it))
+    end
 end
 
 
@@ -488,10 +695,10 @@ function test_score(theta_fname, data_fname, lambda = 0.01, classify="softmax")
     # setup cost
     cost_function = cross_entropy_cost
 
-    predictions = predict(inputs, theta)
+    predictions = nnpredict(inputs, theta)
     score = accuracy(targets, predictions)
     println("Fraction correct labels predicted test: ", score)
-    println("Final cost test: ", cost_function(targets, predictions, n, theta, hp, output_layer))
+    println("Final cost test: ", cost_function(targets, predictions, n, theta, hp.lambda, hp.reg, output_layer))
 
     return score
 end
@@ -536,9 +743,10 @@ function nnpredict(inputs, targets, hp, nnw, bn, istest)
 
     preallocate_data!(dataset, nnw, dataset.n, hp)
 
+    # TODO There is no way this call works--way out of date from API changes
     setup_functions!(hp.units, dataset.out_k, hp.opt, hp.classify, istest)  # for feedforward calculations
 
-    feedfwd!(dataset, nnw, bn, hp, istrain=false)  # output for entire dataset
+    feedfwd_predict!(dataset, nnw, hp)  # output for entire dataset
 
     println("Fraction correct labels predicted: ",
         hp.classify == "regression" ? r_squared(dataset.targets, dataset.a[nnw.output_layer])

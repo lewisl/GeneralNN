@@ -287,7 +287,7 @@ Test data accuracy in final 10 iterations:
 Fraction correct labels predicted test: 0.9432
 Final cost test: 0.3932075500902379
 
-## Small mini-batches can work well, but it is sort of luck to get on a good path of weights
+## Small mini-batches can work well, but it is sort of luck to get on a good path of Wgts
 train_nn("digits5000by784.mat",200,[80],mb_size=10, alpha=.30, lambda=0.006,scale_reg=true, plots=["Test", "Learning","Training"], units="relu", classify="softmax");
 elapsed time: 100.248795847 seconds
 Fraction correct labels predicted training: 0.9946
