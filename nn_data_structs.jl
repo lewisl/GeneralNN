@@ -38,6 +38,7 @@ struct Hyper_parameters holds hyper_parameters used to control training
 """
 mutable struct Hyper_parameters          # we will use hp as the struct variable
     alpha::Float64              # learning rate
+    alphamod::Float64           # optionally adjust learning rate with learn_decay
     lambda::Float64             # L2 regularization rate
     hidden::Array{Tuple{String,Int64},1}       # array of ("unit", number) for hidden layers
     b1::Float64                 # 1st optimization for momentum or Adam
@@ -69,6 +70,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
 
     Hyper_parameters() = new(       # constructor with defaults--we use hp as the struct variable
         0.35,           # alpha -- OK for nn. way too high for linear regression
+        0.35,           # alphamod
         0.01,           # lambda
         [("none",0)],   # hidden
         0.9,            # b1

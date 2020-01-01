@@ -19,12 +19,14 @@ function prep_check(hp, train_x, train_y, iters; samplepct=.005, quiet=false, tw
         hp.epochs = iters  # set iters to train before grad testing
         stats = setup_stats(hp, dotest)
         training_time = training_loop!(hp, train, mb, nnw, bn, stats)
-        output_stats(train, nnw, hp, 1.1, stats)
+        output_stats(train, nnw, hp, training_time, stats)
 
 
     # set new hyper-parameters for gradient checking
     minihp = set_hp(hp)
+
     setup_functions!(minihp, nnw, bn, train)  
+    @bp
 
     return minihp, nnw, train 
 end
@@ -33,11 +35,13 @@ end
 # method to use full model with real training data
 function check_grads(hp, train_x, train_y, iters; samplepct=.005, quiet=false, tweak=1e-6, post_iters=0,
     biasidx = [], thetaidx = [])
-    println("  ****** Testing gradient calculation on input training dataset")
 
+    println("  ****** Testing gradient calculation on input training dataset")
     println("  ****** Setting up model and data")
 
+    @bp
     hp, nnw, train = prep_check(hp, train_x, train_y, iters; samplepct=samplepct, quiet=quiet, tweak=tweak)
+
 
     run_check_grads(hp, nnw, train; samplepct=samplepct, tweak=tweak, quiet=quiet, iters=post_iters,
                     biasgradidx = biasidx, thetagradidx = thetaidx)
@@ -76,7 +80,6 @@ function check_grads(hp; in_k=3, out_k=3, m=5, hid=5, iters=30, samplepct=1.0, t
     println("  ****** Setting up model and test data")
 
     # @bp
-    # run prep_check
     minihp, miniwgts, minidat = prep_check(hp; in_k=in_k, out_k=out_k, m=m, hid=hid, iters=iters,
         samplepct=samplepct, tweak=tweak, quiet=false)
 
@@ -96,8 +99,8 @@ function compare_tweak(hp, wgts, dat; eps_wgt=(2,3,"bias"), example=10)
     end
 end
 
-# eps_wgt = (selr, idx, typ) where lr is int of layer (either hidden or output) 
-#                                idx is the linear index of theta or bias for lyr
+# eps_wgt = (lr, idx, typ) where lr is int of layer (either hidden or output) 
+#                                idx is the linear index of theta or bias for lr
 #                                typ must be "theta" or "bias"
 function check_one(hp, inwgts, indat; tweak=1e-6, eps_wgt=(2,3,"bias"), example=10)  
     wgts = deepcopy(inwgts)
@@ -159,6 +162,9 @@ end
 function run_check_grads(hp, wgts, dat; samplepct=.015, tweak=1e-6, quiet=false, iters=0,
     biasgradidx = [], thetagradidx = [])  # last 2 args are the indices of the bias and theta we sample
 
+
+    printstruct(hp)
+
     if !(samplepct > 0.0 && samplepct <= 1.0)
         error("input samplepct must be greater than zero and less than or equal to 1.0")
     end
@@ -201,7 +207,7 @@ function run_check_grads(hp, wgts, dat; samplepct=.015, tweak=1e-6, quiet=false,
     # compute_modelgrad!()
     println("  ****** Calculating feedfwd/backprop gradients")
     # @bp
-    modcost, modpreds = compute_modelgrad!(dat, wgts, hp)  # changes dat and wgts
+    modcost, modpreds = compute_modelgrad!(dat, wgts, hp)  # changes dat, wgts and hp
     modgrad = (deepcopy(wgts.delta_w), deepcopy(wgts.delta_b))  # do I need to copy since compute_numgrad! does no backprop?
 
     
@@ -214,7 +220,7 @@ function run_check_grads(hp, wgts, dat; samplepct=.015, tweak=1e-6, quiet=false,
 
     # filter modgrads to match sample of numgrads
     modgrad = [   [modgrad[1][i][thetagradidx[i]] for i in 2:wgts.output_layer],     
-                  [modgrad[2][i][biasgradidx[i]] for i in 2:wgts.output_layer]     ]
+                  [modgrad[2][i][biasgradidx[i]] for i in 2:wgts.output_layer]   ]
 
     deltacols = hcat(flat(modgrad), flat(numgrad))
     relative_error = map(x -> abs(x[1]-x[2]) / (maximum(abs.(x)) + 1e-15), eachrow(deltacols))
@@ -251,8 +257,7 @@ function run_check_grads(hp, wgts, dat; samplepct=.015, tweak=1e-6, quiet=false,
             printby2(deltacols[startrow:endrow,:])
             startrow = endrow + 1
         end 
-
-    end
+    end  # begin block
 
     # summary stats
     println("\nMean Gross difference")
@@ -280,7 +285,7 @@ function set_hp(hp)
         minihp.learn_decay = [1.0, 1.0]  # no optimization
         minihp.do_batch_norm = false   # no batches
         minihp.dobatch = false         # no batches
-        minihp.alpha = 0.2             # low learning rate
+        minihp.alphamod = 0.2             # low learning rate
         minihp.dropout = false
         minihp.norm_mode = "minmax"  # only used with minimodel
         minihp.bias_initializer = hp.bias_initializer  # only used with minimodel
@@ -293,7 +298,6 @@ function set_hp(hp)
         minihp.classify = hp.classify
 
         # printstruct(minihp)
-        # printstruct(hp)
 
     return minihp
 end
@@ -338,6 +342,10 @@ Note that it is possible to know if a kink was crossed in the evaluation of the 
 
 function compute_numgrad!(numgradtheta, numgradbias, thetagradidx, biasgradidx, wgts, dat, hp; tweak = 1e-7, quiet=true)
 
+    # testcost = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n,
+    #             wgts.theta, hp.lambda, hp.reg, wgts.output_layer)
+    # println("cost in compute_numgrad! ", testcost)
+
     # @bp
 
     kinkcnt = 0
@@ -348,6 +356,13 @@ function compute_numgrad!(numgradtheta, numgradbias, thetagradidx, biasgradidx, 
 
     olddat = deepcopy(dat)
     output_layer = wgts.output_layer
+
+
+    # test first pass of cost
+
+        # feedfwd_predict!(dat, wgts, hp)   
+        # loss1 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n)  
+        # println("1st pass at cost ", loss1)   
 
     for lr in 2:wgts.output_layer  # loop by layer
         @printf("  ****** Calculating numeric bias gradients layer: %d\n", lr)
@@ -403,12 +418,11 @@ function compute_numgrad!(numgradtheta, numgradbias, thetagradidx, biasgradidx, 
             if kinktst1 || kinktst2 
                 kinkcnt += 1
                 push!(kinkrejecttheta, (lr, thi))
-                # println("Compare tweaked weights for theta kink +: ",wgts.theta[lr][thi]+tweak, " -: ",wgts.theta[lr][thi]-tweak)
             end
 
             numgradtheta[lr][idx] = (loss1 - loss2) / (2.0 * tweak)
 
-            !quiet &&    @printf("loss1: %f loss2: %f grad: %f kink: %d\n", loss1, loss2, numgradtheta[lr][idx], kinkcnt)
+            !quiet &&  @printf("loss1: %f loss2: %f grad: %f kink: %d\n", loss1, loss2, numgradtheta[lr][idx], kinkcnt)
 
             numpreds = dat.a[wgts.output_layer]
         end
@@ -440,7 +454,7 @@ function compute_modelgrad!(dat, nnw, hp)
     println("cost: ", cost)
 
     # @bp
-    hp.mb_size = dat.n
+    hp.mb_size = float(dat.n)
     feedfwd_predict!(dat, nnw, hp)
     backprop!(nnw, dat, hp)  # for all layers   
 

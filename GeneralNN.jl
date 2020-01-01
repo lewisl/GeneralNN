@@ -13,8 +13,10 @@
 # LSTM networks
 
 #TODO
-#   should we move setup_stats to pretrain?  probably
-#   
+#   check_grads with minimodel contaminates hp--be careful about naming what turns out to be global
+#   should we move setup_stats to pretrain?  
+#   look for duplicate code across files and move code to appropriate files with length under 500-800 lines
+#   don't alter the user input alpha--need new member of hp
 #   check what happens to test cost with regularization:  it gets very big
 #   see if I can eliminate some of the function trickiness with clever use of optional args (or named args with defaults)
 #   should we have a normalize data option built-in (as we do)? or make the user do it when
@@ -139,7 +141,7 @@ using LinearAlgebra
 using SparseArrays
 # for TOML support for arguments file
 using TOML  # we might need private TOML for Julia < 1.3
-# using Debugger
+using Debugger
 
 # using Plots   # Plots broken by Julia 1.3
 # gr()

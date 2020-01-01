@@ -6,12 +6,12 @@
 #  cost functions
 ###############################################################################
 
-function cross_entropy_cost(targets, predictions, n, theta=[], lambda=1.0, reg="", output_layer=3)
+function cross_entropy_cost(targets, predictions, n, theta=[], lambda=0.1, reg="", output_layer=3)
     # n is count of all samples in data set--use with regularization term
     # mb_size is count of all samples used in training batch--use with cost
     # these may be equal
-    cost = (-1.0 / n) * (dot(targets,log.(predictions .+ 1e-50)) +
-        dot((1.0 .- targets), log.(1.0 .- predictions .+ 1e-50)))
+    cost = (-1.0 / n) * (dot(targets,log.(max.(predictions, 1e-20))) +
+        dot((1.0 .- targets), log.(max.(1.0 .- predictions, 1e-20))))
         
     @fastmath if reg == "L2"  # set reg="" if not using regularization
         regterm = lambda/(2.0 * n) .* sum([dot(th, th) for th in theta[2:output_layer]])
@@ -20,9 +20,9 @@ function cross_entropy_cost(targets, predictions, n, theta=[], lambda=1.0, reg="
     return cost
 end
 
-function softmax_cost(targets, predictions, n, theta=[], lambda=1.0, reg="", output_layer=3)
+function softmax_cost(targets, predictions, n, theta=[], lambda=0.1, reg="", output_layer=3)
     # this is the negative log likelihood cost for a multi-category output layer
-    cost = (-1.0 / n) * dot(targets,log.(max.(predictions, 1e-50))) 
+    cost = (-1.0 / n) * dot(targets,log.(max.(predictions, 1e-20))) 
         
     @fastmath if reg == "L2"  # set reg="" if not using regularization
         regterm = lambda/(2.0 * n) .* sum([dot(th, th) for th in theta[2:output_layer]])
@@ -147,7 +147,7 @@ end
 function relu_gradient!(grad::AbstractArray{Float64}, z::AbstractArray{Float64})
     # fill!(grad, 0.0)
     @simd for i = eachindex(z)
-        if z[i] > 0.0
+        @inbounds if z[i] > 0.0
             grad[i] = 1.0
         else
             grad[i] = 0.0
@@ -161,9 +161,11 @@ end
 #############################################################################
 
 function softmax!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
+    # z[:] = clamp.(z,-300.0, 300.0) # prevent NaNs in softmax with crazy learning rate
     expf = similar(a)
-    @fastmath expf .= exp.(z .- maximum(z))  # inside maximum: ,dims=1  maximum(z)
-    @fastmath a .= expf ./ sum(expf, dims=1)
+    maxz = maximum(z)
+    @fastmath expf .= exp.(z .- maxz)  # inside maximum: ,dims=1  maximum(z)
+    @fastmath a .= expf ./  sum(expf, dims=1)  # 
 end
 
 
@@ -221,9 +223,8 @@ function step_learn_decay!(hp, ep_i)
     if hp.epochs - ep_i < stepsize
         return
     elseif (rem(ep_i,stepsize) == 0.0)
-        hp.alpha *= decay_rate
-        # hp.alphaovern *= decay_rate
-        println("     **** at epoch $ep_i stepping down learning rate to $(hp.alpha)")
+        hp.alphamod *= decay_rate
+        println("     **** at epoch $ep_i stepping down learning rate to $(hp.alphamod)")
     else
         return
     end

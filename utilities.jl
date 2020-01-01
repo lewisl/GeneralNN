@@ -357,7 +357,7 @@ function _output_stats(train, test, nnw, hp, training_time, stats)
                 println(outfile, "Test data accuracy in final $tailcount iterations:")
                 printdata = stats["accuracy"][end-tailcount+1:end, stats["col_test"]]
                 for i=1:tailcount
-                    @printf(stats, "%0.3f : ", printdata[i])
+                    @printf(outfile, "%0.3f : ", printdata[i])
                 end
                 print("\n\n")
             end
@@ -372,9 +372,6 @@ function _output_stats(train, test, nnw, hp, training_time, stats)
         end
 
         # output hyper_parameters
-        hp.alpha = (   hp.do_learn_decay   # back out alpha to original input
-                        ? round(hp.alpha * (1.0 / hp.learn_decay[1]) ^ (hp.learn_decay[2] - 1.0), digits=5) 
-                        : hp.alpha    )
         println(outfile, "\nHyper-parameters")
         pretty_print_hp(outfile, hp)
 
@@ -404,18 +401,20 @@ function plot_output(stats::Dict)
     # plot the progress of training cost and/or learning
 
     if stats["track"]["cost"]
+        xstep = max(Int(floor(size(stats["cost"],1) / 10)), 1)
         figure()
         plot(1:size(stats["cost"],1),stats["cost"])  
-        xticks(2:4:size(stats["cost"],1))
+        xticks(2:xstep:size(stats["cost"],1))
         title("Cost Function")
         legend(stats["labels"])
     end
 
     if stats["track"]["learning"]
+        xstep = max(Int(floor(size(stats["accuracy"],1) / 10)), 1)
         figure()
         plot(1:size(stats["accuracy"],1), stats["accuracy"]) 
         title("Learning Progress")
-        xticks(2:4:size(stats["accuracy"], 1))
+        xticks(2:xstep:size(stats["accuracy"], 1))
         legend(stats["labels"])
     end
 
@@ -631,6 +630,23 @@ function printstruct(st)
     for it in propertynames(st)
         @printf(" %20s %s\n",it, getproperty(st, it))
     end
+end
+
+
+function print_functions_in_use()
+    println("unit_function!                   ", unit_function!) 
+    println("gradient_function!               ", gradient_function!) 
+    println("classify_function!               ", classify_function!) 
+    println("optimization_function!           ", optimization_function!) 
+    println("cost_function                    ", cost_function) 
+    println("reg_function                     ", reg_function!)
+    println("dropout_fwd_function!            ", dropout_fwd_function!) 
+    println("dropout_back_function!           ", dropout_back_function!) 
+    println("affine_function!                 ", affine_function!) 
+    println("batch_norm_fwd_function!         ", batch_norm_fwd_function!) 
+    println("batch_norm_fwd_predict_function! ",  batch_norm_fwd_predict_function!)
+    println("batch_norm_back_function!        ", batch_norm_back_function!) 
+    println("backprop_weights_function!       ", backprop_weights_function!) 
 end
 
 

@@ -23,7 +23,6 @@ function prep_training!(mb, hp, nnw, bn, n)
             hp.dobatch = false   # user provided incompatible inputs
         end 
         hp.mb_size = hp.mb_size_in  # start value for hp.mb_size; changes if last minibatch is smaller
-        # hp.alphaovern = hp.alpha / hp.mb_size  # calc once, use in hot loop
         hp.do_batch_norm = hp.dobatch ? hp.do_batch_norm : false  
     else
         hp.mb_size_in = n
@@ -40,6 +39,8 @@ function prep_training!(mb, hp, nnw, bn, n)
         end
 
     hp.do_learn_decay && (hp.learn_decay = [hp.learn_decay[1], floor(hp.learn_decay[2])])
+
+    hp.alphamod = hp.alpha
 
     # dropout parameters: droplim is in hp (Hyper_parameters),
     #    dropout_random and dropout_mask_units are in mb or train (Model_data)
