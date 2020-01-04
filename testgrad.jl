@@ -1,4 +1,4 @@
-# hp = setup_training("nninputs.toml")
+# hp = setup_params("nninputs.toml")
 # train_x, train_y = extract_data("digits5000by400.mat")
 # shuffle_data!(train_x, train_y)
 # train, mb, nnw, bn = pretrain(train_x, train_y, hp)
@@ -23,12 +23,15 @@ function prep_check(hp, train_x, train_y, iters; samplepct=.005, quiet=false, tw
 
 
     # set new hyper-parameters for gradient checking
-    minihp = set_hp(hp)
+    if hp.do_batch_norm
+        minihp = hp  # leave hyper-parameters as is
+    else
+        minihp = set_hp(hp)
+        setup_functions!(minihp, nnw, bn, train)  
+        @bp
+    end
 
-    setup_functions!(minihp, nnw, bn, train)  
-    @bp
-
-    return minihp, nnw, train 
+    return minihp, nnw, train, bn 
 end
 
 
@@ -40,10 +43,9 @@ function check_grads(hp, train_x, train_y, iters; samplepct=.005, quiet=false, t
     println("  ****** Setting up model and data")
 
     @bp
-    hp, nnw, train = prep_check(hp, train_x, train_y, iters; samplepct=samplepct, quiet=quiet, tweak=tweak)
+    hp, nnw, train, bn = prep_check(hp, train_x, train_y, iters; samplepct=samplepct, quiet=quiet, tweak=tweak)
 
-
-    run_check_grads(hp, nnw, train; samplepct=samplepct, tweak=tweak, quiet=quiet, iters=post_iters,
+    run_check_grads(hp, nnw, train; bn=bn, samplepct=samplepct, tweak=tweak, quiet=quiet, iters=post_iters,
                     biasgradidx = biasidx, thetagradidx = thetaidx)
 end
 
@@ -159,11 +161,12 @@ function check_one(hp, inwgts, indat; tweak=1e-6, eps_wgt=(2,3,"bias"), example=
 end
 
 
-function run_check_grads(hp, wgts, dat; samplepct=.015, tweak=1e-6, quiet=false, iters=0,
+function run_check_grads(hp, wgts, dat; bn=Batch_norm_params(), samplepct=.015, tweak=1e-6, quiet=false, iters=0,
     biasgradidx = [], thetagradidx = [])  # last 2 args are the indices of the bias and theta we sample
 
-
+    println("\n\n ******   Starting run_check_grads")
     printstruct(hp)
+    println()
 
     if !(samplepct > 0.0 && samplepct <= 1.0)
         error("input samplepct must be greater than zero and less than or equal to 1.0")
@@ -196,18 +199,19 @@ function run_check_grads(hp, wgts, dat; samplepct=.015, tweak=1e-6, quiet=false,
     end
 
     # initialize numeric gradients results holder
-    numgradtheta = [zeros(length(x)) for x in thetagradidx]  # deepcopy(wgts.theta)      # deepcopy(miniwgts.theta)
-    numgradbias  = [zeros(length(x)) for x in biasgradidx]  # deepcopy(wgts.bias)       # deepcopy(miniwgts.bias)
+    numgradtheta = [zeros(length(x)) for x in thetagradidx]  
+    numgradbias  = [zeros(length(x)) for x in biasgradidx]  
+    println("numgradbias holder ", size(numgradbias), " ", size(numgradbias[1]))
 
     # compute numgrad
-    kinkrejecttheta, kinkrejectbias, numcost,  numpreds = compute_numgrad!(numgradtheta, numgradbias, 
-                        thetagradidx, biasgradidx, wgts, dat, hp; tweak=tweak)
+    kinkrejecttheta, kinkrejectbias, numcost,  numpreds, bnnumgrads = compute_numgrad!(numgradtheta, numgradbias, 
+                        thetagradidx, biasgradidx, wgts, dat, hp; bn=bn, tweak=tweak)
     numgrad = (numgradtheta,numgradbias)
 
-    # compute_modelgrad!()
+    # compute model grad
     println("  ****** Calculating feedfwd/backprop gradients")
     # @bp
-    modcost, modpreds = compute_modelgrad!(dat, wgts, hp)  # changes dat, wgts and hp
+    modcost, modpreds, bnmodgrads = compute_modelgrad!(dat, wgts, hp, bn)  # changes dat, wgts and hp
     modgrad = (deepcopy(wgts.delta_w), deepcopy(wgts.delta_b))  # do I need to copy since compute_numgrad! does no backprop?
 
     
@@ -222,6 +226,8 @@ function run_check_grads(hp, wgts, dat; samplepct=.015, tweak=1e-6, quiet=false,
     modgrad = [   [modgrad[1][i][thetagradidx[i]] for i in 2:wgts.output_layer],     
                   [modgrad[2][i][biasgradidx[i]] for i in 2:wgts.output_layer]   ]
 
+    println("modgrad output ", size(modgrad), " ", size(modgrad[2]))
+    println("numgrad output ", length(numgrad), " ", size(numgrad[2]))
     deltacols = hcat(flat(modgrad), flat(numgrad))
     relative_error = map(x -> abs(x[1]-x[2]) / (maximum(abs.(x)) + 1e-15), eachrow(deltacols))
     rel_err2 = norm(deltacols[1] .- deltacols[2]) / (norm(deltacols[2]) + norm(deltacols[1]))
@@ -243,7 +249,6 @@ function run_check_grads(hp, wgts, dat; samplepct=.015, tweak=1e-6, quiet=false,
             @printf("theta of layer %d, sample size %s, actual size %s\n", l, size(numgradtheta[l]), size(wgts.theta[l]))
             endrow = startrow + length(numgradtheta[l]) - 1
             @printf("start: %d   end: %d\n", startrow, endrow)
-
             printby2(deltacols[startrow:endrow,:])
             startrow = endrow + 1
         end
@@ -257,6 +262,21 @@ function run_check_grads(hp, wgts, dat; samplepct=.015, tweak=1e-6, quiet=false,
             printby2(deltacols[startrow:endrow,:])
             startrow = endrow + 1
         end 
+
+        # print batchnorm gradients
+
+        if hp.do_batch_norm
+            bnmodgrads = [   [bnmodgrads[1][i][biasgradidx[i]] for i in 2:wgts.output_layer-1],     
+                          [bnmodgrads[2][i][biasgradidx[i]] for i in 2:wgts.output_layer-1]   ]
+
+            # println("bnmodgrads ", size(bnmodgrads), " ", size(bnmodgrads[2]), " ", size(bnmodgrads[2][2]))
+            # println("bnnumgrads ", size(bnnumgrads), " ", size(bnnumgrads[2]), " ", size(bnnumgrads[2][2]))
+            bncols = hcat(flat(bnmodgrads), flat(bnnumgrads))
+            println("batchnorm parameter gradients\n")
+            printby2(bncols)            
+        else 
+            # do nothing
+        end
     end  # begin block
 
     # summary stats
@@ -271,6 +291,27 @@ function run_check_grads(hp, wgts, dat; samplepct=.015, tweak=1e-6, quiet=false,
     println("\nCount Relative error >= 0.2")
     println(count(i -> i >= 0.2, relative_error), " out of ", length(relative_error))
 end
+
+
+"""
+two methods for dealing with batch normalization
+1.  do a final feedfwd_predict using the batch norm terms. Then feedfwd and backprop to generate theta
+    and bias weights without batchnorm terms: mu, stddev, gamma and beta. Possibly more than one 
+    "settle down" iteration will be needed. Then:  
+    For analytic, backprop to calculate the deltas for the weights, leaving out the batchnorm terms. 
+    For numeric, calculate numeric approximation for weights, leaving out the batchnorm terms.
+    This can work, but the high learning rate possible with batchnorm won't work in many cases. 
+    The bias weights will be off.
+
+2.  Include the gamma and beta parameters and compare numeric approximation and backprop deltas for theta, gamma
+    and delta.  Use running average of mu and stddev for feedforward, as one would for a test or validation
+    data set.  
+    For analytic, backprop to calculate the delta updates for gamma and delta.
+    For numeric, perturb (separately) gamma and beta and use cost predictions to calculate the approximations to 
+    the deltas.
+    This method is better because it checks are code to see if we calculate the deltas for all trained parameters.
+
+"""
 
 
 function set_hp(hp)
@@ -340,13 +381,15 @@ Note that it is possible to know if a kink was crossed in the evaluation of the 
 """
 
 
-function compute_numgrad!(numgradtheta, numgradbias, thetagradidx, biasgradidx, wgts, dat, hp; tweak = 1e-7, quiet=true)
+function compute_numgrad!(numgradtheta, numgradbias, thetagradidx, biasgradidx, wgts, dat, hp; 
+    bn=Batch_norm_params(), tweak=1e-7, quiet=true)
 
-    # testcost = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n,
-    #             wgts.theta, hp.lambda, hp.reg, wgts.output_layer)
-    # println("cost in compute_numgrad! ", testcost)
+#   TODO how to handle conditional passing of bn struct
+#   TODO factor this to handle 1 pass of numeric grads.  Caller builds the complete set.
+#   TODO be sure we use right hp values and setup functions to match
 
     # @bp
+
 
     kinkcnt = 0
     kinkrejectbias = Tuple{Int64, Int64}[]
@@ -428,7 +471,47 @@ function compute_numgrad!(numgradtheta, numgradbias, thetagradidx, biasgradidx, 
         end
     end
     println("count of gradients rejected: ", kinkcnt)
-    return kinkrejecttheta, kinkrejectbias, comploss, numpreds
+
+
+    if hp.do_batch_norm
+        gamgrad  = [zeros(length(x)) for x in biasgradidx]
+        betgrad  = [zeros(length(x)) for x in biasgradidx]
+
+        for lr = 2:wgts.output_layer-1
+
+            @printf("  ****** Calculating numeric batchnorm gamma gradients layer: %d\n", lr)
+            for (idx,bi) in enumerate(biasgradidx[lr]) 
+                println(idx)
+                bn.gam[lr][bi] += tweak
+                feedfwd_predict!(dat, wgts, hp)  # bn is closure in function placeholder
+                loss1 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n) 
+                bn.gam[lr][bi] -= 2.0 * tweak
+                feedfwd_predict!(dat, wgts, hp)  # bn is closure in function placeholder
+                loss2 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n) 
+                bn.gam[lr][bi] += tweak
+                gamgrad[lr][idx] = (loss1 - loss2) / (2.0 * tweak)
+            end
+
+            @printf("  ****** Calculating numeric batchnorm beta gradients layer: %d\n", lr)
+            for (idx,bi) in enumerate(biasgradidx[lr])
+                bn.bet[lr][bi] += tweak
+                feedfwd_predict!(dat, wgts, hp)  # bn is closure in function placeholder
+                loss1 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n) 
+                bn.bet[lr][bi] -= 2.0 * tweak
+                feedfwd_predict!(dat, wgts, hp)  # bn is closure in function placeholder
+                loss2 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n) 
+                bn.bet[lr][bi] += tweak
+                betgrad[lr][idx] = (loss1 - loss2) / (2.0 * tweak)
+            end
+        end
+        bngrads = [gamgrad[2:wgts.output_layer-1], betgrad[2:wgts.output_layer-1]]
+        println("bngrads ", size(bngrads), " ", size(bngrads[1]), " ", size(bngrads[2]))
+
+    else
+        bngrads = [[], []]  # signifies empty
+    end
+
+    return kinkrejecttheta, kinkrejectbias, comploss, numpreds, bngrads
 end  # function compute_numgrad!
 
 
@@ -444,8 +527,7 @@ function findkink(olddat, dat, output_layer)
 end
 
 
-function compute_modelgrad!(dat, nnw, hp)
-    # no optimization, no reg, no batch normalization, no minibatches, no learning rate (e.g. alpha = 1)
+function compute_modelgrad!(dat, nnw, hp, bn)
 
     # @bp
 
@@ -455,10 +537,20 @@ function compute_modelgrad!(dat, nnw, hp)
 
     # @bp
     hp.mb_size = float(dat.n)
-    feedfwd_predict!(dat, nnw, hp)
+    feedfwd_predict!(dat, nnw, hp)  
     backprop!(nnw, dat, hp)  # for all layers   
 
-    return cost, dat.a[nnw.output_layer]
+    if hp.do_batch_norm
+        for lr in 2:nnw.output_layer-1
+            nnw.delta_b[lr] .= 0.0
+        end
+        bngrads = [bn.delta_gam, bn.delta_bet]
+        println("model bn grads ", size(bngrads), " ", size(bngrads[2]), " ", size(bngrads[2][2]))
+    else
+        bngrads = [[], []]   # TODO have to use actual number of hidden layers
+    end
+
+    return cost, dat.a[nnw.output_layer], bngrads
 end
 
 

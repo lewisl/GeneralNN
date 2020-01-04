@@ -278,21 +278,21 @@ end
 ##############################################################
 
 function create_curry_batch_norm_fwd!(hp, bn)  # arguments that are captured and "built-in" to curried function
-    return function f(dat, hl)  # arguments that will be passed in when new function called
-                batch_norm_fwd!(hp, bn, dat, hl)
+    return function batch_norm_fwd_curry(dat, hl)  # arguments that will be passed in when new function called
+                batch_norm_fwd!(dat, bn, hp, hl)
            end  # actual name of the resulting function set to return result of create_curry function
 end
 
 
 function create_curry_batch_norm_fwd_predict!(hp, bn)  # arguments that are captured and "built-in" to curried function
-    return function f(dat, hl)  # arguments that will be passed in when new function called
-                batch_norm_fwd_predict!(hp, bn, dat, hl)
+    return function create_curry_batch_norm_fwd_predict_curry(dat, hl)  # arguments that will be passed in when new function called
+                batch_norm_fwd_predict!(dat, bn, hp, hl)
            end  # actual name of the resulting function set to return result of create_curry function
 end
 
 
 function create_curry_batch_norm_back!(hp, bn, nnw)  # arguments that are captured and "built-in" to curried function
-    return function f(dat, hl)  # arguments that will be passed in when new function called
+    return function create_curry_batch_norm_back_curry(dat, hl)  # arguments that will be passed in when new function called
                 batch_norm_back!(nnw, dat, bn, hl, hp)
            end  # actual name of the resulting function set to return result of create_curry function
 end

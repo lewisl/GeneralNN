@@ -121,6 +121,7 @@ mutable struct Model_data               # we will use train for inputs and test 
     epsilon::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}       # dims of a
     # calculcated for batch_norm
     z_norm::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}   # same size as z--for batch_norm
+    y::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}   # same size as z--for batch_norm
     delta_z_norm::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}    # same size as z
     delta_z::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}        # same size as z
     # calculate dropout mask for training
@@ -140,6 +141,7 @@ mutable struct Model_data               # we will use train for inputs and test 
         [zeros(0,0)],       # grad
         [zeros(0,0)],       # epsilon
         [zeros(0,0)],       # z_norm -- only pre-allocate if batch_norm
+        [zeros(0,0)],       # y -- only pre-allocate if batch_norm
         [zeros(0,0)],       # delta_z_norm
         [zeros(0,0)],       # delta_z
         Array{Array{Float64,2},1}(undef, 0),   # dropout_random
@@ -160,6 +162,7 @@ mutable struct Batch_view               # we will use mb for as the variable for
     targets::SubArray{}  #::SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true}
     z::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     z_norm::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    y::Array{SubArray{}}
     delta_z_norm::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     delta_z::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     grad::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
@@ -172,6 +175,7 @@ mutable struct Batch_view               # we will use mb for as the variable for
         view([0.0],1:1),                 # targets
         Array{SubArray{}}[],  # z
         Array{SubArray{}}[],  # z_norm
+        Array{SubArray{}}[],  # y    
         Array{SubArray{}}[],  # delta_z_norm
         Array{SubArray{}}[],  # delta_z
         Array{SubArray{}}[],  # grad
@@ -199,15 +203,15 @@ feedfwd calculations and backprop training.
 """
 mutable struct Batch_norm_params               # we will use bn as the struct variable
     # learned batch parameters to center and scale data
-    gam::Array{Array{Float64,1},1}
-    bet::Array{Array{Float64,1},1}
+    gam::Array{Array{Float64,1},1}   # scaling parameter for z_norm
+    bet::Array{Array{Float64,1},1}   # shifting parameter for z_norm (equivalent to bias)
     delta_gam::Array{Array{Float64,1},1}
     delta_bet::Array{Array{Float64,1},1}
     # for standardizing batch values
-    mu::Array{Array{Float64,1},1}              # same size as bias = no. of layer units
-    stddev::Array{Array{Float64,1},1}          #    ditto
+    mu::Array{Array{Float64,1},1}              # mean of z; same size as bias = no. of layer units
+    stddev::Array{Array{Float64,1},1}          # std dev of z;   ditto
     mu_run::Array{Array{Float64,1},1}          # running average of mu
-    std_run::Array{Array{Float64,1},1}         # running average of mu
+    std_run::Array{Array{Float64,1},1}         # running average of stddev
 
     Batch_norm_params() = new(           # empty constructor
         Array{Array{Float64,1},1}(undef, 0),    # gam::Array{Array{Float64,1}}

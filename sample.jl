@@ -30,7 +30,7 @@ function runjob(argfile="nninputs.toml", matfname="digits5000by400.mat"; testgra
     # println("train_x ", typeof(train_x), " train_y ", typeof(train_y))
 
     println("........ Setup training ........")
-    hp = setup_training(argfile)
+    hp = setup_params(argfile)
 
     println("........ Training the neural network ........")
     if size(test_x) == (0,0)

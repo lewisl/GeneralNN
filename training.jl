@@ -1,6 +1,6 @@
 
 """
-function setup_training(epochs::Int64, hidden::Array{Tuple{String,Int64},1}; alpha::Float64=0.35
+function setup_params(epochs::Int64, hidden::Array{Tuple{String,Int64},1}; alpha::Float64=0.35
     mb_size_in::Int64=0, lambda::Float64=0.01, classify::String="softmax", norm_mode::String="none"
     opt::String="", opt_params::Array{Float64,1}=[0.9,0.999], do_batch_norm::Bool=false
     reg::String="L2", dropout::Bool=false, droplim::Array{Float64,1}=[0.5], plots::Array{String,1}=["Training", "Learning"]
@@ -117,7 +117,7 @@ The following method allows all input parameters to be supplied by a TOML file:
        2) To make sure that all argument names are valid.
     If any errors are found, neural network training is not run.
 """
-function setup_training(       
+function setup_params(       
                 epochs::Int64, 
                 hidden::Array{Tuple{String,Int64},1}=[("none",0)];   # required
                 alpha::Float64=0.35,                              # named, optional if defaults ok
@@ -182,7 +182,7 @@ function setup_training(
 end
 
 
-function setup_training(argsfile::String)
+function setup_params(argsfile::String)
 ################################################################################
 #   This method gets input arguments from a TOML file. This method does no
 #   error checking except, optionally, for valid argnames or missing required args. 
@@ -217,6 +217,7 @@ function train(train_x, train_y, hp, testgrad=false)
     dotest = false
 
     train, mb, nnw, bn = pretrain(train_x, train_y, hp)
+
     stats = setup_stats(hp, dotest)  
 
     !hp.quiet && println("Training setup complete")
@@ -232,10 +233,11 @@ function train(train_x, train_y, hp, testgrad=false)
                 "train_preds" => train.a[nnw.output_layer], 
                 "Wgts" => nnw, 
                 "batchnorm_params" => bn, 
-                "hyper_params" => hp
+                "hyper_params" => hp,
+                "stats" => stats
                 )
 
-    return ret, stats
+    return ret
 
 end # _run_training_core, method with test data
 
@@ -266,7 +268,8 @@ function train(train_x, train_y, test_x, test_y, hp, testgrad=false)
                 "hyper_params" => hp,
                 "test_inputs" => test.inputs, 
                 "test_targets" => test.targets, 
-                "test_preds" => test.a[nnw.output_layer]  
+                "test_preds" => test.a[nnw.output_layer],  
+                "stats" => stats
                 )
 
     return ret, stats

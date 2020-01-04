@@ -163,30 +163,146 @@ function backprop!(nnw, dat, hp)
 
     # for output layer if cross_entropy_cost or mean squared error???    
     @inbounds begin
-    dat.epsilon[nnw.output_layer][:] = dat.a[nnw.output_layer] .- dat.targets  
-        !hp.quiet && println("What is epsilon of output layer? ", mean(dat.epsilon[nnw.output_layer]))
-    backprop_weights!(nnw.delta_w[nnw.output_layer], nnw.delta_b[nnw.output_layer], dat.delta_z[nnw.output_layer], 
-        dat.epsilon[nnw.output_layer], dat.a[nnw.output_layer-1], hp.mb_size)   
+        # backprop classify
+        dat.epsilon[nnw.output_layer][:] = dat.a[nnw.output_layer] .- dat.targets  
+            !hp.quiet && println("What is epsilon of output layer? ", mean(dat.epsilon[nnw.output_layer]))
+        # backprop affine
+        backprop_weights!(nnw.delta_w[nnw.output_layer], nnw.delta_b[nnw.output_layer], dat.delta_z[nnw.output_layer], 
+            dat.epsilon[nnw.output_layer], dat.a[nnw.output_layer-1], hp.mb_size)   
     end
 
     # loop over hidden layers
     @fastmath @inbounds for hl = (nnw.output_layer - 1):-1:2  
+        # backprop activation
+        mul!(dat.epsilon[hl], nnw.theta[hl+1]', dat.epsilon[hl+1])
         gradient_function![hl](dat.grad[hl], dat.z[hl])  
             !hp.quiet && println("What is gradient $hl? ", mean(dat.grad[hl]))
-        mul!(dat.epsilon[hl], nnw.theta[hl+1]', dat.epsilon[hl+1])
         @inbounds dat.epsilon[hl][:] = dat.epsilon[hl] .* dat.grad[hl] 
             !hp.quiet && println("what is epsilon $hl? ", mean(dat.epsilon[hl]))
 
-        dropout_back_function![hl](dat, hl)  # noop if not applicable
         batch_norm_back_function!(dat, hl)   # noop if not applicable
-
+        # backprop affine
         backprop_weights_function!(nnw.delta_w[hl], nnw.delta_b[hl], dat.delta_z[hl], 
                                    dat.epsilon[hl], dat.a[hl-1], hp.mb_size)
+        dropout_back_function![hl](dat, hl)  # noop if not applicable
 
         !hp.quiet && println("what is delta_w $hl? ", nnw.delta_w[hl])
         !hp.quiet && println("what is delta_b $hl? ", nnw.delta_b[hl])
 
     end
+end
+
+
+function batch_norm_fwd!(dat, bn, hp, hl; showf=false)
+!hp.quiet && println("batch_norm_fwd!(dat, bn, hp, hl)")
+showf && begin; println("batch_norm_fwd!"); return; end;
+
+    @inbounds bn.mu[hl][:] = mean(dat.z[hl], dims=2)          # use in backprop
+    @inbounds bn.stddev[hl][:] = std(dat.z[hl], dims=2)
+    @inbounds dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu[hl]) ./ (bn.stddev[hl]) # .+ hp.ltl_eps) # normalized: 'aka' xhat or zhat  @inbounds 
+    @inbounds dat.z[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y  @inbounds 
+    @inbounds bn.mu_run[hl][:] = (  bn.mu_run[hl][1] == 0.0 ? bn.mu[hl] :  
+        0.95 .* bn.mu_run[hl] .+ 0.05 .* bn.mu[hl]  )
+    @inbounds bn.std_run[hl][:] = (  bn.std_run[hl][1] == 0.0 ? bn.stddev[hl] :  
+        0.95 .* bn.std_run[hl] + 0.05 .* bn.stddev[hl]  )
+end
+
+
+function batch_norm_fwd_predict!(dat, bn, hp, hl)
+!hp.quiet && println("batch_norm_fwd_predict!(hp, bn, dat, hl)")
+
+    @inbounds dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu_run[hl]) ./ (bn.std_run[hl]) # .+ hp.ltl_eps) # normalized: 'aka' xhat or zhat  @inbounds 
+    @inbounds dat.z[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y  @inbounds 
+end
+
+
+function batch_norm_back!(nnw, dat, bn, hl, hp)
+!hp.quiet && println("batch_norm_back!(nnw, dat, bn, hl, hp)")
+
+    mb = hp.mb_size
+    @inbounds bn.delta_bet[hl][:] = sum(dat.epsilon[hl], dims=2) ./ mb
+    @inbounds bn.delta_gam[hl][:] = sum(dat.epsilon[hl] .* dat.z_norm[hl], dims=2) ./ mb
+    @inbounds dat.delta_z_norm[hl][:] = bn.gam[hl] .* dat.epsilon[hl]  
+
+    # 1. per Lewis' assessment of multiple sources including Kevin Zakka
+        # good training performance
+        # fails grad check for backprop of revised z, but closest of all
+    @inbounds dat.delta_z[hl][:] = (                               
+        (1.0 / mb) .* (1.0 ./ bn.stddev[hl])  .* (          # added term: .* bn.gam[hl]
+            mb .* dat.delta_z_norm[hl] .- sum(dat.delta_z_norm[hl], dims=2) .-
+            dat.z_norm[hl] .* sum(dat.delta_z_norm[hl] .* dat.z_norm[hl], dims=2)
+            )
+        )
+
+    # 2. from Deriving Batch-Norm Backprop Equations, Chris Yeh
+        # training slightly worse
+        # grad check considerably worse
+    # @inbounds dat.delta_z[hl][:] = (                               
+    #         (1.0 / mb) .* (bn.gam[hl] ./ bn.stddev[hl]) .*         
+    #         (mb .* dat.epsilon[hl] .- (dat.z_norm[hl] .* bn.delta_gam[hl]) .- (bn.delta_bet[hl] * ones(1,mb)))
+    #     )
+
+    # 3. from https://cthorey.github.io./backpropagation/
+        # worst bad grad check
+        # terrible training performance
+    # @inbounds dat.z[hl][:] = (
+    #     (1.0/mb) .* bn.gam[hl] .* (1.0 ./ bn.stddev[hl]) .*
+    #     (mb .* dat.epsilon[hl] .- sum(dat.epsilon[hl],dims=2) .- (dat.z[hl] .- bn.mu[hl]) .* 
+    #      (mb ./ bn.stddev[hl] .^ 2) .* sum(dat.epsilon[hl] .* (dat.z_norm[hl] .* bn.stddev[hl] .- bn.mu[hl]),dims=2))
+    #     )
+
+    # 4. slow componentized approach from https://github.com/kevinzakka/research-paper-notes/blob/master/batch_norm.py
+        # grad check only slightly worse
+        # training performance only slightly worse
+        # perf noticeably worse, but not fully optimized
+    # @inbounds begin # do preliminary derivative components
+    #     zmu = similar(dat.z[hl])
+    #     zmu[:] = dat.z_norm[hl] .* bn.stddev[hl]
+    #     dvar = similar(bn.stddev[hl])
+    #     # println(size(bn.stddev[hl]))
+    #     dvar[:] = sum(dat.delta_z_norm[hl] .* -1.0 ./ bn.stddev[hl] .* -0.5 .* (1.0./bn.stddev[hl]).^3, dims=2)
+    #     dmu = similar(bn.stddev[hl])
+    #     dmu[:] = sum(dat.delta_z_norm[hl] .* -1.0 ./ bn.stddev[hl], dims=2) .+ (dvar .* (-2.0/mb) .* sum(zmu,dims=2))
+    #     dx1 = similar(dat.delta_z_norm[hl])
+    #     dx1[:] = dat.delta_z_norm[hl] .* (1.0 ./ bn.stddev[hl])
+    #     dx2 = similar(dat.z[hl])
+    #     dx2[:] = dvar .* (2.0 / mb) .* zmu
+    #     dx3 = similar(bn.stddev[hl])
+    #     dx3[:] = (1.0 / mb) .* dmu
+    # end
+
+    # @inbounds dat.delta_z[hl][:] = dx1 .+ dx2 .+ dx3
+
+    # 5. From knet.jl framework
+        # exactly matches the results of 1
+        # 50% slower (improvement possible)
+        # same grad check results, same training results
+     # mu, ivar = _get_cache_data(cache, x, eps)
+        # x_mu = x .- mu
+    # @inbounds begin    
+        # zmu = dat.z_norm[hl] .* bn.stddev[hl]
+        # # equations from the original paper
+        # # dyivar = dy .* ivar
+        # istddev = (1.0 ./ bn.stddev[hl])
+        # dyivar = dat.epsilon[hl] .* istddev
+        # bn.delta_gam[hl][:] = sum(zmu .* dyivar, dims=2) ./ hp.mb_size   # stupid way to do this
+        # bn.delta_bet[hl][:] = sum(dat.epsilon[hl], dims=2) ./ hp.mb_size
+        # dyivar .*= bn.gam[hl]  # dy * 1/stddev * gam
+        # # if g !== nothing
+        # #     dg = sum(x_mu .* dyivar, dims=dims)
+        # #     db = sum(dy, dims=dims)
+        # #     dyivar .*= g
+        # # else
+        # #     dg, db = nothing, nothing
+        # # end
+        # # m = prod(d->size(x,d), dims) # size(x, dims...))
+        # # dsigma2 = -sum(dyivar .* x_mu .* ivar.^2, dims=dims) ./ 2
+        # dsigma2 = -sum(dyivar .* zmu .* istddev.^2, dims = 2) ./ 2.0
+        # # dmu = -sum(dyivar, dims=dims) .- 2dsigma2 .* sum(x_mu, dims=dims) ./ m
+        # dmu = -sum(dyivar, dims=2) .- 2.0 .* dsigma2 .* sum(zmu, dims=2) ./ mb
+        # dat.delta_z[hl][:] = dyivar .+ dsigma2 .* (2.0 .* zmu ./ mb) .+ (dmu ./ mb)
+    # end
+
 
 end
 
@@ -261,7 +377,8 @@ function update_batch_views!(mb::Batch_view, train::Model_data, nnw::Wgts,
         mb.a[i] = view(train.a[i],:,colrng)   # sel is random order of example indices
         mb.z[i] = view(train.z[i],:,colrng) 
         mb.epsilon[i] = view(train.epsilon[i], :, colrng) 
-        mb.grad[i] = view(train.grad[i], :, colrng)   
+        mb.grad[i] = view(train.grad[i], :, colrng)  
+        mb.delta_z[i] = view(train.delta_z[i], :, colrng)    
     end
     mb.targets = view(train.targets,:,colrng)  # only at the output layer
     
@@ -271,7 +388,6 @@ function update_batch_views!(mb::Batch_view, train::Model_data, nnw::Wgts,
             mb.z_norm[i] = view(train.z_norm[i],:, colrng) 
             # backprop
             mb.delta_z_norm[i] = view(train.delta_z_norm[i], :, colrng)   
-            mb.delta_z[i] = view(train.delta_z[i], :, colrng)   
         end
     end
 
@@ -283,45 +399,6 @@ function update_batch_views!(mb::Batch_view, train::Model_data, nnw::Wgts,
         end
     end
 
-end
-
-
-function batch_norm_fwd!(hp, bn, dat, hl)
-!hp.quiet && println("batch_norm_fwd!(hp, bn, dat, hl)")
-
-    @inbounds bn.mu[hl][:] = mean(dat.z[hl], dims=2)          # use in backprop
-    @inbounds bn.stddev[hl][:] = std(dat.z[hl], dims=2)
-    @inbounds dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu[hl]) ./ (bn.stddev[hl] .+ hp.ltl_eps) # normalized: 'aka' xhat or zhat  @inbounds 
-    @inbounds dat.z[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y  @inbounds 
-    @inbounds bn.mu_run[hl][:] = (  bn.mu_run[hl][1] == 0.0 ? bn.mu[hl] :  # @inbounds 
-        0.9 .* bn.mu_run[hl] .+ 0.1 .* bn.mu[hl]  )
-    @inbounds bn.std_run[hl][:] = (  bn.std_run[hl][1] == 0.0 ? bn.stddev[hl] :  # @inbounds 
-        0.9 .* bn.std_run[hl] + 0.1 .* bn.stddev[hl]  )
-end
-
-
-function batch_norm_fwd_predict!(hp, bn, dat, hl)
-!hp.quiet && println("batch_norm_fwd_predict!(hp, bn, dat, hl)")
-
-    @inbounds dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu_run[hl]) ./ (bn.std_run[hl] .+ hp.ltl_eps) # normalized: 'aka' xhat or zhat  @inbounds 
-    @inbounds dat.z[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y  @inbounds 
-end
-
-
-function batch_norm_back!(nnw, dat, bn, hl, hp)
-!hp.quiet && println("batch_norm_back!(nnw, dat, bn, hl, hp)")
-    mb = hp.mb_size
-    @inbounds bn.delta_bet[hl][:] = sum(dat.epsilon[hl], dims=2) ./ mb
-    @inbounds bn.delta_gam[hl][:] = sum(dat.epsilon[hl] .* dat.z_norm[hl], dims=2) ./ mb
-
-    @inbounds dat.delta_z_norm[hl][:] = bn.gam[hl] .* dat.epsilon[hl]  
-
-    @inbounds dat.delta_z[hl][:] = (                               
-        (1.0 / mb) .* (1.0 ./ bn.stddev[hl]) .* (
-            mb .* dat.delta_z_norm[hl] .- sum(dat.delta_z_norm[hl], dims=2) .-
-            dat.z_norm[hl] .* sum(dat.delta_z_norm[hl] .* dat.z_norm[hl], dims=2)
-            )
-        )
 end
 
  
