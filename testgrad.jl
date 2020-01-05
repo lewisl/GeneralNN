@@ -112,7 +112,7 @@ function check_one(hp, inwgts, indat; tweak=1e-6, eps_wgt=(2,3,"bias"), example=
     typ = eps_wgt[3]
     n_layers = wgts.output_layer
     deltype = if typ == "theta" 
-                    "delta_w" 
+                    "delta_th" 
               elseif typ == "bias" 
                   "delta_b" 
               else
@@ -131,7 +131,7 @@ function check_one(hp, inwgts, indat; tweak=1e-6, eps_wgt=(2,3,"bias"), example=
     
     # 2. compute the gradient of the weight we will perturb by tweak (not yet...)
     backprop!(wgts, dat, hp)  # for all layers   
-    gradone = getproperty(wgts, Symbol(deltype))[selr][idx]  # delta_w or delta_b
+    gradone = getproperty(wgts, Symbol(deltype))[selr][idx]  # delta_th or delta_b
 
     # 3. calculate the loss for the perturbed weight
     w = getproperty(wgts, Symbol(typ))[selr][idx]  # bias or theta
@@ -212,7 +212,7 @@ function run_check_grads(hp, wgts, dat; bn=Batch_norm_params(), samplepct=.015, 
     println("  ****** Calculating feedfwd/backprop gradients")
     # @bp
     modcost, modpreds, bnmodgrads = compute_modelgrad!(dat, wgts, hp, bn)  # changes dat, wgts and hp
-    modgrad = (deepcopy(wgts.delta_w), deepcopy(wgts.delta_b))  # do I need to copy since compute_numgrad! does no backprop?
+    modgrad = (deepcopy(wgts.delta_th), deepcopy(wgts.delta_b))  # do I need to copy since compute_numgrad! does no backprop?
 
     
     # compare results from modgrads and numgrads
@@ -541,13 +541,13 @@ function compute_modelgrad!(dat, nnw, hp, bn)
     backprop!(nnw, dat, hp)  # for all layers   
 
     if hp.do_batch_norm
-        for lr in 2:nnw.output_layer-1
+        for lr in 2:nnw.output_layer-1  # defaults never touched; set to zero for comparison to numeric grads
             nnw.delta_b[lr] .= 0.0
         end
         bngrads = [bn.delta_gam, bn.delta_bet]
         println("model bn grads ", size(bngrads), " ", size(bngrads[2]), " ", size(bngrads[2][2]))
     else
-        bngrads = [[], []]   # TODO have to use actual number of hidden layers
+        bngrads = [[] for i in 2:nnw.output_layer-1]
     end
 
     return cost, dat.a[nnw.output_layer], bngrads

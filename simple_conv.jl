@@ -201,11 +201,11 @@ function basic(matfname, norm_mode="minmax"; unroll=false, pad=0)
         println("start of backprop")
         # output layer, layer 5--we only need epsilon, the difference
         dz5 = a5 .- train.targets  # called epsilon in FF nn's
-        delta_w_5 = dz5 * a4'  # do we need 1/m -- we usually take the average as part of the weight update
+        delta_th_5 = dz5 * a4'  # do we need 1/m -- we usually take the average as part of the weight update
         delta_b_5 = sum(dz5, dims=2) # ditto
         println("size of dz5: ", size(dz5))
         println("\nbackprop fully connected layer 5")
-        println("size of delta_w_5: ", size(delta_w_5))
+        println("size of delta_th_5: ", size(delta_th_5))
         println("size of delta_b_5: ", size(delta_b_5))
         println("size of dz5: ", size(dz5))
 
@@ -214,10 +214,10 @@ function basic(matfname, norm_mode="minmax"; unroll=false, pad=0)
         grad_a4 = zeros(size(a4))
         GeneralNN.relu_gradient!(grad_a4, a4)
         dz4 = theta5' * dz5 .* grad_a4
-        delta_w_4 = dz4 * flatten_img(a3pool)'  # this seems weird
+        delta_th_4 = dz4 * flatten_img(a3pool)'  # this seems weird
         delta_b_4 = sum(dz4, dims=2)
 
-        println("size of delta_w_4: ", size(delta_w_4))
+        println("size of delta_th_4: ", size(delta_th_4))
         println("size of delta_b_4: ", size(delta_b_4))
         println("size of dz4: ", size(dz4))
 
@@ -251,13 +251,13 @@ function basic(matfname, norm_mode="minmax"; unroll=false, pad=0)
         dz3[:] = grad_relu_3 .* un_pool_3
         println("size dz3: $(size(dz3))")
 
-        delta_w_3 = zeros(size(w3))
+        delta_th_3 = zeros(size(w3))
         @time for i = 1:n 
-            delta_w_3[:,:,:,:] += convolve_grad_w(a2[:,:,:,i], dz3[:,:,:,i],  w3)  # middle term? un_pool_3[:,:,:,i],
+            delta_th_3[:,:,:,:] += convolve_grad_w(a2[:,:,:,i], dz3[:,:,:,i],  w3)  # middle term? un_pool_3[:,:,:,i],
         end
-        delta_w_3[:] = (1/n) .* delta_w_3
+        delta_th_3[:] = (1/n) .* delta_th_3
         delta_b_3 = (1/n) .* sum(dz3 ,dims=(1,2,4))[:]   # alternative to sum? un_pool_3
-        println("size delta_w_3: $(size(delta_w_3)) size delta_b_3: $(size(delta_b_3))")
+        println("size delta_th_3: $(size(delta_th_3)) size delta_b_3: $(size(delta_b_3))")
 
         # 1st relu at layer 2
         println("\nbackprop of layer 2: convolve and relu")
@@ -274,13 +274,13 @@ function basic(matfname, norm_mode="minmax"; unroll=false, pad=0)
         dz2[:] = dz2 .* grad_relu_2
         println("size dz2: $(size(dz2))")
 
-        delta_w_2 = zeros(size(w2))
+        delta_th_2 = zeros(size(w2))
         @time for i = 1:n 
-            delta_w_2[:,:,:,:] += convolve_grad_w(a1[:,:,:,i], dz2[:,:,:,i], w2)
+            delta_th_2[:,:,:,:] += convolve_grad_w(a1[:,:,:,i], dz2[:,:,:,i], w2)
         end
-        delta_w_2[:] = (1/n) .* delta_w_2
+        delta_th_2[:] = (1/n) .* delta_th_2
         delta_b_2 = (1/n) .* sum(dz2,dims=(1,2,4))[:]
-        println("size delta_w_2: $(size(delta_w_2)) size delta_b_2: $(size(delta_b_2))")
+        println("size delta_th_2: $(size(delta_th_2)) size delta_b_2: $(size(delta_b_2))")
             
     
     println("that's all folks!...")

@@ -13,8 +13,12 @@
 # LSTM networks
 
 #TODO
+#   see if we could call delta_z from batch_norm_back epsilon and simplify functions/arguments in backprop
 #   fix usage of batchnorm variables when using batches but NOT batchnorm (delta_z used as arg...)
-#   apply update optimazation to batchnorm parameters bet and gam
+#   investigate Zygote.jl
+#   how should we count layers?  
+    # by combined layer (linear,bn,non-linear) = 1?
+    # or by funtion (linear, bn, non-linear) = 3?
 #   should we eliminate z_norm to save memory? might be marginally faster using .=
 #   see if we can use batch normalization with full batch training
 #   check what happens to test cost with regularization:  it gets very big
@@ -86,7 +90,7 @@ To use, include() the file.  Then enter using .GeneralNN to use the module.
 
 These data structures are used to hold parameters and data:
 
-- Wgts holds theta, bias, delta_w, delta_b, theta_dims, output_layer, k
+- Wgts holds theta, bias, delta_th, delta_b, theta_dims, output_layer, k
 - Model_data holds inputs, targets, a, z, z_norm, epsilon, gradient_function
 - Batch_norm_params holds gam (gamma), bet (beta) for batch normalization and intermediate
     data used for backprop with batch normalization: delta_gam, delta_bet, 

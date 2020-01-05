@@ -539,7 +539,7 @@ function compute_numerical_gradient(dat, nnw, bn, hp)
     tweak = 1e-4
 
     # initialize result matrices
-    gradtheta = deepcopy(nnw.delta_w)
+    gradtheta = deepcopy(nnw.delta_th)
     for l = 2:nnw.output_layer
         gradtheta[l][:] = zeros(nnw.theta_dims[l]...)
     end      
@@ -591,7 +591,7 @@ function compute_backprop_gradient(dat, nnw, hp)
     println("****** computing backprop gradients")
     feedfwd!(dat, nnw, hp)
     backprop!(nnw, dat, hp)
-    return nnw.delta_w, nnw.delta_b
+    return nnw.delta_th, nnw.delta_b
 end
 
 
@@ -600,7 +600,7 @@ function verify_gradient(dat, nnw, bn, hp)
     # compare numgrads to backprop gradients
     # calculate the numgrad for all of the weights: thetas and biases
     # calculate the backprop gradients
-        # backprop does this: the delta for each weight: delta_w and delta_b
+        # backprop does this: the delta for each weight: delta_th and delta_b
     # for both, use the initialization of the weights--e.g., before training
 
     numtheta, numbias = compute_numerical_gradient(dat, nnw, bn, hp)

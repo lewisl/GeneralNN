@@ -105,7 +105,6 @@ function preallocate_data!(dat, nnw, n, hp)
         dat.z_norm = deepcopy(dat.z)
         # backprop
         dat.delta_z_norm = deepcopy(dat.z)
-        dat.y = deepcopy(dat.z)
         # preallocate_batchnorm!(bn, mb, nnw.ks)
     end
 
@@ -129,7 +128,6 @@ function preallocate_minibatch!(mb::Batch_view, nnw, hp)
     mb.targets = view([0.0],1:1)
     mb.z = Array{SubArray{}}(undef, n_layers)
     mb.z_norm = Array{SubArray{}}(undef, n_layers)
-    mb.y = Array{SubArray{}}(undef, n_layers)
     mb.delta_z_norm = Array{SubArray{}}(undef, n_layers)
     mb.delta_z = Array{SubArray{}}(undef, n_layers)
     mb.grad = Array{SubArray{}}(undef, n_layers)

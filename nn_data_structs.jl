@@ -5,12 +5,12 @@ struct Wgts holds model parameters learned by training and model metadata
 mutable struct Wgts              # we will use nnw as the struct variable
     theta::Array{Array{Float64,2},1}
     bias::Array{Array{Float64,1},1}
-    delta_w::Array{Array{Float64,2},1}
+    delta_th::Array{Array{Float64,2},1}
     delta_b::Array{Array{Float64,1},1}
-    delta_v_w::Array{Array{Float64,2},1}  # momentum weighted average of gradient--also for Adam
-    delta_v_b::Array{Array{Float64,1},1}  # hold momentum weighted average of gradient--also for Adam
-    delta_s_w::Array{Array{Float64,2},1}  # s update term for ADAM
-    delta_s_b::Array{Array{Float64,1},1}  # s update term for ADAM
+    delta_v_th::Array{Array{Float64,2},1}  # optimization weighted average of gradient: momentum, rmsprop, Adam
+    delta_v_b::Array{Array{Float64,1},1}  
+    delta_s_th::Array{Array{Float64,2},1}  
+    delta_s_b::Array{Array{Float64,1},1}  
     theta_dims::Array{Tuple{Int64, Int64},1}
     output_layer::Int64
     ks::Array{Int64,1}                     # number of output units in each layer (features for input layer)
@@ -20,11 +20,11 @@ mutable struct Wgts              # we will use nnw as the struct variable
     Wgts() = new(               # empty constructor
         Array{Array{Float64,2},1}(undef, 0),    # theta::Array{Array{Float64,2}}
         Array{Array{Float64,2},1}(undef, 0),    # bias::Array{Array{Float64,1}}
-        Array{Array{Float64,2},1}(undef, 0),    # delta_w
+        Array{Array{Float64,2},1}(undef, 0),    # delta_th
         Array{Array{Float64,1},1}(undef, 0),    # delta_b
-        Array{Array{Float64,2},1}(undef, 0),    # delta_v_w
+        Array{Array{Float64,2},1}(undef, 0),    # delta_v_th
         Array{Array{Float64,1},1}(undef, 0),    # delta_v_b
-        Array{Array{Float64,2},1}(undef, 0),    # delta_s_w
+        Array{Array{Float64,2},1}(undef, 0),    # delta_s_th
         Array{Array{Float64,1},1}(undef, 0),    # delta_s_b
         Array{Tuple{Int, Int},1}(undef, 0),     # theta_dims::Array{Array{Int64,2}}
         3,                                      # output_layer
@@ -121,7 +121,6 @@ mutable struct Model_data               # we will use train for inputs and test 
     epsilon::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}       # dims of a
     # calculcated for batch_norm
     z_norm::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}   # same size as z--for batch_norm
-    y::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}   # same size as z--for batch_norm
     delta_z_norm::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}    # same size as z
     delta_z::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}        # same size as z
     # calculate dropout mask for training
@@ -141,7 +140,6 @@ mutable struct Model_data               # we will use train for inputs and test 
         [zeros(0,0)],       # grad
         [zeros(0,0)],       # epsilon
         [zeros(0,0)],       # z_norm -- only pre-allocate if batch_norm
-        [zeros(0,0)],       # y -- only pre-allocate if batch_norm
         [zeros(0,0)],       # delta_z_norm
         [zeros(0,0)],       # delta_z
         Array{Array{Float64,2},1}(undef, 0),   # dropout_random
@@ -162,7 +160,6 @@ mutable struct Batch_view               # we will use mb for as the variable for
     targets::SubArray{}  #::SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true}
     z::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     z_norm::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    y::Array{SubArray{}}
     delta_z_norm::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     delta_z::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     grad::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
@@ -175,7 +172,6 @@ mutable struct Batch_view               # we will use mb for as the variable for
         view([0.0],1:1),                 # targets
         Array{SubArray{}}[],  # z
         Array{SubArray{}}[],  # z_norm
-        Array{SubArray{}}[],  # y    
         Array{SubArray{}}[],  # delta_z_norm
         Array{SubArray{}}[],  # delta_z
         Array{SubArray{}}[],  # grad
@@ -207,6 +203,11 @@ mutable struct Batch_norm_params               # we will use bn as the struct va
     bet::Array{Array{Float64,1},1}   # shifting parameter for z_norm (equivalent to bias)
     delta_gam::Array{Array{Float64,1},1}
     delta_bet::Array{Array{Float64,1},1}
+    # for optimization updates of bn parameters
+    delta_v_gam::Array{Array{Float64,1},1}  
+    delta_s_gam::Array{Array{Float64,1},1}  
+    delta_v_bet::Array{Array{Float64,1},1}  
+    delta_s_bet::Array{Array{Float64,1},1}  
     # for standardizing batch values
     mu::Array{Array{Float64,1},1}              # mean of z; same size as bias = no. of layer units
     stddev::Array{Array{Float64,1},1}          # std dev of z;   ditto
@@ -218,6 +219,10 @@ mutable struct Batch_norm_params               # we will use bn as the struct va
         Array{Array{Float64,1},1}(undef, 0),    # bet::Array{Array{Float64,1}}
         Array{Array{Float64,2},1}(undef, 0),    # delta_gam
         Array{Array{Float64,2},1}(undef, 0),    # delta_bet
+        Array{Array{Float64,2},1}(undef, 0),    # delta_v_gam
+        Array{Array{Float64,2},1}(undef, 0),    # delta_s_gam
+        Array{Array{Float64,2},1}(undef, 0),    # delta_v_bet
+        Array{Array{Float64,2},1}(undef, 0),    # delta_s_bet
         Array{Array{Float64,1},1}(undef, 0),    # mu
         Array{Array{Float64,1},1}(undef, 0),    # stddev
         Array{Array{Float64,1},1}(undef, 0),    # mu_run

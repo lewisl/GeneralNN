@@ -102,17 +102,17 @@ end
     # Choice of function determined in setup_functions! in setup_training.jl
 
     # uses delta_z from the backnorm calculations
-    function backprop_weights_nobias!(delta_w, delta_b, delta_z, epsilon, a_prev, n; showf = false)
+    function backprop_weights_nobias!(delta_th, delta_b, delta_z, epsilon, a_prev, n; showf = false)
         showf && begin; println("backprop_weights_nobias!"); return; end;
-        mul!(delta_w, delta_z, a_prev')
-        @fastmath delta_w[:] = delta_w .* (1.0 / n)
+        mul!(delta_th, delta_z, a_prev')
+        @fastmath delta_th[:] = delta_th .* (1.0 / n)
     end
 
     # ignores delta_z terms because no batchnorm 
-    function backprop_weights!(delta_w, delta_b, delta_z, epsilon, a_prev, n; showf = false)
+    function backprop_weights!(delta_th, delta_b, delta_z, epsilon, a_prev, n; showf = false)
         showf && begin; println("backprop_weights!"); return; end;
-        mul!(delta_w, epsilon, a_prev')
-        @fastmath delta_w[:] = delta_w .* (1.0 / n)
+        mul!(delta_th, epsilon, a_prev')
+        @fastmath delta_th[:] = delta_th .* (1.0 / n)
         @fastmath delta_b[:] = sum(epsilon, dims=2) ./ n
     end
 
@@ -233,50 +233,68 @@ function step_learn_decay!(hp, ep_i)
 end
 
 
-function momentum!(nnw, hp, t)
+function momentum!(nnw, hp, bn, t)
     @fastmath for hl = (nnw.output_layer - 1):-1:2  # loop over hidden layers
-        @inbounds nnw.delta_v_w[hl] .= hp.b1 .* nnw.delta_v_w[hl] .+ (1.0 - hp.b1) .* nnw.delta_w[hl]  # @inbounds 
-        @inbounds nnw.delta_w[hl] .= nnw.delta_v_w[hl]
+        @inbounds nnw.delta_v_th[hl][:] = hp.b1 .* nnw.delta_v_th[hl] .+ (1.0 - hp.b1) .* nnw.delta_th[hl]  # @inbounds 
+        @inbounds nnw.delta_th[hl][:] = nnw.delta_v_th[hl]
 
         if !hp.do_batch_norm  # then we need to do bias term
-            @inbounds nnw.delta_v_b[hl] .= hp.b1 .* nnw.delta_v_b[hl] .+ (1.0 - hp.b1) .* nnw.delta_b[hl]  # @inbounds 
-            @inbounds nnw.delta_b[hl] .= nnw.delta_v_b[hl]
+            @inbounds nnw.delta_v_b[hl][:] = hp.b1 .* nnw.delta_v_b[hl] .+ (1.0 - hp.b1) .* nnw.delta_b[hl]  # @inbounds 
+            @inbounds nnw.delta_b[hl][:] = nnw.delta_v_b[hl]
+        else
+            @inbounds bn.delta_v_gam[hl][:] = hp.b1 .* bn.delta_v_gam[hl] .+ (1.0 - hp.b1) .* bn.delta_gam[hl]  # @inbounds 
+            @inbounds bn.delta_gam[hl][:] = bn.delta_v_gam[hl]
+            @inbounds bn.delta_v_bet[hl][:] = hp.b1 .* bn.delta_v_bet[hl] .+ (1.0 - hp.b1) .* bn.delta_bet[hl]  # @inbounds 
+            @inbounds bn.delta_bet[hl][:] = bn.delta_v_bet[hl]
         end
     end
 end
 
 
-function rmsprop!(nnw, hp, t)
+function rmsprop!(nnw, hp, bn, t)
     @fastmath for hl = (nnw.output_layer - 1):-1:2  # loop over hidden layers
-        @inbounds nnw.delta_v_w[hl] .= hp.b1 .* nnw.delta_v_w[hl] .+ (1.0 - hp.b1) .* nnw.delta_w[hl].^2   
-        @inbounds nnw.delta_w[hl] .=  (nnw.delta_w[hl]  ./   
-                              (sqrt.(nnw.delta_v_w[hl]) .+ hp.ltl_eps)  )
+        @inbounds nnw.delta_v_th[hl][:] = hp.b1 .* nnw.delta_v_th[hl] .+ (1.0 - hp.b1) .* nnw.delta_th[hl].^2   
+        @inbounds nnw.delta_th[hl][:] =  nnw.delta_th[hl] ./  (sqrt.(nnw.delta_v_th[hl]) .+ hp.ltl_eps)
 
         if !hp.do_batch_norm  # then we need to do bias term
-            @inbounds nnw.delta_v_b[hl] .= hp.b1 .* nnw.delta_v_b[hl] .+ (1.0 - hp.b1) .* nnw.delta_b[hl].^2   
-            @inbounds nnw.delta_b[hl] .= (nnw.delta_b[hl]  ./   
-                              (sqrt.(nnw.delta_v_b[hl]) .+ hp.ltl_eps)  )
+            @inbounds nnw.delta_v_b[hl][:] = hp.b1 .* nnw.delta_v_b[hl] .+ (1.0 - hp.b1) .* nnw.delta_b[hl].^2   
+            @inbounds nnw.delta_b[hl][:] = nnw.delta_b[hl] ./ (sqrt.(nnw.delta_v_b[hl]) .+ hp.ltl_eps)
+        else
+            @inbounds bn.delta_v_gam[hl][:] = hp.b1 .* bn.delta_v_gam[hl] .+ (1.0 - hp.b1) .* bn.delta_gam[hl].^2   
+            @inbounds bn.delta_gam[hl][:] = bn.delta_gam[hl] ./ (sqrt.(bn.delta_v_gam[hl]) .+ hp.ltl_eps)
+            @inbounds bn.delta_v_bet[hl][:] = hp.b1 .* bn.delta_v_bet[hl] .+ (1.0 - hp.b1) .* bn.delta_bet[hl].^2   
+            @inbounds bn.delta_bet[hl][:] = bn.delta_bet[hl] ./ (sqrt.(bn.delta_v_bet[hl]) .+ hp.ltl_eps)
         end
     end
 end
 
 
-function adam!(nnw, hp, t)
+function adam!(nnw, hp, bn, t)
     @fastmath for hl = (nnw.output_layer - 1):-1:2  # loop over hidden layers
-        @inbounds nnw.delta_v_w[hl] .= hp.b1 .* nnw.delta_v_w[hl] .+ (1.0 - hp.b1) .* nnw.delta_w[hl]  
-        @inbounds nnw.delta_s_w[hl] .= hp.b2 .* nnw.delta_s_w[hl] .+ (1.0 - hp.b2) .* nnw.delta_w[hl].^2   
-        @inbounds nnw.delta_w[hl] .= (  (nnw.delta_v_w[hl] ./ (1.0 - hp.b1^t)) ./   
-                              sqrt.(nnw.delta_s_w[hl] ./ (1.0 - hp.b2^t) .+ hp.ltl_eps)  )
+        # @inbounds nnw.delta_v_th[hl][:] = hp.b1 .* nnw.delta_v_th[hl] .+ (1.0 - hp.b1) .* nnw.delta_th[hl]  
+        # @inbounds nnw.delta_s_th[hl][:] = hp.b2 .* nnw.delta_s_th[hl] .+ (1.0 - hp.b2) .* nnw.delta_th[hl].^2   
+        # @inbounds nnw.delta_th[hl][:] = (  (nnw.delta_v_th[hl] ./ (1.0 - hp.b1^t)) ./   
+        #                       sqrt.(nnw.delta_s_th[hl] ./ (1.0 - hp.b2^t) .+ hp.ltl_eps)  )
+        adam_helper!(nnw.delta_v_th[hl], nnw.delta_s_th[hl], nnw.delta_th[hl], hp, t)
 
         if !hp.do_batch_norm  # then we need to do bias term
-            @inbounds nnw.delta_v_b[hl] .= hp.b1 .* nnw.delta_v_b[hl] .+ (1.0 - hp.b1) .* nnw.delta_b[hl]   
-            @inbounds nnw.delta_s_b[hl] .= hp.b2 .* nnw.delta_s_b[hl] .+ (1.0 - hp.b2) .* nnw.delta_b[hl].^2   
-            @inbounds nnw.delta_b[hl] .= (  (nnw.delta_v_b[hl] ./ (1.0 - hp.b1^t)) ./   
-                              sqrt.(nnw.delta_s_b[hl] ./ (1.0 - hp.b2^t) .+ hp.ltl_eps) )  
+            adam_helper!(nnw.delta_v_b[hl], nnw.delta_s_b[hl], nnw.delta_b[hl], hp, t)
+            # @inbounds nnw.delta_v_b[hl][:] = hp.b1 .* nnw.delta_v_b[hl] .+ (1.0 - hp.b1) .* nnw.delta_b[hl]   
+            # @inbounds nnw.delta_s_b[hl][:] = hp.b2 .* nnw.delta_s_b[hl] .+ (1.0 - hp.b2) .* nnw.delta_b[hl].^2   
+            # @inbounds nnw.delta_b[hl][:] = (  (nnw.delta_v_b[hl] ./ (1.0 - hp.b1^t)) ./   
+            #                   sqrt.(nnw.delta_s_b[hl] ./ (1.0 - hp.b2^t) .+ hp.ltl_eps) )  
+        else
+            adam_helper!(bn.delta_v_gam[hl], bn.delta_s_gam[hl], bn.delta_gam[hl], hp, t)
+            adam_helper!(bn.delta_v_bet[hl], bn.delta_s_bet[hl], bn.delta_bet[hl], hp, t)            
         end
     end
 end
 
+function adam_helper!(v_w, s_w, w, hp,t)
+    @inbounds v_w[:] = hp.b1 .* v_w .+ (1.0 - hp.b1) .* w  
+    @inbounds s_w[:] = hp.b2 .* s_w .+ (1.0 - hp.b2) .* w.^2   
+    @inbounds w[:] = (v_w ./ (1.0 - hp.b1^t)) ./ sqrt.(s_w ./ (1.0 - hp.b2^t) .+ hp.ltl_eps)
+end
 
 ##########################################################################
 # Regularization

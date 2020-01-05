@@ -279,7 +279,7 @@ function preallocate_wgts!(nnw, hp, in_k, n, out_k)
     end
 
     # bias initialization: small positive values can improve convergence
-    nnw.bias = [zeros(2)] # layer 1 not used
+    nnw.bias = [zeros(2)] # this is layer 1: never used.  placeholder to make layer indices consistent
 
     if hp.bias_initializer == 0.0
         bias_zeros(nnw.ks, nnw)  
@@ -294,16 +294,16 @@ function preallocate_wgts!(nnw, hp, in_k, n, out_k)
     end
 
     # structure of gradient matches theta
-    nnw.delta_w = deepcopy(nnw.theta)
+    nnw.delta_th = deepcopy(nnw.theta)
     nnw.delta_b = deepcopy(nnw.bias)
 
-    # initialize gradient, 2nd order gradient for Momentum or Adam
-    if hp.opt == "momentum" || hp.opt == "adam"
-        nnw.delta_v_w = [zeros(size(a)) for a in nnw.delta_w]
+    # initialize gradient, 2nd order gradient for Momentum or Adam or rmsprop
+    if hp.opt == "momentum" || hp.opt == "adam" || hp.opt == "rmsprop"
+        nnw.delta_v_th = [zeros(size(a)) for a in nnw.delta_th]
         nnw.delta_v_b = [zeros(size(a)) for a in nnw.delta_b]
     end
     if hp.opt == "adam"
-        nnw.delta_s_w = [zeros(size(a)) for a in nnw.delta_w]
+        nnw.delta_s_th = [zeros(size(a)) for a in nnw.delta_th]
         nnw.delta_s_b = [zeros(size(a)) for a in nnw.delta_b]
     end
 
@@ -367,6 +367,10 @@ function preallocate_batchnorm!(bn, mb, k)
     bn.bet = [zeros(i) for i in k] # beta is a builtin function
     bn.delta_gam = [zeros(i) for i in k]
     bn.delta_bet = [zeros(i) for i in k]
+    bn.delta_v_gam = [zeros(i) for i in k]
+    bn.delta_s_gam = [zeros(i) for i in k]
+    bn.delta_v_bet = [zeros(i) for i in k]
+    bn.delta_s_bet = [zeros(i) for i in k]
     bn.mu = [zeros(i) for i in k]  # same size as bias = no. of layer units
     bn.mu_run = [zeros(i) for i in k]
     bn.stddev = [zeros(i) for i in k]

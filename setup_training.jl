@@ -96,15 +96,22 @@ end
         incr::Int
     end
 
-    function mbiter(mb::MBrng, state)
-        up = state + mb.incr
-        hi = up - 1 < mb.cnt ? up - 1 : mb.cnt
-        ret = state < mb.cnt ? (state:hi, up) : nothing # return tuple of range and next state, or nothing--to stop iteration
+    function mbiter(mb::MBrng, start)  # new method for Base.iterate
+        nxtstart = start + mb.incr
+        stop = nxtstart - 1 < mb.cnt ? nxtstart - 1 : mb.cnt
+        ret = start < mb.cnt ? (start:stop, nxtstart) : nothing # return tuple of range and next state, or nothing--to stop iteration
         return ret
     end
 
-    # add iterate method
-    Base.iterate(mb::MBrng, state=1) = mbiter(mb::MBrng, state)
+    function mblength(mb::MBrng)  # new method for Base.length
+        return ceil(Int,mb.cnt / mb.incr)
+    end
+
+    # add iterate methods: must supply type for the new methods--method dispatch selects the method for this type of iterator
+        # the function  names don't matter--we provide an alternate for the standard methods, but the functions
+        # need to do the right things
+    Base.iterate(mb::MBrng, start=1) = mbiter(mb::MBrng, start)   # canonical to use "state" instead of "start"
+    Base.length(mb::MBrng) = mblength(mb)
 
 
 """

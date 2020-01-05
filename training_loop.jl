@@ -85,7 +85,7 @@ function train_one_step!(dat, nnw, bn, hp, t)
 
     feedfwd!(dat, nnw, hp)  # for all layers
     backprop!(nnw, dat, hp)  # for all layers   
-    optimization_function!(nnw, hp, t)
+    optimization_function!(nnw, hp, bn, t)
     update_parameters!(nnw, hp, bn)
 
 end
@@ -148,11 +148,11 @@ end
 
 """
 function backprop!(nnw, dat, hp)
-    Argument nnw.delta_w holds the computed gradients for Wgts, delta_b for bias
-    Modifies dat.epsilon, nnw.delta_w, nnw.delta_b in place--caller uses nnw.delta_w, nnw.delta_b
+    Argument nnw.delta_th holds the computed gradients for Wgts, delta_b for bias
+    Modifies dat.epsilon, nnw.delta_th, nnw.delta_b in place--caller uses nnw.delta_th, nnw.delta_b
     Use for training iterations
     Send it all of the data or a mini-batch
-    Intermediate storage of dat.a, dat.z, dat.epsilon, nnw.delta_w, nnw.delta_b reduces memory allocations
+    Intermediate storage of dat.a, dat.z, dat.epsilon, nnw.delta_th, nnw.delta_b reduces memory allocations
 """
 function backprop!(nnw, dat, hp)
     !hp.quiet && println("backprop!(nnw, dat, hp)")
@@ -167,7 +167,7 @@ function backprop!(nnw, dat, hp)
         dat.epsilon[nnw.output_layer][:] = dat.a[nnw.output_layer] .- dat.targets  
             !hp.quiet && println("What is epsilon of output layer? ", mean(dat.epsilon[nnw.output_layer]))
         # backprop affine
-        backprop_weights!(nnw.delta_w[nnw.output_layer], nnw.delta_b[nnw.output_layer], dat.delta_z[nnw.output_layer], 
+        backprop_weights!(nnw.delta_th[nnw.output_layer], nnw.delta_b[nnw.output_layer], dat.delta_z[nnw.output_layer], 
             dat.epsilon[nnw.output_layer], dat.a[nnw.output_layer-1], hp.mb_size)   
     end
 
@@ -182,11 +182,11 @@ function backprop!(nnw, dat, hp)
 
         batch_norm_back_function!(dat, hl)   # noop if not applicable
         # backprop affine
-        backprop_weights_function!(nnw.delta_w[hl], nnw.delta_b[hl], dat.delta_z[hl], 
+        backprop_weights_function!(nnw.delta_th[hl], nnw.delta_b[hl], dat.delta_z[hl], 
                                    dat.epsilon[hl], dat.a[hl-1], hp.mb_size)
         dropout_back_function![hl](dat, hl)  # noop if not applicable
 
-        !hp.quiet && println("what is delta_w $hl? ", nnw.delta_w[hl])
+        !hp.quiet && println("what is delta_th $hl? ", nnw.delta_th[hl])
         !hp.quiet && println("what is delta_b $hl? ", nnw.delta_b[hl])
 
     end
@@ -224,7 +224,7 @@ function batch_norm_back!(nnw, dat, bn, hl, hp)
     @inbounds bn.delta_gam[hl][:] = sum(dat.epsilon[hl] .* dat.z_norm[hl], dims=2) ./ mb
     @inbounds dat.delta_z_norm[hl][:] = bn.gam[hl] .* dat.epsilon[hl]  
 
-    # 1. per Lewis' assessment of multiple sources including Kevin Zakka
+    # 1. per Lewis' assessment of multiple sources including Kevin Zakka, Knet.jl
         # good training performance
         # fails grad check for backprop of revised z, but closest of all
     @inbounds dat.delta_z[hl][:] = (                               
@@ -311,7 +311,7 @@ function update_parameters!(nnw, hp, bn=Batch_norm_params())
 !hp.quiet && println("update_parameters!(nnw, hp, bn)")
     # update Wgts, bias, and batch_norm parameters
     @fastmath @inbounds for hl = 2:nnw.output_layer       
-        @inbounds nnw.theta[hl][:] = nnw.theta[hl] .- (hp.alphamod .* nnw.delta_w[hl])
+        @inbounds nnw.theta[hl][:] = nnw.theta[hl] .- (hp.alphamod .* nnw.delta_th[hl])
         
         reg_function![hl](nnw, hp, hl)  # regularize function per setup.jl setup_functions!
 
