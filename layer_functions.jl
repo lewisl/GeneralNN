@@ -237,10 +237,10 @@ function momentum!(nnw, hp, bn, t)
         @inbounds nnw.delta_v_th[hl][:] = hp.b1 .* nnw.delta_v_th[hl] .+ (1.0 - hp.b1) .* nnw.delta_th[hl]  # @inbounds 
         @inbounds nnw.delta_th[hl][:] = nnw.delta_v_th[hl]
 
-        if !hp.do_batch_norm  # then we need to do bias term
+        if !hp.do_batch_norm  # no batchnorm so we need to do bias term
             @inbounds nnw.delta_v_b[hl][:] = hp.b1 .* nnw.delta_v_b[hl] .+ (1.0 - hp.b1) .* nnw.delta_b[hl]  # @inbounds 
             @inbounds nnw.delta_b[hl][:] = nnw.delta_v_b[hl]
-        else
+        elseif hp.opt_batch_norm # yes, doing batchnorm, but don't use optimization
             @inbounds bn.delta_v_gam[hl][:] = hp.b1 .* bn.delta_v_gam[hl] .+ (1.0 - hp.b1) .* bn.delta_gam[hl]  # @inbounds 
             @inbounds bn.delta_gam[hl][:] = bn.delta_v_gam[hl]
             @inbounds bn.delta_v_bet[hl][:] = hp.b1 .* bn.delta_v_bet[hl] .+ (1.0 - hp.b1) .* bn.delta_bet[hl]  # @inbounds 
@@ -258,7 +258,7 @@ function rmsprop!(nnw, hp, bn, t)
         if !hp.do_batch_norm  # then we need to do bias term
             @inbounds nnw.delta_v_b[hl][:] = hp.b1 .* nnw.delta_v_b[hl] .+ (1.0 - hp.b1) .* nnw.delta_b[hl].^2   
             @inbounds nnw.delta_b[hl][:] = nnw.delta_b[hl] ./ (sqrt.(nnw.delta_v_b[hl]) .+ hp.ltl_eps)
-        else
+        elseif hp.opt_batch_norm # yes, doing batchnorm, but don't use optimization
             @inbounds bn.delta_v_gam[hl][:] = hp.b1 .* bn.delta_v_gam[hl] .+ (1.0 - hp.b1) .* bn.delta_gam[hl].^2   
             @inbounds bn.delta_gam[hl][:] = bn.delta_gam[hl] ./ (sqrt.(bn.delta_v_gam[hl]) .+ hp.ltl_eps)
             @inbounds bn.delta_v_bet[hl][:] = hp.b1 .* bn.delta_v_bet[hl] .+ (1.0 - hp.b1) .* bn.delta_bet[hl].^2   
@@ -270,19 +270,11 @@ end
 
 function adam!(nnw, hp, bn, t)
     @fastmath for hl = (nnw.output_layer - 1):-1:2  # loop over hidden layers
-        # @inbounds nnw.delta_v_th[hl][:] = hp.b1 .* nnw.delta_v_th[hl] .+ (1.0 - hp.b1) .* nnw.delta_th[hl]  
-        # @inbounds nnw.delta_s_th[hl][:] = hp.b2 .* nnw.delta_s_th[hl] .+ (1.0 - hp.b2) .* nnw.delta_th[hl].^2   
-        # @inbounds nnw.delta_th[hl][:] = (  (nnw.delta_v_th[hl] ./ (1.0 - hp.b1^t)) ./   
-        #                       sqrt.(nnw.delta_s_th[hl] ./ (1.0 - hp.b2^t) .+ hp.ltl_eps)  )
         adam_helper!(nnw.delta_v_th[hl], nnw.delta_s_th[hl], nnw.delta_th[hl], hp, t)
 
         if !hp.do_batch_norm  # then we need to do bias term
             adam_helper!(nnw.delta_v_b[hl], nnw.delta_s_b[hl], nnw.delta_b[hl], hp, t)
-            # @inbounds nnw.delta_v_b[hl][:] = hp.b1 .* nnw.delta_v_b[hl] .+ (1.0 - hp.b1) .* nnw.delta_b[hl]   
-            # @inbounds nnw.delta_s_b[hl][:] = hp.b2 .* nnw.delta_s_b[hl] .+ (1.0 - hp.b2) .* nnw.delta_b[hl].^2   
-            # @inbounds nnw.delta_b[hl][:] = (  (nnw.delta_v_b[hl] ./ (1.0 - hp.b1^t)) ./   
-            #                   sqrt.(nnw.delta_s_b[hl] ./ (1.0 - hp.b2^t) .+ hp.ltl_eps) )  
-        else
+        elseif hp.opt_batch_norm # yes, doing batchnorm, but don't use optimization
             adam_helper!(bn.delta_v_gam[hl], bn.delta_s_gam[hl], bn.delta_gam[hl], hp, t)
             adam_helper!(bn.delta_v_bet[hl], bn.delta_s_bet[hl], bn.delta_bet[hl], hp, t)            
         end

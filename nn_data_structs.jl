@@ -52,6 +52,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
     reg::String                 # L1, L2, maxnorm, or "none"
     maxnorm_lim::Array{Float64,1}# [] with limits for hidden layers and output layer
     opt::String                 # Adam or momentum or "none" or "" for optimization
+    opt_batch_norm::Bool        # don't optimize batchnorm params if optimizing training weights
     opt_params::Array{Float64,1}# parameters for optimization
     classify::String            # behavior of output layer: "softmax", "sigmoid", or "regression"
     mb_size::Int64              # minibatch size--calculated; last mini-batch may be smaller
@@ -84,6 +85,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         "",             # reg
         Float64[],      # maxnorm_lim
         "",             # opt
+        false,          # opt_batch_norm
         [],             # opt_params
         "sigmoid",      # classify
         0,              # mb_size

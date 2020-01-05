@@ -13,28 +13,23 @@
 # LSTM networks
 
 #TODO
-#   see if we could call delta_z from batch_norm_back epsilon and simplify functions/arguments in backprop
-#   fix usage of batchnorm variables when using batches but NOT batchnorm (delta_z used as arg...)
 #   investigate Zygote.jl
 #   how should we count layers?  
     # by combined layer (linear,bn,non-linear) = 1?
     # or by funtion (linear, bn, non-linear) = 3?
-#   should we eliminate z_norm to save memory? might be marginally faster using .=
 #   see if we can use batch normalization with full batch training
 #   check what happens to test cost with regularization:  it gets very big
 #   see if I can eliminate some of the function trickiness with clever use of optional args (or named args with defaults)
 #   should we have a normalize data option built-in (as we do)? or make the user do it when
          # preparing their own data?
-#   fix approach to weights inititalization:  set sizes with zeros, then update to initial values
 #   export onehot--decide how to transpose data
+#   should we eliminate the curried functions? it can be done, but lots of use of real or empty bn
 #   create a cost function method without L2 regularization
 #   create a cost prediction method that embeds the feedfwd predictions
 #   figure out memory requirements of pre-allocation.  is there someway to reduce and still get speed benefit?
 #   in testgrad, test for categorical data or provide other way to do onehot encoding if needed
 #   utilities for plotdef will break on old plotdefs because they are now called stats
-#   look for places to try performance benefit of @views when doing dot operations on arrays
 #   make sure we have a valid default for lambda
-#   evolve parameters without reloading data, etc.
 #   try to speed up saving the plot stats
 #   use goodness function to hold either accuracy or r_squared?
 #   implement incremental load and train for massive datasets?
@@ -158,7 +153,7 @@ import Measures: mm # for some plot dimensioning
 include("nn_data_structs.jl")
 include("training_loop.jl")
 include("layer_functions.jl")
-include("setup_model.jl")
+include("setup_params.jl")
 include("setup_data.jl")
 include("setup_training.jl")
 include("utilities.jl")

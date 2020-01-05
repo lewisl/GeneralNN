@@ -306,101 +306,22 @@ end
 
 
 
-"""
-Function setup_stats(hp, dotest::Bool)
 
-Creates data structure to hold everything needed to plot progress of
-neural net training by iteration.
 
-Training statistics are tracked in a dict containing:
+###################################################################
+#   experimental
+###################################################################
 
-    "track"=>Dict of bools to select each type of results to be collected.
-        Currently used are: "train", "test", "learning", "cost".  This determines what
-        data will be collected during training iterations and what data series will be
-        plotted.
-    "labels"=>array of strings provides the labels to be used in the
-        plot legend.
-    "cost"=>array of calculated cost at each iteration
-        with iterations as rows and data types ("train", "test") as columns.
-    "accuracy"=>array of percentage of correct classification
-        at each iteration with iterations as rows and result types as columns ("Training", "Test").
-        This plots a so-called learning curve.  Very interesting indeed.
-    "col_train"=>col_train: column of the arrays above to be used for Training results
-    "col_test"=>col_test: column of the arrays above to be used for Test results
-    "period"=>single string of "epoch" or "batch" chooses interval of data, or "" or "none" for none
+feedfwd_funcs = Dict(
+    "relu" => (f=relu!, args=()),
+    )
 
-"""
-function setup_stats(hp, dotest::Bool)
-    # set up cost_history to track 1 or 2 data series for plots
-    # lots of indirection here:  someday might add "validation"
-    if size(hp.stats,1) > 5
-        @warn("Only 4 plot requests permitted. Proceeding with up to 4.")
-    end
+backprop_funcs = Dict(
 
-    valid_inputs = ["train", "test", "learning", "cost", "epoch", "batch"]
-    if in(hp.stats, ["None", "none", ""])
-        track = Dict(item => false for item in valid_stats) # set all to false
-    else
-        track = Dict(item => in(item, hp.stats) for item in valid_stats)
-    end
+    )
 
-    # determine whether to plot per batch or per epoch
-    period = ""
-    if in(hp.stats, ["None", "none", ""]) || isempty(hp.stats)
-        period = ""      
-    elseif in("epoch", hp.stats) # this is the default and overrides choosing both, which isn't supported
-        period = "epoch"
-    elseif in("batch", hp.stats) && hp.dobatch
-        period = "batch"
-    end
 
-    pointcnt = if period == "epoch" 
-                    hp.epochs 
-                elseif period == "batch" 
-                    hp.n_mb * hp.epochs
-                else
-                    0
-                end
-
-    # must have test data to plot test results
-    if !dotest  # no test data
-        if track["test"]  # input requested plotting test data results
-            @warn("Can't plot test data. No test data. Proceeding.")
-            track["test"] = false
-        end
-    end
-
-    # set column in cost_history for each data series
-    col_train = track["train"] ? 1 : 0
-    col_test = track["test"] ? col_train + 1 : 0
-
-    no_of_cols = max(col_train, col_test)
-
-    labels = if col_train == 1 && col_test == 2
-                ("Train", "Test")
-            elseif col_train == 0 && col_test ==1
-                ("Test",)    # trailing comma needed because a one-element tuple generates to its element
-            elseif col_train == 1 && col_test == 0
-                ("Train",)   # trailing comma needed because a one-element tuple generates to its element
-            else
-                ()
-            end
-    # labels = reshape(labels,1,size(labels,1)) # 1 x N row array required by pyplot
-
-    # create all keys and values for dict stats
-        stats = Dict("track"=>track, "labels"=>labels)
-
-        if track["cost"]
-            stats["cost"] = zeros(pointcnt, no_of_cols) # cost history initialized to 0's
-        end
-        if track["learning"]
-            stats["accuracy"] = zeros(pointcnt, no_of_cols)
-        end
-
-        stats["col_train"] = col_train
-        stats["col_test"] = col_test
-
-        stats["period"] = period
-
-    return stats
+function build_model()
+    model = nothing # TODO
+    return model
 end
