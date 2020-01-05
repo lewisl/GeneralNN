@@ -167,7 +167,7 @@ function backprop!(nnw, dat, hp)
         dat.epsilon[nnw.output_layer][:] = dat.a[nnw.output_layer] .- dat.targets  
             !hp.quiet && println("What is epsilon of output layer? ", mean(dat.epsilon[nnw.output_layer]))
         # backprop affine
-        backprop_weights!(nnw.delta_th[nnw.output_layer], nnw.delta_b[nnw.output_layer], dat.delta_z[nnw.output_layer], 
+        backprop_weights!(nnw.delta_th[nnw.output_layer], nnw.delta_b[nnw.output_layer],  
             dat.epsilon[nnw.output_layer], dat.a[nnw.output_layer-1], hp.mb_size)   
     end
 
@@ -182,8 +182,7 @@ function backprop!(nnw, dat, hp)
 
         batch_norm_back_function!(dat, hl)   # noop if not applicable
         # backprop affine
-        backprop_weights_function!(nnw.delta_th[hl], nnw.delta_b[hl], dat.delta_z[hl], 
-                                   dat.epsilon[hl], dat.a[hl-1], hp.mb_size)
+        backprop_weights_function!(nnw.delta_th[hl], nnw.delta_b[hl], dat.epsilon[hl], dat.a[hl-1], hp.mb_size)
         dropout_back_function![hl](dat, hl)  # noop if not applicable
 
         !hp.quiet && println("what is delta_th $hl? ", nnw.delta_th[hl])
@@ -222,15 +221,15 @@ function batch_norm_back!(nnw, dat, bn, hl, hp)
     mb = hp.mb_size
     @inbounds bn.delta_bet[hl][:] = sum(dat.epsilon[hl], dims=2) ./ mb
     @inbounds bn.delta_gam[hl][:] = sum(dat.epsilon[hl] .* dat.z_norm[hl], dims=2) ./ mb
-    @inbounds dat.delta_z_norm[hl][:] = bn.gam[hl] .* dat.epsilon[hl]  
+    @inbounds dat.epsilon[hl][:] = bn.gam[hl] .* dat.epsilon[hl]  # delta_z_norm at this stage
 
     # 1. per Lewis' assessment of multiple sources including Kevin Zakka, Knet.jl
         # good training performance
         # fails grad check for backprop of revised z, but closest of all
-    @inbounds dat.delta_z[hl][:] = (                               
+    @inbounds dat.epsilon[hl][:] = (                               # often called delta_z
         (1.0 / mb) .* (1.0 ./ bn.stddev[hl])  .* (          # added term: .* bn.gam[hl]
-            mb .* dat.delta_z_norm[hl] .- sum(dat.delta_z_norm[hl], dims=2) .-
-            dat.z_norm[hl] .* sum(dat.delta_z_norm[hl] .* dat.z_norm[hl], dims=2)
+            mb .* dat.epsilon[hl] .- sum(dat.epsilon[hl], dims=2) .-
+            dat.z_norm[hl] .* sum(dat.epsilon[hl] .* dat.z_norm[hl], dims=2)
             )
         )
 
@@ -378,7 +377,7 @@ function update_batch_views!(mb::Batch_view, train::Model_data, nnw::Wgts,
         mb.z[i] = view(train.z[i],:,colrng) 
         mb.epsilon[i] = view(train.epsilon[i], :, colrng) 
         mb.grad[i] = view(train.grad[i], :, colrng)  
-        mb.delta_z[i] = view(train.delta_z[i], :, colrng)    
+        # mb.delta_z[i] = view(train.delta_z[i], :, colrng)    
     end
     mb.targets = view(train.targets,:,colrng)  # only at the output layer
     
@@ -387,7 +386,7 @@ function update_batch_views!(mb::Batch_view, train::Model_data, nnw::Wgts,
             # feedforward
             mb.z_norm[i] = view(train.z_norm[i],:, colrng) 
             # backprop
-            mb.delta_z_norm[i] = view(train.delta_z_norm[i], :, colrng)   
+            # mb.delta_z_norm[i] = view(train.delta_z_norm[i], :, colrng)   
         end
     end
 

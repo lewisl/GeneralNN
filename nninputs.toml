@@ -1,11 +1,11 @@
 epochs = 22
 # hidden = [["relu","80"],["relu","80"]]  # cannot mix types in a TOML array
 hidden = [["relu", "80"], ["relu", "80"]]  # [["relu", "80"]]   #[["relu", "80"], ["relu", "80"]]
-alpha =  0.50		  # 0.74
+alpha =  0.25		  # 0.74
 reg =  "L2"
 maxnorm_lim = [4.0]
 lambda =  0.000191  # 0.000191
-learn_decay = [1.0,1.0]
+learn_decay = [0.6,3.0]
 mb_size_in =   50
 norm_mode = ""
 dobatch = true

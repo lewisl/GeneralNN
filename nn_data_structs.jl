@@ -121,8 +121,8 @@ mutable struct Model_data               # we will use train for inputs and test 
     epsilon::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}       # dims of a
     # calculcated for batch_norm
     z_norm::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}   # same size as z--for batch_norm
-    delta_z_norm::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}    # same size as z
-    delta_z::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}        # same size as z
+    # delta_z_norm::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}    # same size as z
+    # delta_z::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}        # same size as z
     # calculate dropout mask for training
     dropout_random::Array{AbstractArray{Float64,2},1}     # randomization for dropout--dims of a
     dropout_mask_units::Array{BitArray{2}, 1}       # boolean filter for dropout--dims of a
@@ -140,8 +140,8 @@ mutable struct Model_data               # we will use train for inputs and test 
         [zeros(0,0)],       # grad
         [zeros(0,0)],       # epsilon
         [zeros(0,0)],       # z_norm -- only pre-allocate if batch_norm
-        [zeros(0,0)],       # delta_z_norm
-        [zeros(0,0)],       # delta_z
+        # [zeros(0,0)],       # delta_z_norm
+        # [zeros(0,0)],       # delta_z
         Array{Array{Float64,2},1}(undef, 0),   # dropout_random
         Array{BitArray{2},1}(undef, 0),        # dropout_mask_units   Array{Array{Bool,2},1}
         0,                              # n
@@ -160,8 +160,8 @@ mutable struct Batch_view               # we will use mb for as the variable for
     targets::SubArray{}  #::SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true}
     z::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     z_norm::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    delta_z_norm::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    delta_z::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    # delta_z_norm::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    # delta_z::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     grad::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     epsilon::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     dropout_random::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
@@ -172,8 +172,8 @@ mutable struct Batch_view               # we will use mb for as the variable for
         view([0.0],1:1),                 # targets
         Array{SubArray{}}[],  # z
         Array{SubArray{}}[],  # z_norm
-        Array{SubArray{}}[],  # delta_z_norm
-        Array{SubArray{}}[],  # delta_z
+        # Array{SubArray{}}[],  # delta_z_norm
+        # Array{SubArray{}}[],  # delta_z
         Array{SubArray{}}[],  # grad
         Array{SubArray{}}[],  # epsilon
         Array{SubArray{}}[],  # dropout_random

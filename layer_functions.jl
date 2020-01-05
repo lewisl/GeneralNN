@@ -101,15 +101,14 @@ end
 
     # Choice of function determined in setup_functions! in setup_training.jl
 
-    # uses delta_z from the backnorm calculations
-    function backprop_weights_nobias!(delta_th, delta_b, delta_z, epsilon, a_prev, n; showf = false)
+    # uses epsilon from the batchnorm_back calculations
+    function backprop_weights_nobias!(delta_th, delta_b, epsilon, a_prev, n; showf = false)
         showf && begin; println("backprop_weights_nobias!"); return; end;
-        mul!(delta_th, delta_z, a_prev')
+        mul!(delta_th, epsilon, a_prev')
         @fastmath delta_th[:] = delta_th .* (1.0 / n)
     end
 
-    # ignores delta_z terms because no batchnorm 
-    function backprop_weights!(delta_th, delta_b, delta_z, epsilon, a_prev, n; showf = false)
+    function backprop_weights!(delta_th, delta_b, epsilon, a_prev, n; showf = false)
         showf && begin; println("backprop_weights!"); return; end;
         mul!(delta_th, epsilon, a_prev')
         @fastmath delta_th[:] = delta_th .* (1.0 / n)
