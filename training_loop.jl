@@ -116,7 +116,7 @@ function feedfwd!(dat::Union{Batch_view,Model_data}, nnw, hp)
     @fastmath @inbounds for hl = 2:nnw.output_layer-1  
         affine_function!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl]) # if do_batch_norm, ignores bias arg
         batch_norm_fwd_function!(dat, hl)  # do it or noop
-        unit_function![hl](dat.a[hl], dat.z[hl])
+        unit_function![hl](dat.a[hl], dat.z[hl]) # per setup_functions
         dropout_fwd_function![hl](dat,hp,hl)  # do it or noop
     end
 
@@ -161,7 +161,6 @@ function backprop!(nnw, dat, hp)
     # println("size predictions: ", size(dat.a[nnw.output_layer]))
     # println("size targets: ", size(dat.targets))
 
-    # for output layer if cross_entropy_cost or mean squared error???    
     @inbounds begin
         # backprop classify
         dat.epsilon[nnw.output_layer][:] = dat.a[nnw.output_layer] .- dat.targets  
@@ -196,22 +195,24 @@ function batch_norm_fwd!(dat, bn, hp, hl; showf=false)
 !hp.quiet && println("batch_norm_fwd!(dat, bn, hp, hl)")
 showf && begin; println("batch_norm_fwd!"); return; end;
 
-    @inbounds bn.mu[hl][:] = mean(dat.z[hl], dims=2)          # use in backprop
-    @inbounds bn.stddev[hl][:] = std(dat.z[hl], dims=2)
-    @inbounds dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu[hl]) ./ (bn.stddev[hl]) # .+ hp.ltl_eps) # normalized: 'aka' xhat or zhat  @inbounds 
-    @inbounds dat.z[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y  @inbounds 
-    @inbounds bn.mu_run[hl][:] = (  bn.mu_run[hl][1] == 0.0 ? bn.mu[hl] :  
-        0.95 .* bn.mu_run[hl] .+ 0.05 .* bn.mu[hl]  )
-    @inbounds bn.std_run[hl][:] = (  bn.std_run[hl][1] == 0.0 ? bn.stddev[hl] :  
-        0.95 .* bn.std_run[hl] + 0.05 .* bn.stddev[hl]  )
+    @inbounds begin
+        bn.mu[hl][:] = mean(dat.z[hl], dims=2)          # use in backprop
+        bn.stddev[hl][:] = std(dat.z[hl], dims=2)
+        dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu[hl]) ./ (bn.stddev[hl] .+ hp.ltl_eps) # normalized: often xhat or zhat  
+        dat.z[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: often called y 
+        bn.mu_run[hl][:] = (  bn.mu_run[hl][1] == 0.0 ? bn.mu[hl] :  
+            0.95 .* bn.mu_run[hl] .+ 0.05 .* bn.mu[hl]  )
+        bn.std_run[hl][:] = (  bn.std_run[hl][1] == 0.0 ? bn.stddev[hl] :  
+            0.95 .* bn.std_run[hl] + 0.05 .* bn.stddev[hl]  )
+    end
 end
 
 
 function batch_norm_fwd_predict!(dat, bn, hp, hl)
 !hp.quiet && println("batch_norm_fwd_predict!(hp, bn, dat, hl)")
 
-    @inbounds dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu_run[hl]) ./ (bn.std_run[hl]) # .+ hp.ltl_eps) # normalized: 'aka' xhat or zhat  @inbounds 
-    @inbounds dat.z[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: 'aka' y  @inbounds 
+    @inbounds dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu_run[hl]) ./ (bn.std_run[hl] .+ hp.ltl_eps) # normalized: aka xhat or zhat 
+    @inbounds dat.z[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: often called y 
 end
 
 
@@ -221,13 +222,21 @@ function batch_norm_back!(nnw, dat, bn, hl, hp)
     mb = hp.mb_size
     @inbounds bn.delta_bet[hl][:] = sum(dat.epsilon[hl], dims=2) ./ mb
     @inbounds bn.delta_gam[hl][:] = sum(dat.epsilon[hl] .* dat.z_norm[hl], dims=2) ./ mb
-    @inbounds dat.epsilon[hl][:] = bn.gam[hl] .* dat.epsilon[hl]  # delta_z_norm at this stage
+    @inbounds dat.epsilon[hl][:] = bn.gam[hl] .* dat.epsilon[hl]  # often called delta_z_norm at this stage
 
     # 1. per Lewis' assessment of multiple sources including Kevin Zakka, Knet.jl
         # good training performance
         # fails grad check for backprop of revised z, but closest of all
-    @inbounds dat.epsilon[hl][:] = (                               # often called delta_z
-        (1.0 / mb) .* (1.0 ./ bn.stddev[hl])  .* (          # added term: .* bn.gam[hl]
+        # note we re-use epsilon to reduce pre-allocated memory, hp is the struct of
+        # Hyper_parameters, dat is the struct of activation data, 
+        # and we reference data and weights by layer [hl],
+        # so here is the analytical formula:
+        # delta_z = (1.0 / mb) .* (1.0 ./ (stddev .+ ltl_eps) .* (
+        #    mb .* delta_z_norm .- sum(delta_z_norm, dims=2) .-
+        #    z_norm .* sum(delta_z_norm .* z_norm, dims=2)
+        #   )
+    @inbounds dat.epsilon[hl][:] = (                               # often called delta_z, dx, dout, or dy
+        (1.0 / mb) .* (1.0 ./ (bn.stddev[hl] .+ hp.ltl_eps))  .* (          # added term: .* bn.gam[hl]
             mb .* dat.epsilon[hl] .- sum(dat.epsilon[hl], dims=2) .-
             dat.z_norm[hl] .* sum(dat.epsilon[hl] .* dat.z_norm[hl], dims=2)
             )
@@ -306,7 +315,7 @@ function batch_norm_back!(nnw, dat, bn, hl, hp)
 end
 
 
-function update_parameters!(nnw, hp, bn=Batch_norm_params())
+function update_parameters!(nnw, hp, bn)  # =Batch_norm_params()
 !hp.quiet && println("update_parameters!(nnw, hp, bn)")
     # update Wgts, bias, and batch_norm parameters
     @fastmath @inbounds for hl = 2:nnw.output_layer       

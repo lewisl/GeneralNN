@@ -142,6 +142,7 @@ function pretrain(dat_x, dat_y, hp)
     !hp.quiet && println("Training setup complete")
 end
 
+
 function prepredict(dat_x, dat_y, hp, nnw; notrain=true)
     notrain && (Random.seed!(70653))  # seed int value is meaningless
 

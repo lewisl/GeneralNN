@@ -211,7 +211,7 @@ mutable struct Batch_norm_params               # we will use bn as the struct va
     delta_v_bet::Array{Array{Float64,1},1}  
     delta_s_bet::Array{Array{Float64,1},1}  
     # for standardizing batch values
-    mu::Array{Array{Float64,1},1}              # mean of z; same size as bias = no. of layer units
+    mu::Array{Array{Float64,1},1}              # mean of z; same size as bias = no. of input layer units
     stddev::Array{Array{Float64,1},1}          # std dev of z;   ditto
     mu_run::Array{Array{Float64,1},1}          # running average of mu
     std_run::Array{Array{Float64,1},1}         # running average of stddev

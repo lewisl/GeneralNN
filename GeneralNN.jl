@@ -13,11 +13,13 @@
 # LSTM networks
 
 #TODO
-#   investigate Zygote.jl
+#   add ability to choose BN per layer (inc. for output layer or not)
+#   add ability to put bn after linear or after activation
+#   investigate Zygote.jl for automatic differentiation
 #   how should we count layers?  
     # by combined layer (linear,bn,non-linear) = 1?
     # or by funtion (linear, bn, non-linear) = 3?
-#   see if we can use batch normalization with full batch training
+#   test if we can use batch normalization with full batch training
 #   check what happens to test cost with regularization:  it gets very big
 #   see if I can eliminate some of the function trickiness with clever use of optional args (or named args with defaults)
 #   should we have a normalize data option built-in (as we do)? or make the user do it when
@@ -55,6 +57,10 @@
         # To use an infix operator, you can use \cdot, as in view(A,:,j)⋅r.
 #   figure out memory use between train set and minibatch set
 #   someday, maybe, allow stats tracking for both batch and epoch--need up to 4 arrays
+
+# DEFER
+#   implement layer normalization with or without minibatches. should be easy, but side effects 
+
 
 #Document
 #   say which properties in hyper_parameters are "calculated" and which are directly from user input
