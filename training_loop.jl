@@ -126,8 +126,8 @@ function feedfwd!(dat::Union{Batch_view,Model_data}, nnw, hp, ff_execstack)
     # classify_function!(dat.a[nnw.output_layer], dat.z[nnw.output_layer])  # a = activations = predictions
 
     for lr in 1:hp.n_layers
-        layer_group = ff_execstack[lr]
-        for f in layer_group
+        # layer_group = ff_execstack[lr]
+        for f in ff_execstack[lr]
             f(lr)
         end
     end

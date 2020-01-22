@@ -115,39 +115,91 @@ end
 
 
 function create_funcs(dat, nnw, bn, hp)
-    # curried function definitions for feed forward
+    # curried/closure function definitions for feed forward
+
     # affine
-    affine!(hl) = GeneralNN.affine!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
-    affine_nobias!(hl) = GeneralNN.affine_nobias!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
+    affine!(hl) = let 
+            dat.z = dat.z; dat.a = dat.a; nnw.theta = nnw.theta; nnw.bias = nnw.bias;
+            GeneralNN.affine!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
+        end
+    affine_nobias!(hl) = let
+            dat.z = dat.z; dat.a = dat.a; nnw.theta = nnw.theta; nnw.bias = nnw.bias
+            GeneralNN.affine_nobias!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
+        end
     # dropout
     
     # activation
-    sigmoid!(hl) = GeneralNN.sigmoid!(dat.a[hl], dat.z[hl])
-    tanh_act!(hl) = GeneralNN.tanh_act!(dat.a[hl], dat.z[hl])
-    l_relu!(hl) = GeneralNN.l_relu!(dat.a[hl], dat.z[hl])
-    relu!(hl) = GeneralNN.relu!(dat.a[hl], dat.z[hl])
+    sigmoid!(hl) = let
+            dat.a = dat.a; dat.z = dat.z
+            GeneralNN.sigmoid!(dat.a[hl], dat.z[hl])
+        end
+    tanh_act!(hl) = let
+            dat.a = dat.a; dat.z = dat.z
+            GeneralNN.tanh_act!(dat.a[hl], dat.z[hl])
+        end
+    l_relu!(hl) = let
+            dat.a = dat.a; dat.z = dat.z
+            GeneralNN.l_relu!(dat.a[hl], dat.z[hl])
+        end
+    relu!(hl) = let
+            dat.a = dat.a; dat.z = dat.z
+            GeneralNN.relu!(dat.a[hl], dat.z[hl])
+        end
 
     # classification
-    softmax!(hl) = GeneralNN.softmax!(dat.a[hl], dat.z[hl])
-    logistic!(hl) = GeneralNN.logistic!(dat.a[hl], dat.z[hl])
-    regression!(hl) = GeneralNN.regression!(dat.a[hl], dat.z[hl])
+    softmax!(hl) = let
+            dat.a = dat.a; dat.z = dat.z
+            GeneralNN.softmax!(dat.a[hl], dat.z[hl])
+        end
+    logistic!(hl) = let
+            dat.a = dat.a; dat.z = dat.z
+            GeneralNN.logistic!(dat.a[hl], dat.z[hl])
+        end
+    regression!(hl) = let
+            dat.a = dat.a; dat.z = dat.z
+            GeneralNN.regression!(dat.a[hl], dat.z[hl])
+        end
 
     # batch norm
-    batch_norm_fwd!(hl) = GeneralNN.batch_norm_fwd!(dat, bn, hp, hl)
+    batch_norm_fwd!(hl) = let
+            dat = dat; bn = bn; hp = hp;
+            GeneralNN.batch_norm_fwd!(dat, bn, hp, hl)
+        end
 
     # optimization
-    dropout_fwd!(hl) = dropout_fwd!(dat, hp, hl)
+    dropout_fwd!(hl) = let
+            dat = dat; hp = hp; 
+            dropout_fwd!(dat, hp, hl)
+        end
 
     # curried function definitions for back propagation
     # gradient of activation functions
-    affine_gradient(hl) = affine_gradient(dat, hl)  # not using yet TODO RENAME FOR CONSISTENCY; can't work as is
-    sigmoid_gradient!(hl) = sigmoid_gradient!(dat.grad[hl], dat.z[hl])
-    tanh_act_gradient!(hl) = l_relu_gradient!(dat.grad[hl], dat.z[hl])
-    l_relu_gradient!(hl) = l_relu_gradient!(dat.grad[hl], dat.z[hl])
-    relu_gradient!(hl) = relu_gradient!(dat.grad[hl], dat.z[hl])
+    affine_gradient(hl) = let
+            dat = dat
+            affine_gradient(dat, hl)  # not using yet TODO RENAME FOR CONSISTENCY; can't work as is
+        end
+    sigmoid_gradient!(hl) = let
+            dat.grad = dat.grad; dat.z = dat.z
+            sigmoid_gradient!(dat.grad[hl], dat.z[hl])
+        end
+    tanh_act_gradient!(hl) = let
+            dat.grad = dat.grad; dat.z = dat.z
+            l_relu_gradient!(dat.grad[hl], dat.z[hl])
+        end
+    l_relu_gradient!(hl) = let
+            dat.grad = dat.grad; dat.z = dat.z
+            l_relu_gradient!(dat.grad[hl], dat.z[hl])
+        end
+    relu_gradient!(hl) = let
+            dat.grad = dat.grad; dat.z = dat.z
+            relu_gradient!(dat.grad[hl], dat.z[hl])
+        end
 
     # optimization
-    dropout_back!(hl) = dropout_back!(dat, hl)
+    dropout_back!(hl) = let
+            dat = dat
+            dropout_back!(dat, hl)
+        end
 
     # indexable function container  TODO start with just feed fwd
     func_dict = Dict(   # activation

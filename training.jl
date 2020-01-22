@@ -62,7 +62,8 @@ function train(train_x, train_y, hp, testgrad=false)
                 "Wgts" => nnw, 
                 "batchnorm_params" => bn, 
                 "hyper_params" => hp,
-                "stats" => stats
+                "stats" => stats,
+                "model" => model.ff_strstack
                 )
 
     return ret
@@ -97,7 +98,8 @@ function train(train_x, train_y, test_x, test_y, hp, testgrad=false)
                 "test_inputs" => test.inputs, 
                 "test_targets" => test.targets, 
                 "test_preds" => test.a[nnw.output_layer],  
-                "stats" => stats
+                "stats" => stats,
+                "model" => model.ff_strstack
                 )
 
     return ret, stats

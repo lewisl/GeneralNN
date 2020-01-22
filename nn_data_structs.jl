@@ -241,15 +241,15 @@ struct Model_runner holds the functions that will run in a
 model based on the hyper_parameters and data
 """
 mutable struct Model_runner
-    ff_strstack
-    ff_execstack
-    back_strstack
-    back_execstack
+    ff_strstack::Array{Array{String,1},1}
+    ff_execstack::Array{Array{Function,1},1}
+    back_strstack::Array{Array{String,1},1}
+    back_execstack::Array{Array{Function,1},1}
 
     Model_runner() = new(
-        [],
-        [],
-        [],
-        []
+        [String[]],
+        [Function[]],
+        [Function[]],
+        [Function[]]
     )
 end
