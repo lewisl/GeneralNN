@@ -124,7 +124,7 @@ end
 
 # two methods for gradient of linear layer units:  without bias and with
 # not using this yet
-function affine_gradient(data, layer)  # no bias
+function affine_gradient!(data, layer)  # no bias
     return data.a[layer-1]'
 end
 

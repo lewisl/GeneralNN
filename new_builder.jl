@@ -4,6 +4,148 @@
 using GeneralNN
 
 
+function test_run(tomlfn, datafn, do_mb = false)
+    hp = GeneralNN.setup_params(tomlfn)
+    trainx, trainy = GeneralNN.extract_data(datafn)
+    GeneralNN.shuffle_data!(trainx, trainy)
+    train, mb, nnw, bn = GeneralNN.pretrain(trainx, trainy, hp)
+
+
+    func_dict = create_funcs(train, nnw, bn, hp)
+    n_layers = length(hp.hidden) + 2
+    strstack = build_string_stack(hp)
+    execstack = build_exec_stack(strstack, func_dict)
+
+    if do_mb 
+        GeneralNN.update_batch_views!(mb, train, nnw, hp, 1:50) 
+        dat = mb
+    else
+        dat = train
+    end
+    model_runner!(dat, nnw, bn, execstack, n_layers)
+
+    ret = Dict(
+            "train_inputs" => trainx, 
+            "train_targets"=> trainy, 
+            "train_preds" => dat.a[nnw.output_layer], 
+            "Wgts" => nnw, 
+            "batchnorm_params" => bn, 
+            "hyper_params" => hp,
+            "strstack" => strstack,
+            "execstack"  => execstack
+            )
+end
+
+
+#   builds the strings for functions and arguments
+function build_string_stack(hp)
+    strstack = []  # will be array of string arrays, 1 per layer group
+
+    n_hid = length(hp.hidden)
+    # input layer
+    i = 1
+        push!(strstack, String[])
+        if hp.dropout && (hp.droplim[1] < 1.0)
+            push!(strstack[i], "dropout")
+        end
+
+    # hidden layers        
+    for i = 2:n_hid+1 
+        push!(strstack, String[])
+
+        # affine either or...
+        hp.do_batch_norm && push!(strstack[i], "affine_nobias") # true
+        hp.do_batch_norm || push!(strstack[i], "affine") # false
+        # batch_norm_fwd 
+        hp.do_batch_norm && push!(strstack[i], "batch_norm_fwd")
+        # unit_function --> updates in place
+        unit_function = 
+            if hp.hidden[i-1][1] == "sigmoid"
+                "sigmoid"
+            elseif hp.hidden[i-1][1] == "l_relu"
+                "l_relu"
+            elseif hp.hidden[i-1][1] == "relu"
+                "relu"
+            elseif hp.hidden[i-1][1] == "tanh"
+                "tanh_act"
+            end
+        push!(strstack[i], unit_function)
+        # dropout --> updates in place
+        if hp.dropout && (hp.droplim[hl] < 1.0)
+            push!(strstack[i], "dropout")
+        end        
+    end
+
+    #   output layer
+    i = n_hid + 2
+        push!(strstack, String[])
+
+        push!(strstack[i], "affine")
+        # classify_function --> updates in place
+        classify_function = 
+            # if train.out_k > 1  # more than one output (unit)
+                if hp.classify == "sigmoid"
+                    "sigmoid"
+                elseif hp.classify == "softmax"
+                    "softmax"
+                else
+                    error("Function to classify output labels must be \"sigmoid\" or \"softmax\".")
+                end
+            # else
+            #     if hp.classify == "sigmoid" || hp.classify == "logistic"
+            #         "logistic!"  # for one output label
+            #     elseif hp.classify == "regression"
+            #         "regression!"
+            #     else
+            #         error("Function to classify output must be \"sigmoid\", \"logistic\" or \"regression\".")
+            #     end
+            # end
+        push!(strstack[i], classify_function)
+
+    return strstack
+end
+
+
+function create_funcs(dat, nnw, bn, hp)
+    # curried function definitions
+    affine!(hl) = GeneralNN.affine!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
+    affine_nobias!(hl) = GeneralNN.affine_nobias!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
+    relu!(hl) = GeneralNN.relu!(dat.a[hl], dat.z[hl])
+    softmax!(hl) = GeneralNN.softmax!(dat.a[hl], dat.z[hl])
+    batch_norm_fwd!(hl) = GeneralNN.batch_norm_fwd!(dat, bn, hp, hl)
+
+    # indexable function container
+    func_dict = Dict(
+                        "affine" => affine!,
+                        "affine_nobias" => affine_nobias!,
+                        "relu" => relu!,
+                        "softmax" => softmax!,
+                        "batch_norm_fwd" => batch_norm_fwd!
+                    )
+end
+
+
+function build_exec_stack(strstack, func_dict)  
+    execstack = []
+    for i in 1:size(strstack,1)
+        push!(execstack,[])
+        for r in strstack[i]
+            push!(execstack[i], func_dict[r])
+        end
+    end
+    return execstack
+end
+
+
+function model_runner!(dat, nnw, bn, execstack, n_layers)
+    for hl in 1:n_layers
+        layer_grp = execstack[hl]
+        for f in layer_grp
+            f(hl)
+        end
+    end
+end
+
 
 function build_ff_layer(ff_funcs, ff_args)
 
@@ -61,75 +203,11 @@ function build_ff_predict_layers()
 end
 
 
-#   builds the strings for functions and arguments
-function build_train_stack(hp)
-    train_funcs = String[]
-    train_args = String[]
-    # input_layer
-        # dropout
-    if hp.dropout && (hp.droplim[1] < 1.0)
-        push!(train_funcs, "dropout")
-        push!(train_args, "dropout")
-    end
-    # hidden layers
-    n_hid = length(hp.hidden)
-    for i = 2:n_hid 
-        # affine
-        hp.do_batch_norm && push!(train_funcs, "affine_nobias") # true
-        hp.do_batch_norm || push!(train_funcs, "affine") # false
-        push!(train_args, "affine")
-        # batch_norm_fwd 
-        hp.do_batch_norm && push!(train_funcs, "batch_norm_fwd")
-        hp.do_batch_norm && push!(train_args, "batch_norm_fwd")
-        # unit_function --> updates in place
-        unit_function = 
-            if hp.hidden[i][1] == "sigmoid"
-                "sigmoid"
-            elseif hp.hidden[i][1] == "l_relu"
-                "l_relu"
-            elseif hp.hidden[i][1] == "relu"
-                "relu"
-            elseif hp.hidden[i][1] == "tanh"
-                "tanh_act"
-            end
-        push!(train_funcs, unit_function)
-        push!(train_args, unit_function)
-        # dropout --> updates in place
-        if hp.dropout && (hp.droplim[hl] < 1.0)
-            push!(train_funcs, "dropout")
-            push!(train_args, "dropout")
-        end        
-    end
-    # output layer
-        # affine  --> updates in place
-        push!(train_funcs, "affine")
-        push!(train_args, "affine")
-        # classify_function --> updates in place
-        classify_function = 
-            # if train.out_k > 1  # more than one output (unit)
-                if hp.classify == "sigmoid"
-                    "sigmoid"
-                elseif hp.classify == "softmax"
-                    "softmax"
-                else
-                    error("Function to classify output labels must be \"sigmoid\" or \"softmax\".")
-                end
-            # else
-            #     if hp.classify == "sigmoid" || hp.classify == "logistic"
-            #         "logistic!"  # for one output label
-            #     elseif hp.classify == "regression"
-            #         "regression!"
-            #     else
-            #         error("Function to classify output must be \"sigmoid\", \"logistic\" or \"regression\".")
-            #     end
-            # end
-    push!(train_funcs, classify_function)
-    push!(train_args, classify_function)
-    return train_funcs, train_args
-end
+
 
 function build_ff_train_args(hp,nnw)
 end
+
 
 function run_loop()
     # put function and arguments together
@@ -142,6 +220,7 @@ function build_all_funcs() # later replace with 1 layer at a time
     all_funcs = Dict{String,Function}()
     # layer functions
     all_funcs["affine"] = GeneralNN.affine! 
+    all_funcs["affine_nobias"] = GeneralNN.affine_nobias!
     all_funcs["sigmoid"] = GeneralNN.sigmoid! 
     all_funcs["tanh_act"] = GeneralNN.tanh_act! 
     all_funcs["l_relu"] = GeneralNN.l_relu!
@@ -163,28 +242,57 @@ function build_all_funcs() # later replace with 1 layer at a time
 end
 
 
-function build_all_args()
+# function build_all_args()
+# # these are the actual argument values used to call the functions,
+# #    NOT the parameters/arguments used in the function signatures
+#     all_args = Dict{String,String}()
+#     # args for layer functions
+#     all_args["affine"] = "(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])"
+#     all_args["affine_nobias"] = "(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])"  # could use specific list ultimately
+#     all_args["batch_norm_fwd"] = "(dat, bn, hp, hl)"
+#     all_args["sigmoid"] = "(dat.a[hl], dat.z[hl])"
+#     all_args["tanh_act"] = "(dat.a[hl], dat.z[hl])"
+#     all_args["tanh_act"] = "(dat.a[hl], dat.z[hl])"
+#     all_args["l_relu"] = "(dat.a[hl], dat.z[hl])"
+#     all_args["relu"] = "(dat.a[hl], dat.z[hl])"
+#     # args for classifiers
+#     all_args["softmax"] = "(dat.a[nnw.output_layer], dat.z[nnw.output_layer])"
+#     all_args["logistic"] = "(dat.a[nnw.output_layer], dat.z[nnw.output_layer])"
+#     all_args["regression"] = "(dat.a[nnw.output_layer], dat.z[nnw.output_layer])"
+#     # args for gradients
+#     all_args["sigmoid_gradient"] = "(dat.grad[hl], dat.z[hl])"
+#     all_args["tanh_act_gradient"] = "(dat.grad[hl], dat.z[hl])"
+#     all_args["l_relu_gradient"] = "(dat.grad[hl], dat.z[hl])"
+#     all_args["relu_gradient"] = "(dat.grad[hl], dat.z[hl])"
+#     # args for others
+#     all_args["dropout"] = ""
+
+#     return all_args
+# end
+
+
+function build_all_args(dat, nnw, hp, bn)
 # these are the actual argument values used to call the functions,
 #    NOT the parameters/arguments used in the function signatures
     all_args = Dict{String,String}()
     # args for layer functions
-    all_args["affine"] = "(dat.z[#i], dat.a[#i-1], nnw.theta[#i], nnw.bias[#i])"
-    all_args["affine_no_bias"] = "(dat.z[#i], dat.a[#i-1], nnw.theta[#i], nnw.bias[#i])"  # could use specific list ultimately
-    all_args["batch_norm_fwd"] = "(dat, bn, hp, hl)"
-    all_args["sigmoid"] = "(dat.a[#i], dat.z[#i])"
-    all_args["tanh_act"] = "(dat.a[#i], dat.z[#i])"
-    all_args["tanh_act"] = "(dat.a[#i], dat.z[#i])"
-    all_args["l_relu"] = "(dat.a[#i], dat.z[#i])"
-    all_args["relu"] = "(dat.a[#i], dat.z[#i])"
+    all_args["affine"] = (dat.z[:hl], dat.a[:hl-1], nnw.theta[:hl], nnw.bias[:hl])
+    all_args["affine_nobias"] = (dat.z[:hl], dat.a[:hl-1], nnw.theta[:hl], nnw.bias[:hl])  # could use specific list ultimately
+    all_args["batch_norm_fwd"] = (dat, bn, hp, :hl)
+    all_args["sigmoid"] = (dat.a[:hl], dat.z[:hl])
+    all_args["tanh_act"] = (dat.a[:hl], dat.z[:hl])
+    all_args["tanh_act"] = (dat.a[:hl], dat.z[:hl])
+    all_args["l_relu"] = (dat.a[:hl], dat.z[:hl])
+    all_args["relu"] = (dat.a[:hl], dat.z[:hl])
     # args for classifiers
-    all_args["softmax"] = "(dat.a[nnw.output_layer], dat.z[nnw.output_layer])"
-    all_args["logistic"] = "(dat.a[nnw.output_layer], dat.z[nnw.output_layer])"
-    all_args["regression"] = "(dat.a[nnw.output_layer], dat.z[nnw.output_layer])"
+    all_args["softmax"] = (dat.a[nnw.output_layer], dat.z[nnw.output_layer])
+    all_args["logistic"] = (dat.a[nnw.output_layer], dat.z[nnw.output_layer])
+    all_args["regression"] = (dat.a[nnw.output_layer], dat.z[nnw.output_layer])
     # args for gradients
-    all_args["sigmoid_gradient"] = "(dat.grad[#i], dat.z[#i])"
-    all_args["tanh_act_gradient"] = "(dat.grad[#i], dat.z[#i])"
-    all_args["l_relu_gradient"] = "(dat.grad[#i], dat.z[#i])"
-    all_args["relu_gradient"] = "(dat.grad[#i], dat.z[#i])"
+    all_args["sigmoid_gradient"] = (dat.grad[:hl], dat.z[:hl])
+    all_args["tanh_act_gradient"] = (dat.grad[:hl], dat.z[:hl])
+    all_args["l_relu_gradient"] = (dat.grad[:hl], dat.z[:hl])
+    all_args["relu_gradient"] = (dat.grad[:hl], dat.z[:hl])
     # args for others
     all_args["dropout"] = ""
 
@@ -241,36 +349,45 @@ end
 
 # first test:  hard code the functions and function list--e.g., no building
 
-all_funcs = Dict("affine!" => affine!, "sigmoid!" => sigmoid!, "relu!" => relu!)
-all_args = Dict("affine w bias" => "(z[#i],a[#i-1],theta[#i],bias[#i])", "affine no bias" => "(z[#i], a[#i - 1], theta[#i])", 
-            "sigmoid!" => "(a[#i],z[#i])", "relu!" => "(a[#i],z[#i])")
+# all_funcs = Dict("affine!" => affine!, "sigmoid!" => sigmoid!, "relu!" => relu!)
+# all_args = Dict("affine w bias" => "(z[#i],a[#i-1],theta[#i],bias[#i])", "affine no bias" => "(z[#i], a[#i - 1], theta[#i])", 
+#             "sigmoid!" => "(a[#i],z[#i])", "relu!" => "(a[#i],z[#i])")
 
 
 
-# this puts in the layer number and parses--only needs to be done once
-function builder(ffstack)  # arg is array of Tuple{function, expression}
-    ret = []
-    i = 1
-    for (func, arg) in ffstack
-        i += 1
-        push!(ret, build_layer(func, arg, i))
-    end
-    return ret
-end
 
-function build_layer(func, arg, n)
-    return (all_funcs[func], Meta.parse(replace(all_args[arg], "#i" => n)))
+function build_layer(func, arg)
+    return (func, arg)  # Meta.parse(arg)
 end
 
 
-# only need to eval, which would happen in any case
-function runner(model)
-    for (i,j) in model
-        i(eval(j)...)
+function runtst(tomlfn, datafn)
+    hp = GeneralNN.setup_params(tomlfn)
+    trainx, trainy = GeneralNN.extract_data(datafn)
+    train, mb, nnw, bn = GeneralNN.pretrain(trainx, trainy, hp)
+
+    for i = 1:4
+        println(tst(dat, i))
     end
 end
 
-# this will be no faster than an explicit eval()
+function tst(dat, hl)
+    dat.z[hl][1]
+end
+
+j = rand(5)
+k = zeros(5)
+macro runit(op, ins)
+    return quote
+                local args = Meta.parse.($ins)
+                $op(eval(args.args[1]), eval(args.args[2]))
+           end
+end
+
+
+
+
+# this will be batch_norm faster than an explicit eval()
 macro get_arg(argument)
     quote
         eval($(esc(argument)))
@@ -300,14 +417,13 @@ function runner_old(funclist, arglist)
 end
 
 
-
-function test_new_builder(hp)
+# not using...
+function test_new_builder(hp, func_dict)
     # dat, mb, nnw, bn = pretrain(trainx, trainy, hp)
 
     # build model stack
-    all_args = build_all_args()
-    all_funcs = build_all_funcs()
-    build_train_stack(hp)
+    strstack = build_string_stack(hp)
+    execstack = build_exec_stack(strstack, func_dict)
 
 end
 

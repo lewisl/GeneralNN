@@ -296,17 +296,17 @@ end
     Save, print and plot training statistics after all epochs
 
 """
-function output_stats(train, test, nnw, hp, training_time, stats)
-    _output_stats(train, test, nnw, hp, training_time, stats)
+function output_stats(train, test, nnw, hp, training_time, stats, model)
+    _output_stats(train, test, nnw, hp, training_time, stats, model)
 end
 
 # TODO maybe we don't need a valid Model_data object
-function output_stats(train, nnw, hp, training_time, stats)
-    _output_stats(train, Model_data(), nnw, hp, training_time, stats)
+function output_stats(train, nnw, hp, training_time, stats, model)
+    _output_stats(train, Model_data(), nnw, hp, training_time, stats, model)
         # Model_data passes an empty test object
 end
 
-function _output_stats(train, test, nnw, hp, training_time, stats)
+function _output_stats(train, test, nnw, hp, training_time, stats, model)
 
     dotest = isempty(test.inputs) ? false : true
 
@@ -320,7 +320,7 @@ function _output_stats(train, test, nnw, hp, training_time, stats)
         println(outfile, "Training time: ",training_time, " seconds")  # cpu time since tic() =>  toq() returns secs without printing
 
         # output for entire training set
-        feedfwd_predict!(train, nnw, hp)  
+        feedfwd_predict!(train, nnw, hp, model.ff_execstack)  
         println(outfile, "Fraction correct labels predicted training: ",
                 hp.classify == "regression" ? r_squared(train.targets, train.a[nnw.output_layer])
                     : accuracy(train.targets, train.a[nnw.output_layer]))

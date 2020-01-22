@@ -33,6 +33,7 @@ mutable struct Wgts              # we will use nnw as the struct variable
     )
 end
 
+
 """
 struct Hyper_parameters holds hyper_parameters used to control training
 """
@@ -41,6 +42,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
     alphamod::Float64           # optionally adjust learning rate with learn_decay
     lambda::Float64             # L2 regularization rate
     hidden::Array{Tuple{String,Int64},1}       # array of ("unit", number) for hidden layers
+    n_layers::Int64
     b1::Float64                 # 1st optimization for momentum or Adam
     b2::Float64                 # 2nd optimization parameter for Adam
     ltl_eps::Float64            # use in denominator with division of very small values to prevent overflow
@@ -74,6 +76,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         0.35,           # alphamod
         0.01,           # lambda
         [("none",0)],   # hidden
+        0,              # n_layers
         0.9,            # b1
         0.999,          # b2
         1e-8,           # ltl_eps
@@ -229,5 +232,24 @@ mutable struct Batch_norm_params               # we will use bn as the struct va
         Array{Array{Float64,1},1}(undef, 0),    # stddev
         Array{Array{Float64,1},1}(undef, 0),    # mu_run
         Array{Array{Float64,1},1}(undef, 0)     # std_run
+    )
+end
+
+
+"""
+struct Model_runner holds the functions that will run in a 
+model based on the hyper_parameters and data
+"""
+mutable struct Model_runner
+    ff_strstack
+    ff_execstack
+    back_strstack
+    back_execstack
+
+    Model_runner() = new(
+        [],
+        [],
+        [],
+        []
     )
 end

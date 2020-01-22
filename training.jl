@@ -44,16 +44,16 @@ function train(train_x, train_y, hp, testgrad=false)
     !hp.quiet && println("Training setup beginning")
     dotest = false
 
-    train, mb, nnw, bn = pretrain(train_x, train_y, hp)
+    train, mb, nnw, bn, model = pretrain(train_x, train_y, hp)
 
     stats = setup_stats(hp, dotest)  
 
     !hp.quiet && println("Training setup complete")
 
-    training_time = training_loop!(hp, train, mb, nnw, bn, stats)
+    training_time = training_loop!(hp, train, mb, nnw, bn, stats, model)
 
     # save, print and plot training statistics
-    output_stats(train, nnw, hp, training_time, stats)
+    output_stats(train, nnw, hp, training_time, stats, model)
 
     ret = Dict(
                 "train_inputs" => train_x, 
@@ -75,17 +75,17 @@ function train(train_x, train_y, test_x, test_y, hp, testgrad=false)
     !hp.quiet && println("Training setup beginning")
     dotest = true
 
-    train, mb, nnw, bn = pretrain(train_x, train_y, hp)
+    train, mb, nnw, bn, model = pretrain(train_x, train_y, hp)
     test = prepredict(test_x, test_y, hp, nnw, notrain=false)
         # use notrain=false because the test data is used during training
     stats = setup_stats(hp, dotest)  
 
     !hp.quiet && println("Training setup complete")
 
-    training_time = training_loop!(hp, train, test, mb, nnw, bn, stats)
+    training_time = training_loop!(hp, train, test, mb, nnw, bn, stats, model)
 
     # save, print and plot training statistics
-    output_stats(train, test, nnw, hp, training_time, stats)
+    output_stats(train, test, nnw, hp, training_time, stats, )
 
     ret = Dict(
                 "train_inputs" => train_x, 
@@ -108,8 +108,9 @@ end # _run_training_core, method with test data
 function pretrain(dat_x, dat_y, hp)
     Random.seed!(70653)  # seed int value is meaningless
 
-    # 1. instantiate data containers
+    # 1. instantiate data and model containers
         dat = Model_data()
+        model = Model_runner()
         mb = Batch_view()
         nnw = Wgts()
         bn = Batch_norm_params()
@@ -134,11 +135,14 @@ function pretrain(dat_x, dat_y, hp)
 
     # 5. choose layer functions and cost function based on inputs
         setup_functions!(hp, nnw, bn, dat) 
+        ff_dict = create_funcs(dat, nnw, bn, hp)
+        build_ff_string_stack!(model, hp, dat)
+        build_ff_exec_stack!(model, ff_dict)
 
     # 6. preallocate storage for data transforms
         preallocate_data!(dat, nnw, dat.n, hp)
 
-    return dat, mb, nnw, bn
+    return dat, mb, nnw, bn, model
     !hp.quiet && println("Training setup complete")
 end
 

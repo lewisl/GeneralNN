@@ -418,5 +418,7 @@ function build_hyper_parameters(argsdict)
         end
     end
 
+    hp.n_layers = length(hp.hidden) + 2
+
     return hp
 end

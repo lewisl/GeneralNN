@@ -2,8 +2,8 @@
 using StatsBase # basic statistical functions
 
 # method with no input test data
-function training_loop!(hp, train, mb, nnw, bn, stats)
-    _training_loop!(hp, train, Model_data(), mb, nnw, bn, stats)
+function training_loop!(hp, train, mb, nnw, bn, stats, model)
+    _training_loop!(hp, train, Model_data(), mb, nnw, bn, stats, model)
         # Model_data() passes an empty test data object
 end
 
@@ -27,11 +27,11 @@ parameter updates and updating the trained parameters. The first method does not
 includes the test Model_data object to track training statistics on how cost and accuracy change for the 
 test or validation data set.
 """
-function training_loop!(hp, train, test, mb, nnw, bn, stats)
-    _training_loop!(hp, train, test, mb, nnw, bn, stats)
+function training_loop!(hp, train, test, mb, nnw, bn, stats, model)
+    _training_loop!(hp, train, test, mb, nnw, bn, stats, model)
 end
 
-function _training_loop!(hp, train, test, mb, nnw, bn, stats)
+function _training_loop!(hp, train, test, mb, nnw, bn, stats, model)
 !hp.quiet && println("training_loop(hp, train, test mb, nnw, bn, stats; dotest=false)")
 
     dotest = isempty(test.inputs) ? false : true
@@ -53,25 +53,25 @@ function _training_loop!(hp, train, test, mb, nnw, bn, stats)
                     update_batch_views!(mb, train, nnw, hp, colrng)  # select data columns for the minibatch   
 
                     t += 1   # number of executions of minibatch loop
-                    train_one_step!(mb, nnw, bn, hp, t)
+                    train_one_step!(mb, nnw, bn, hp, t, model)
 
                     # stats for each minibatch--expensive!!!
                     stats["period"] == "batch" && begin
-                        gather_stats!(stats, "train", t, train, nnw, cost_function, hp)  
-                        dotest && gather_stats!(stats, "test", t, test, nnw, cost_function, hp) 
+                        gather_stats!(stats, "train", t, train, nnw, cost_function, hp, model.ff_execstack)  
+                        dotest && gather_stats!(stats, "test", t, test, nnw, cost_function, hp, model.ff_execstack) 
                     end
 
                 end # mini-batch loop
 
             else
                 t += 1
-                train_one_step!(train, nnw, bn, hp, t)
+                train_one_step!(train, nnw, bn, hp, t, model)
             end
 
             # stats across all mini-batches of one epoch (e.g.--no stats per minibatch)
             stats["period"] == "epoch" && begin
-                gather_stats!(stats, "train", ep_i, train, nnw, cost_function, hp)  
-                dotest && gather_stats!(stats, "test", ep_i, test, nnw, cost_function, hp) 
+                gather_stats!(stats, "train", ep_i, train, nnw, cost_function, hp, model.ff_execstack)  
+                dotest && gather_stats!(stats, "test", ep_i, test, nnw, cost_function, hp, model.ff_execstack) 
             end
 
         end # epoch loop
@@ -80,10 +80,10 @@ function _training_loop!(hp, train, test, mb, nnw, bn, stats)
     return training_time
 end # function training_loop
 
+# function train_one_step!(dat, nnw, bn, hp, t)
+function train_one_step!(dat, nnw, bn, hp, t, model)
 
-function train_one_step!(dat, nnw, bn, hp, t)
-
-    feedfwd!(dat, nnw, hp)  # for all layers
+    feedfwd!(dat, nnw, hp, model.ff_execstack)  # for all layers
     backprop!(nnw, dat, hp)  # for all layers   
     optimization_function!(nnw, hp, bn, t)
     update_parameters!(nnw, hp, bn)
@@ -106,42 +106,60 @@ function feedfwd!(dat, nnw, do_batch_norm)
 
     feed forward from inputs to output layer predictions
 """
-function feedfwd!(dat::Union{Batch_view,Model_data}, nnw, hp)  
+function feedfwd!(dat::Union{Batch_view,Model_data}, nnw, hp, ff_execstack)  
 !hp.quiet && println("feedfwd!(dat::Union{Batch_view, Model_data}, nnw, hp)")
 
-    # dropout for input layer (if probability < 1.0) or noop
-    dropout_fwd_function![1](dat,hp,1)  
+    # # dropout for input layer (if probability < 1.0) or noop
+    # dropout_fwd_function![1](dat,hp,1)  
 
-    # hidden layers
-    @fastmath @inbounds for hl = 2:nnw.output_layer-1  
-        affine_function!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl]) # if do_batch_norm, ignores bias arg
-        batch_norm_fwd_function!(dat, hl)  # do it or noop
-        unit_function![hl](dat.a[hl], dat.z[hl]) # per setup_functions
-        dropout_fwd_function![hl](dat,hp,hl)  # do it or noop
+    # # hidden layers
+    # @fastmath @inbounds for hl = 2:nnw.output_layer-1  
+    #     affine_function!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl]) # if do_batch_norm, ignores bias arg
+    #     batch_norm_fwd_function!(dat, hl)  # do it or noop
+    #     unit_function![hl](dat.a[hl], dat.z[hl]) # per setup_functions
+    #     dropout_fwd_function![hl](dat,hp,hl)  # do it or noop
+    # end
+
+    # # output layer
+    # @inbounds affine!(dat.z[nnw.output_layer], dat.a[nnw.output_layer-1], 
+    #                   nnw.theta[nnw.output_layer], nnw.bias[nnw.output_layer])
+    # classify_function!(dat.a[nnw.output_layer], dat.z[nnw.output_layer])  # a = activations = predictions
+
+    for lr in 1:hp.n_layers
+        layer_group = ff_execstack[lr]
+        for f in layer_group
+            f(lr)
+        end
     end
-
-    # output layer
-    @inbounds affine!(dat.z[nnw.output_layer], dat.a[nnw.output_layer-1], 
-                      nnw.theta[nnw.output_layer], nnw.bias[nnw.output_layer])
-    classify_function!(dat.a[nnw.output_layer], dat.z[nnw.output_layer])  # a = activations = predictions
 
 end
 
 
-function feedfwd_predict!(dat::Union{Batch_view, Model_data}, nnw, hp)
+function feedfwd_predict!(dat::Union{Batch_view, Model_data}, nnw, hp, ff_execstack)
 !hp.quiet && println("feedfwd_predict!(dat::Union{Batch_view, Model_data}, nnw, hp)")
 
     # hidden layers
-    @fastmath @inbounds for hl = 2:nnw.output_layer-1  
-        affine_function!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
-        batch_norm_fwd_predict_function!(dat, hl)
-        unit_function![hl](dat.a[hl], dat.z[hl])
+    # @fastmath @inbounds for hl = 2:nnw.output_layer-1  
+    #     affine_function!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
+    #     batch_norm_fwd_predict_function!(dat, hl)
+    #     unit_function![hl](dat.a[hl], dat.z[hl])
+    # end
+
+    # # output layer
+    # @inbounds affine!(dat.z[nnw.output_layer], dat.a[nnw.output_layer-1], 
+    #                   nnw.theta[nnw.output_layer], nnw.bias[nnw.output_layer])
+    # classify_function!(dat.a[nnw.output_layer], dat.z[nnw.output_layer])  # a = activations = predictions
+
+    for lr in 1:hp.n_layers
+        layer_group = ff_execstack[lr]
+        for f in layer_group
+            if f == getfield(GeneralNN, Symbol("dropout_fwd!"))
+                continue
+            end
+            f(lr)
+        end
     end
 
-    # output layer
-    @inbounds affine!(dat.z[nnw.output_layer], dat.a[nnw.output_layer-1], 
-                      nnw.theta[nnw.output_layer], nnw.bias[nnw.output_layer])
-    classify_function!(dat.a[nnw.output_layer], dat.z[nnw.output_layer])  # a = activations = predictions
 end
 
 
@@ -161,6 +179,7 @@ function backprop!(nnw, dat, hp)
     # println("size predictions: ", size(dat.a[nnw.output_layer]))
     # println("size targets: ", size(dat.targets))
 
+    # output layer
     @inbounds begin
         # backprop classify
         dat.epsilon[nnw.output_layer][:] = dat.a[nnw.output_layer] .- dat.targets  
@@ -329,10 +348,10 @@ function update_batch_views!(mb::Batch_view, train::Model_data, nnw::Wgts,
 end
 
  
-function gather_stats!(stats, series, i, dat, nnw, cost_function, hp)
+function gather_stats!(stats, series, i, dat, nnw, cost_function, hp, ff_execstack)
 
     if stats["track"][series]
-        feedfwd_predict!(dat, nnw, hp)
+        feedfwd_predict!(dat, nnw, hp, ff_execstack)
 
         if stats["track"]["cost"]
             stats["cost"][i, stats["col_" * series]] = cost_function(dat.targets,

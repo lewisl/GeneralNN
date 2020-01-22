@@ -13,6 +13,11 @@
 # LSTM networks
 
 #TODO
+#   debug dropout in backprop
+    #   does backprop for dropout go back to input layer if dropout done forward on input, 
+    #   does backprop for output apply to filter a of output_layer -1?
+    #   am I filtering epsilon for right layers at right time?
+#   don't use hp as argument if only on parameter used (see dropout)
 #   add ability to choose BN per layer (inc. for output layer or not)
 #   add ability to put bn after linear or after activation
 #   investigate Zygote.jl for automatic differentiation
@@ -112,7 +117,8 @@ export
     Wgts, 
     Model_data, 
     Batch_norm_params, 
-    Hyper_parameters
+    Hyper_parameters,
+    Model_runner
 
 # functions you can use
 export 

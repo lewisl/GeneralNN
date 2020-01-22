@@ -1,4 +1,4 @@
-epochs = 22
+epochs = 20
 # hidden = [["relu","80"],["relu","80"]]  # cannot mix types in a TOML array
 hidden = [["relu", "80"], ["relu", "80"]]  # [["relu", "80"]]   #[["relu", "80"], ["relu", "80"]]
 alpha =  0.025		  # 0.74

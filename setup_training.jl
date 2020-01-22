@@ -114,6 +114,164 @@ end
     Base.length(mb::MBrng) = mblength(mb)
 
 
+function create_funcs(dat, nnw, bn, hp)
+    # curried function definitions for feed forward
+    # affine
+    affine!(hl) = GeneralNN.affine!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
+    affine_nobias!(hl) = GeneralNN.affine_nobias!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
+    # dropout
+    
+    # activation
+    sigmoid!(hl) = GeneralNN.sigmoid!(dat.a[hl], dat.z[hl])
+    tanh_act!(hl) = GeneralNN.tanh_act!(dat.a[hl], dat.z[hl])
+    l_relu!(hl) = GeneralNN.l_relu!(dat.a[hl], dat.z[hl])
+    relu!(hl) = GeneralNN.relu!(dat.a[hl], dat.z[hl])
+
+    # classification
+    softmax!(hl) = GeneralNN.softmax!(dat.a[hl], dat.z[hl])
+    logistic!(hl) = GeneralNN.logistic!(dat.a[hl], dat.z[hl])
+    regression!(hl) = GeneralNN.regression!(dat.a[hl], dat.z[hl])
+
+    # batch norm
+    batch_norm_fwd!(hl) = GeneralNN.batch_norm_fwd!(dat, bn, hp, hl)
+
+    # optimization
+    dropout_fwd!(hl) = dropout_fwd!(dat, hp, hl)
+
+    # curried function definitions for back propagation
+    # gradient of activation functions
+    affine_gradient(hl) = affine_gradient(dat, hl)  # not using yet TODO RENAME FOR CONSISTENCY; can't work as is
+    sigmoid_gradient!(hl) = sigmoid_gradient!(dat.grad[hl], dat.z[hl])
+    tanh_act_gradient!(hl) = l_relu_gradient!(dat.grad[hl], dat.z[hl])
+    l_relu_gradient!(hl) = l_relu_gradient!(dat.grad[hl], dat.z[hl])
+    relu_gradient!(hl) = relu_gradient!(dat.grad[hl], dat.z[hl])
+
+    # optimization
+    dropout_back!(hl) = dropout_back!(dat, hl)
+
+    # indexable function container  TODO start with just feed fwd
+    func_dict = Dict(   # activation
+                        "affine" => affine!,
+                        "affine_nobias" => affine_nobias!,
+                        "sigmoid" => sigmoid!,
+                        "tanh_act" => tanh_act!,
+                        "l_relu" => l_relu!,
+                        "relu" => relu!,
+                        # classification
+                        "softmax" => softmax!,
+                        "logistic" => logistic!,
+                        "regression" => regression!,
+
+                        # batch norm
+                        "batch_norm_fwd" => batch_norm_fwd!,
+
+                        # optimization
+                        "dropout_fwd" => dropout_fwd!,
+
+                        # gradient
+                        "affine_gradient" => affine_gradient!,
+                        "sigmoid_gradient" => sigmoid_gradient!,
+                        "tanh_act_gradient" => l_relu_gradient!,
+                        "l_relu_gradient" => l_relu_gradient!,
+                        "relu_gradient" => relu_gradient!,
+
+                        # optimization
+                        "dropout_back" => dropout_back!
+                    )
+end
+
+
+function build_ff_string_stack!(model, hp, dat)
+    strstack = []
+    n_hid = length(hp.hidden)
+    n_layers = n_hid + 2
+
+    #input layer
+    lr = 1
+        push!(strstack, String[]) # layer_group for input layer
+        if hp.dropout && (hp.droplim[1] < 1.0)
+            push!(strstack[lr], "dropout")
+        end
+
+    # hidden layers
+    for lr = 2:n_hid+1
+        layer_group = String[]
+
+        if hp.dropout && (hp.droplim[1] < 1.0)
+            push!(layer_group, "dropout")
+        end
+
+        # affine either or...
+        hp.do_batch_norm && push!(layer_group, "affine_nobias") # true
+        hp.do_batch_norm || push!(layer_group, "affine") # false
+        # batch_norm_fwd 
+        hp.do_batch_norm && push!(layer_group, "batch_norm_fwd")
+        # unit_function or activation --> updates in place
+        unit_function = 
+            if hp.hidden[lr-1][1] == "sigmoid"
+                "sigmoid"
+            elseif hp.hidden[lr-1][1] == "l_relu"
+                "l_relu"
+            elseif hp.hidden[lr-1][1] == "relu"
+                "relu"
+            elseif hp.hidden[lr-1][1] == "tanh"
+                "tanh_act"
+            end
+        push!(layer_group, unit_function)
+        # dropout --> updates in place
+        if hp.dropout && (hp.droplim[hl] < 1.0)
+            push!(strstack[i], "dropout")
+        end        
+
+        # done with layer_group for current hidden layer
+        push!(strstack, layer_group) 
+    end
+
+    #   output layer
+
+    i = n_hid + 2
+        layer_group = String[]
+
+        push!(layer_group, "affine")
+        # classify_function --> updates in place
+        classify_function = 
+            if dat.out_k > 1  # more than one output (unit)
+                if hp.classify == "sigmoid"
+                    "sigmoid"
+                elseif hp.classify == "softmax"
+                    "softmax"
+                else
+                    error("Function to classify output labels must be \"sigmoid\" or \"softmax\".")
+                end
+            else
+                if hp.classify == "sigmoid" || hp.classify == "logistic"
+                    "logistic"  # for one output label
+                elseif hp.classify == "regression"
+                    "regression"
+                else
+                    error("Function to classify output must be \"sigmoid\", \"logistic\" or \"regression\".")
+                end
+            end
+        push!(layer_group, classify_function)
+        push!(strstack, layer_group) 
+
+        model.ff_strstack = strstack
+end   
+
+
+function build_ff_exec_stack!(model, func_dict)
+    execstack = []
+    strstack = model.ff_strstack
+    for i in 1:size(strstack,1)
+        push!(execstack,[])
+        for r in strstack[i]
+            push!(execstack[i], func_dict[r])
+        end
+    end
+    model.ff_execstack = execstack
+end
+
+
 """
 define and choose functions to be used in neural net training
 """
@@ -140,7 +298,7 @@ function setup_functions!(hp, nnw, bn, dat)
 
     n_layers = length(hp.hidden) + 2
 
-    # allow different functions at each appropriate layer
+    # TODO DO WE NEED THIS? allow different functions at each appropriate layer
     unit_function! = Array{Function}(undef, n_layers)
     gradient_function! = Array{Function}(undef, n_layers)
     reg_function! = Array{Function}(undef, n_layers)
@@ -148,7 +306,7 @@ function setup_functions!(hp, nnw, bn, dat)
     dropout_back_function! = Array{Function}(undef, n_layers)
 
     for layer in 2:n_layers-1 # for hidden layers: layers 2 through output - 1
-        hidden_layer = layer - 1
+        hl = hidden_layer = layer - 1
         unit_function![layer] =  # hidden looks like [["relu",100], ...]
             if hp.hidden[hidden_layer][1] == "sigmoid"
                 sigmoid!
@@ -179,14 +337,15 @@ function setup_functions!(hp, nnw, bn, dat)
             end
     end
 
-    for layer = 1:n_layers-1 # input layer and hidden layers
-        dropout_fwd_function![layer] = 
-            if hp.dropout && (hp.droplim[hl] < 1.0)
-                dropout_fwd!
-            else
-                noop
-            end
-    end
+    # for layer = 1:n_layers-1 # input layer and hidden layers
+    #     dropout_fwd_function![layer] = 
+    #         if hp.dropout && (hp.droplim[hl] < 1.0)
+    #             dropout_fwd!
+    #         else
+    #             noop
+    #         end
+    # end
+
 
     # TODO update to enable different regulization at each layer
     for layer = 2:n_layers  # from the first hidden layer=2 to output layer
@@ -214,24 +373,24 @@ function setup_functions!(hp, nnw, bn, dat)
             noop
         end
 
-    classify_function! = 
-        if dat.out_k > 1  # more than one output (unit)
-            if hp.classify == "sigmoid"
-                sigmoid!
-            elseif hp.classify == "softmax"
-                softmax!
-            else
-                error("Function to classify multiple output labels must be \"sigmoid\" or \"softmax\".")
-            end
-        else
-            if hp.classify == "sigmoid" || hp.classify == "logistic"
-                logistic!  # for one output label
-            elseif hp.classify == "regression"
-                regression!
-            else
-                error("Function to classify single output must be \"sigmoid\", \"logistic\" or \"regression\".")
-            end
-        end
+    # classify_function! = 
+    #     if dat.out_k > 1  # more than one output (unit)
+    #         if hp.classify == "sigmoid"
+    #             sigmoid!
+    #         elseif hp.classify == "softmax"
+    #             softmax!
+    #         else
+    #             error("Function to classify multiple output labels must be \"sigmoid\" or \"softmax\".")
+    #         end
+    #     else
+    #         if hp.classify == "sigmoid" || hp.classify == "logistic"
+    #             logistic!  # for one output label
+    #         elseif hp.classify == "regression"
+    #             regression!
+    #         else
+    #             error("Function to classify single output must be \"sigmoid\", \"logistic\" or \"regression\".")
+    #         end
+    #     end
 
     cost_function = 
         if hp.classify=="regression" 
