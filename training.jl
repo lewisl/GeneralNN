@@ -53,7 +53,7 @@ function train(train_x, train_y, hp, testgrad=false)
     training_time = training_loop!(hp, train, mb, nnw, bn, stats, model)
 
     # save, print and plot training statistics
-    output_stats(train, nnw, hp, training_time, stats, model)
+    output_stats(train, nnw, hp, bn, training_time, stats, model)
 
     ret = Dict(
                 "train_inputs" => train_x, 
@@ -86,7 +86,7 @@ function train(train_x, train_y, test_x, test_y, hp, testgrad=false)
     training_time = training_loop!(hp, train, test, mb, nnw, bn, stats, model)
 
     # save, print and plot training statistics
-    output_stats(train, test, nnw, hp, training_time, stats, )
+    output_stats(train, test, nnw, hp, bn, training_time, stats, )
 
     ret = Dict(
                 "train_inputs" => train_x, 

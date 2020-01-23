@@ -19,7 +19,7 @@ function prep_check(hp, train_x, train_y, iters; samplepct=.005, quiet=false, tw
         hp.epochs = iters  # set iters to train before grad testing
         stats = setup_stats(hp, dotest)
         training_time = training_loop!(hp, train, mb, nnw, bn, stats)
-        output_stats(train, nnw, hp, training_time, stats)
+        output_stats(train, nnw, hp, bn, training_time, stats, model)
 
 
     # set new hyper-parameters for gradient checking

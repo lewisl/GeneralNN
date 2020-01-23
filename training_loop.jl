@@ -31,10 +31,20 @@ function training_loop!(hp, train, test, mb, nnw, bn, stats, model)
     _training_loop!(hp, train, test, mb, nnw, bn, stats, model)
 end
 
+
 function _training_loop!(hp, train, test, mb, nnw, bn, stats, model)
 !hp.quiet && println("training_loop(hp, train, test mb, nnw, bn, stats; dotest=false)")
 
     dotest = isempty(test.inputs) ? false : true
+
+    # println("Experiment with eval")
+    # x = mini_eval(train)
+    # println("Before: ", train.a[2][1])
+    # hl = 2; 
+    # dat = train
+    # println(x[1], " ", x[2])
+    # pair(x[1], x[2])
+    # println("After: ", train.a[2][1])
 
     training_time = @elapsed begin # start the cpu clock and begin block for training process
         t = 0  # counter:  number of times parameters will have been updated: minibatches * epochs
@@ -57,8 +67,8 @@ function _training_loop!(hp, train, test, mb, nnw, bn, stats, model)
 
                     # stats for each minibatch--expensive!!!
                     stats["period"] == "batch" && begin
-                        gather_stats!(stats, "train", t, train, nnw, cost_function, hp, model.ff_execstack)  
-                        dotest && gather_stats!(stats, "test", t, test, nnw, cost_function, hp, model.ff_execstack) 
+                        gather_stats!(stats, "train", t, train, nnw, cost_function, hp, bn, model.ff_execstack)  
+                        dotest && gather_stats!(stats, "test", t, test, nnw, cost_function, hp, bn, model.ff_execstack) 
                     end
 
                 end # mini-batch loop
@@ -70,8 +80,8 @@ function _training_loop!(hp, train, test, mb, nnw, bn, stats, model)
 
             # stats across all mini-batches of one epoch (e.g.--no stats per minibatch)
             stats["period"] == "epoch" && begin
-                gather_stats!(stats, "train", ep_i, train, nnw, cost_function, hp, model.ff_execstack)  
-                dotest && gather_stats!(stats, "test", ep_i, test, nnw, cost_function, hp, model.ff_execstack) 
+                gather_stats!(stats, "train", ep_i, train, nnw, cost_function, hp, bn, model.ff_execstack)  
+                dotest && gather_stats!(stats, "test", ep_i, test, nnw, cost_function, hp, bn, model.ff_execstack) 
             end
 
         end # epoch loop
@@ -83,7 +93,7 @@ end # function training_loop
 # function train_one_step!(dat, nnw, bn, hp, t)
 function train_one_step!(dat, nnw, bn, hp, t, model)
 
-    feedfwd!(dat, nnw, hp, model.ff_execstack)  # for all layers
+    feedfwd!(dat, nnw, hp, bn, model.ff_execstack)  # for all layers
     backprop!(nnw, dat, hp)  # for all layers   
     optimization_function!(nnw, hp, bn, t)
     update_parameters!(nnw, hp, bn)
@@ -106,7 +116,7 @@ function feedfwd!(dat, nnw, do_batch_norm)
 
     feed forward from inputs to output layer predictions
 """
-function feedfwd!(dat::Union{Batch_view,Model_data}, nnw, hp, ff_execstack)  
+function feedfwd!(dat::Union{Batch_view,Model_data}, nnw, hp, bn, ff_execstack)  
 !hp.quiet && println("feedfwd!(dat::Union{Batch_view, Model_data}, nnw, hp)")
 
     # # dropout for input layer (if probability < 1.0) or noop
@@ -126,16 +136,15 @@ function feedfwd!(dat::Union{Batch_view,Model_data}, nnw, hp, ff_execstack)
     # classify_function!(dat.a[nnw.output_layer], dat.z[nnw.output_layer])  # a = activations = predictions
 
     for lr in 1:hp.n_layers
-        # layer_group = ff_execstack[lr]
         for f in ff_execstack[lr]
-            f(lr)
+            f(argfilt(dat, nnw, hp, bn, lr, f)...)
         end
     end
 
 end
 
 
-function feedfwd_predict!(dat::Union{Batch_view, Model_data}, nnw, hp, ff_execstack)
+function feedfwd_predict!(dat::Union{Batch_view, Model_data}, nnw, hp, bn, ff_execstack)
 !hp.quiet && println("feedfwd_predict!(dat::Union{Batch_view, Model_data}, nnw, hp)")
 
     # hidden layers
@@ -151,12 +160,11 @@ function feedfwd_predict!(dat::Union{Batch_view, Model_data}, nnw, hp, ff_execst
     # classify_function!(dat.a[nnw.output_layer], dat.z[nnw.output_layer])  # a = activations = predictions
 
     for lr in 1:hp.n_layers
-        layer_group = ff_execstack[lr]
-        for f in layer_group
+        for f in ff_execstack[lr]
             if f == getfield(GeneralNN, Symbol("dropout_fwd!"))
                 continue
             end
-            f(lr)
+            f(argfilt(dat, nnw, hp, bn, lr, f)...)
         end
     end
 
@@ -348,10 +356,10 @@ function update_batch_views!(mb::Batch_view, train::Model_data, nnw::Wgts,
 end
 
  
-function gather_stats!(stats, series, i, dat, nnw, cost_function, hp, ff_execstack)
+function gather_stats!(stats, series, i, dat, nnw, cost_function, hp, bn, ff_execstack)
 
     if stats["track"][series]
-        feedfwd_predict!(dat, nnw, hp, ff_execstack)
+        feedfwd_predict!(dat, nnw, hp, bn, ff_execstack)
 
         if stats["track"]["cost"]
             stats["cost"][i, stats["col_" * series]] = cost_function(dat.targets,
@@ -366,9 +374,10 @@ function gather_stats!(stats, series, i, dat, nnw, cost_function, hp, ff_execsta
 end
 
 
+# TODO this probably doesn't work any more: not used
 function quick_stats(dat, nnw, hp, cost_function=cost_function)
 
-    feedfwd_predict!(dat, nnw, hp)
+    feedfwd_predict!(dat, nnw, hp, bn)
 
     cost = cost_function(dat.targets,
             dat.a[nnw.output_layer], dat.n, nnw.theta, hp.lambda, hp.reg, nnw.output_layer)

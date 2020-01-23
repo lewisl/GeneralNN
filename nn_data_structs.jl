@@ -1,3 +1,10 @@
+# some useful shorthands for complex array types
+const T_model_data = Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}
+const T_theta = Array{Array{Float64,2},1}
+const T_bias = Array{Array{Float64,1},1}
+const T_union_dense_sparse_array = Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}}
+
+
 
 """
 struct Wgts holds model parameters learned by training and model metadata
@@ -119,13 +126,13 @@ mutable struct Model_data               # we will use train for inputs and test 
     inputs::Union{AbstractArray{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}} #::   # in_k features by n examples
     targets::Union{AbstractArray{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}} #::  # labels for each example
     # calculated in feedforward pass
-    a::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}  # 
-    z::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}
+    a::T_model_data  # 
+    z::T_model_data
     # calculated in backprop (training) pass for batch normalization
-    grad::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}
-    epsilon::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}       # dims of a
+    grad::T_model_data
+    epsilon::T_model_data       # dims of a
     # calculcated for batch_norm
-    z_norm::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}   # same size as z--for batch_norm
+    z_norm::T_model_data   # same size as z--for batch_norm
     # delta_z_norm::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}    # same size as z
     # delta_z::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}        # same size as z
     # calculate dropout mask for training

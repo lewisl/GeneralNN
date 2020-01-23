@@ -114,92 +114,127 @@ end
     Base.length(mb::MBrng) = mblength(mb)
 
 
+# argfilt methods to pass in the training loop
+    # eventually we can replace these with a code generator
+function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+    bn::Batch_norm_params, hl::Int, fn::typeof(affine!))
+    (dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
+end
+function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+    bn::Batch_norm_params, hl::Int, fn::typeof(affine_nobias!))  #TODO: we can take bias out in layer_functions.jl
+    (dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
+end
+function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+    bn::Batch_norm_params, hl::Int, fn::typeof(relu!))
+    (dat.a[hl], dat.z[hl])
+end
+function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+    bn::Batch_norm_params, hl::Int, fn::typeof(softmax!))
+    (dat.a[hl], dat.z[hl])
+end
+function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+    bn::Batch_norm_params, hl::Int, fn::typeof(batch_norm_fwd!))
+    (dat, bn, hp, hl)
+end
+function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+    bn::Batch_norm_params, hl::Int, fn::typeof(batch_norm_fwd_predict!))
+    (dat, bn, hp, hl)
+end
+
 function create_funcs(dat, nnw, bn, hp)
-    # curried/closure function definitions for feed forward
+    dat.z::T_model_data = dat.z; 
+    dat.a::T_model_data = dat.a; 
+    dat.grad::T_model_data = dat.grad
+    nnw.theta::T_theta = nnw.theta; 
+    nnw.bias::T_bias = nnw.bias;
+    dat::Model_data = dat; 
+    bn::Batch_norm_params = bn; 
+    hp::Hyper_parameters = hp;
 
-    # affine
-    affine!(hl) = let 
-            dat.z = dat.z; dat.a = dat.a; nnw.theta = nnw.theta; nnw.bias = nnw.bias;
-            GeneralNN.affine!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
-        end
-    affine_nobias!(hl) = let
-            dat.z = dat.z; dat.a = dat.a; nnw.theta = nnw.theta; nnw.bias = nnw.bias
-            GeneralNN.affine_nobias!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
-        end
-    # dropout
+    # # curried/closure function definitions for feed forward
+    # # affine
+    # affine!(hl) = begin  # let 
+    #         # dat.z::T_model_data = dat.z; dat.a::T_model_data = dat.a; nnw.theta = nnw.theta; nnw.bias = nnw.bias;
+    #         GeneralNN.affine!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
+    #     end
+    # affine_nobias!(hl) = begin # let
+    #         # dat.z::T_model_data = dat.z; dat.a::T_model_data = dat.a; nnw.theta = nnw.theta; nnw.bias = nnw.bias
+    #         GeneralNN.affine_nobias!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
+    #     end
+    # # dropout
     
-    # activation
-    sigmoid!(hl) = let
-            dat.a = dat.a; dat.z = dat.z
-            GeneralNN.sigmoid!(dat.a[hl], dat.z[hl])
-        end
-    tanh_act!(hl) = let
-            dat.a = dat.a; dat.z = dat.z
-            GeneralNN.tanh_act!(dat.a[hl], dat.z[hl])
-        end
-    l_relu!(hl) = let
-            dat.a = dat.a; dat.z = dat.z
-            GeneralNN.l_relu!(dat.a[hl], dat.z[hl])
-        end
-    relu!(hl) = let
-            dat.a = dat.a; dat.z = dat.z
-            GeneralNN.relu!(dat.a[hl], dat.z[hl])
-        end
+    # # activation
+    # sigmoid!(hl) = begin #let
+    #         # dat.a::T_model_data = dat.a; dat.z::T_model_data = dat.z
+    #         GeneralNN.sigmoid!(dat.a[hl], dat.z[hl])
+    #     end
+    # tanh_act!(hl) = begin #let
+    #         # dat.a::T_model_data = dat.a; dat.z::T_model_data = dat.z
+    #         GeneralNN.tanh_act!(dat.a[hl], dat.z[hl])
+    #     end
+    # l_relu!(hl) = begin # let
+    #         # dat.a::T_model_data = dat.a; dat.z::T_model_data = dat.z
+    #         GeneralNN.l_relu!(dat.a[hl], dat.z[hl])
+    #     end
+    # relu!(hl) = begin #let
+    #         # dat.a::T_model_data = dat.a; dat.z::T_model_data = dat.z
+    #         GeneralNN.relu!(dat.a[hl], dat.z[hl])
+    #     end
 
-    # classification
-    softmax!(hl) = let
-            dat.a = dat.a; dat.z = dat.z
-            GeneralNN.softmax!(dat.a[hl], dat.z[hl])
-        end
-    logistic!(hl) = let
-            dat.a = dat.a; dat.z = dat.z
-            GeneralNN.logistic!(dat.a[hl], dat.z[hl])
-        end
-    regression!(hl) = let
-            dat.a = dat.a; dat.z = dat.z
-            GeneralNN.regression!(dat.a[hl], dat.z[hl])
-        end
+    # # classification
+    # softmax!(hl) = begin #let
+    #         # dat.a::T_model_data = dat.a; dat.z::T_model_data = dat.z
+    #         GeneralNN.softmax!(dat.a[hl], dat.z[hl])
+    #     end
+    # logistic!(hl) = begin #let
+    #         # dat.a::T_model_data = dat.a; dat.z::T_model_data = dat.z
+    #         GeneralNN.logistic!(dat.a[hl], dat.z[hl])
+    #     end
+    # regression!(hl) = begin #let
+    #         # dat.a::T_model_data = dat.a; dat.z::T_model_data = dat.z
+    #         GeneralNN.regression!(dat.a[hl], dat.z[hl])
+    #     end
 
-    # batch norm
-    batch_norm_fwd!(hl) = let
-            dat = dat; bn = bn; hp = hp;
-            GeneralNN.batch_norm_fwd!(dat, bn, hp, hl)
-        end
+    # # batch norm
+    # batch_norm_fwd!(hl) = begin #let
+    #         # dat::Model_data = dat; bn::Batch_norm_params = bn; hp::Hyper_parameters = hp;
+    #         GeneralNN.batch_norm_fwd!(dat, bn, hp, hl)
+    #     end
 
-    # optimization
-    dropout_fwd!(hl) = let
-            dat = dat; hp = hp; 
-            dropout_fwd!(dat, hp, hl)
-        end
+    # # optimization
+    # dropout_fwd!(hl) = begin #let
+    #         # dat::Model_data = dat; hp::Hyper_parameters = hp; 
+    #         dropout_fwd!(dat, hp, hl)
+    #     end
 
-    # curried function definitions for back propagation
-    # gradient of activation functions
-    affine_gradient(hl) = let
-            dat = dat
-            affine_gradient(dat, hl)  # not using yet TODO RENAME FOR CONSISTENCY; can't work as is
-        end
-    sigmoid_gradient!(hl) = let
-            dat.grad = dat.grad; dat.z = dat.z
-            sigmoid_gradient!(dat.grad[hl], dat.z[hl])
-        end
-    tanh_act_gradient!(hl) = let
-            dat.grad = dat.grad; dat.z = dat.z
-            l_relu_gradient!(dat.grad[hl], dat.z[hl])
-        end
-    l_relu_gradient!(hl) = let
-            dat.grad = dat.grad; dat.z = dat.z
-            l_relu_gradient!(dat.grad[hl], dat.z[hl])
-        end
-    relu_gradient!(hl) = let
-            dat.grad = dat.grad; dat.z = dat.z
-            relu_gradient!(dat.grad[hl], dat.z[hl])
-        end
+    # # curried function definitions for back propagation
+    # # gradient of activation functions
+    # affine_gradient(hl) = begin #let
+    #         # dat::Model_data = dat
+    #         affine_gradient(dat, hl)  # not using yet TODO RENAME FOR CONSISTENCY; can't work as is
+    #     end
+    # sigmoid_gradient!(hl) = begin #let
+    #         # dat.grad::T_model_data = dat.grad; dat.z::T_model_data = dat.z
+    #         sigmoid_gradient!(dat.grad[hl], dat.z[hl])
+    #     end
+    # tanh_act_gradient!(hl) = begin #let
+    #         # dat.grad::T_model_data = dat.grad; dat.z::T_model_data = dat.z
+    #         l_relu_gradient!(dat.grad[hl], dat.z[hl])
+    #     end
+    # l_relu_gradient!(hl) = begin #let
+    #         # dat.grad::T_model_data = dat.grad; dat.z::T_model_data = dat.z
+    #         l_relu_gradient!(dat.grad[hl], dat.z[hl])
+    #     end
+    # relu_gradient!(hl) = begin #let
+    #         # dat.grad::T_model_data = dat.grad; dat.z::T_model_data = dat.z
+    #         relu_gradient!(dat.grad[hl], dat.z[hl])
+    #     end
 
-    # optimization
-    dropout_back!(hl) = let
-            dat = dat
-            dropout_back!(dat, hl)
-        end
+    # # optimization
+    # dropout_back!(hl) = begin #let
+    #         # dat::Model_data = dat
+    #         dropout_back!(dat, hl)
+    #     end
 
     # indexable function container  TODO start with just feed fwd
     func_dict = Dict(   # activation
@@ -230,6 +265,11 @@ function create_funcs(dat, nnw, bn, hp)
                         # optimization
                         "dropout_back" => dropout_back!
                     )
+end
+
+
+function mini_eval(dat)
+    do_relu = (GeneralNN.relu!, Meta.parse("(dat.a[hl], dat.z[hl])"))
 end
 
 
