@@ -13,6 +13,8 @@
 # LSTM networks
 
 #TODO
+#   fix testgrad.jl: check_grads, prep_check for changes to predict using model and bn params
+#   fix nnpredict or get rid of it
 #   debug dropout in backprop
     #   does backprop for dropout go back to input layer if dropout done forward on input, 
     #   does backprop for output apply to filter a of output_layer -1?
@@ -21,9 +23,6 @@
 #   add ability to choose BN per layer (inc. for output layer or not)
 #   add ability to put bn after linear or after activation
 #   investigate Zygote.jl for automatic differentiation
-#   how should we count layers?  
-    # by combined layer (linear,bn,non-linear) = 1?
-    # or by funtion (linear, bn, non-linear) = 3?
 #   test if we can use batch normalization with full batch training
 #   check what happens to test cost with regularization:  it gets very big
 #   see if I can eliminate some of the function trickiness with clever use of optional args (or named args with defaults)
@@ -145,6 +144,7 @@ using MAT
 using JLD2
 using FileIO
 using Statistics
+using Distributions
 using Random
 using Printf
 using Dates

@@ -37,15 +37,6 @@ function _training_loop!(hp, train, test, mb, nnw, bn, stats, model)
 
     dotest = isempty(test.inputs) ? false : true
 
-    # println("Experiment with eval")
-    # x = mini_eval(train)
-    # println("Before: ", train.a[2][1])
-    # hl = 2; 
-    # dat = train
-    # println(x[1], " ", x[2])
-    # pair(x[1], x[2])
-    # println("After: ", train.a[2][1])
-
     training_time = @elapsed begin # start the cpu clock and begin block for training process
         t = 0  # counter:  number of times parameters will have been updated: minibatches * epochs
 
@@ -119,22 +110,6 @@ function feedfwd!(dat, nnw, do_batch_norm)
 function feedfwd!(dat::Union{Batch_view,Model_data}, nnw, hp, bn, ff_execstack)  
 !hp.quiet && println("feedfwd!(dat::Union{Batch_view, Model_data}, nnw, hp)")
 
-    # # dropout for input layer (if probability < 1.0) or noop
-    # dropout_fwd_function![1](dat,hp,1)  
-
-    # # hidden layers
-    # @fastmath @inbounds for hl = 2:nnw.output_layer-1  
-    #     affine_function!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl]) # if do_batch_norm, ignores bias arg
-    #     batch_norm_fwd_function!(dat, hl)  # do it or noop
-    #     unit_function![hl](dat.a[hl], dat.z[hl]) # per setup_functions
-    #     dropout_fwd_function![hl](dat,hp,hl)  # do it or noop
-    # end
-
-    # # output layer
-    # @inbounds affine!(dat.z[nnw.output_layer], dat.a[nnw.output_layer-1], 
-    #                   nnw.theta[nnw.output_layer], nnw.bias[nnw.output_layer])
-    # classify_function!(dat.a[nnw.output_layer], dat.z[nnw.output_layer])  # a = activations = predictions
-
     for lr in 1:hp.n_layers
         for f in ff_execstack[lr]
             f(argfilt(dat, nnw, hp, bn, lr, f)...)
@@ -146,18 +121,6 @@ end
 
 function feedfwd_predict!(dat::Union{Batch_view, Model_data}, nnw, hp, bn, ff_execstack)
 !hp.quiet && println("feedfwd_predict!(dat::Union{Batch_view, Model_data}, nnw, hp)")
-
-    # hidden layers
-    # @fastmath @inbounds for hl = 2:nnw.output_layer-1  
-    #     affine_function!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
-    #     batch_norm_fwd_predict_function!(dat, hl)
-    #     unit_function![hl](dat.a[hl], dat.z[hl])
-    # end
-
-    # # output layer
-    # @inbounds affine!(dat.z[nnw.output_layer], dat.a[nnw.output_layer-1], 
-    #                   nnw.theta[nnw.output_layer], nnw.bias[nnw.output_layer])
-    # classify_function!(dat.a[nnw.output_layer], dat.z[nnw.output_layer])  # a = activations = predictions
 
     for lr in 1:hp.n_layers
         for f in ff_execstack[lr]
@@ -205,11 +168,11 @@ function backprop!(nnw, dat, hp)
             !hp.quiet && println("What is gradient $hl? ", mean(dat.grad[hl]))
         @inbounds dat.epsilon[hl][:] = dat.epsilon[hl] .* dat.grad[hl] 
             !hp.quiet && println("what is epsilon $hl? ", mean(dat.epsilon[hl]))
+        dropout_back_function![hl](dat, nnw, hp, hl)  # noop if not applicable
 
         batch_norm_back_function!(dat, hl)   # noop if not applicable
         # backprop affine
         backprop_weights_function!(nnw.delta_th[hl], nnw.delta_b[hl], dat.epsilon[hl], dat.a[hl-1], hp.mb_size)
-        dropout_back_function![hl](dat, hl)  # noop if not applicable
 
         !hp.quiet && println("what is delta_th $hl? ", nnw.delta_th[hl])
         !hp.quiet && println("what is delta_b $hl? ", nnw.delta_b[hl])
@@ -345,13 +308,13 @@ function update_batch_views!(mb::Batch_view, train::Model_data, nnw::Wgts,
         end
     end
 
-    if hp.dropout
-        @inbounds for i = 1:n_layers
-            # training:  applied to feedforward, but only for training
-            mb.dropout_random[i] = view(train.dropout_random[i], :, colrng)  
-            mb.dropout_mask_units[i] = view(train.dropout_mask_units[i], :, colrng)  
-        end
-    end
+    # if hp.dropout
+    #     @inbounds for i = 1:n_layers
+    #         # training:  applied to feedforward, but only for training
+    #         mb.dropout_random[i] = view(train.dropout_random[i], :, colrng)  
+    #         mb.dropout_mask_units[i] = view(train.dropout_mask_units[i], :, colrng)  
+    #     end
+    # end
 
 end
 

@@ -107,12 +107,6 @@ function preallocate_data!(dat, nnw, n, hp)
         # preallocate_bn_params!(bn, mb, nnw.ks)
     end
 
-    # backprop / training
-    if hp.dropout
-        dat.dropout_random = [i[:,1:hp.mb_size_in] for i in dat.a]
-        dat.dropout_mask_units = [BitArray(ones(size(i,1),hp.mb_size_in)) for i in dat.a]
-    end
-
 end
 
 
@@ -131,8 +125,6 @@ function preallocate_minibatch!(mb::Batch_view, nnw, hp)
     # mb.delta_z = Array{SubArray{}}(undef, n_layers)
     mb.grad = Array{SubArray{}}(undef, n_layers)
     mb.epsilon = Array{SubArray{}}(undef, n_layers)
-    mb.dropout_random = Array{SubArray{}}(undef, n_layers)
-    mb.dropout_mask_units = Array{SubArray{}}(undef, n_layers)
 
 end
 
@@ -208,6 +200,12 @@ function preallocate_wgts!(nnw, hp, in_k, n, out_k)
         nnw.delta_s_th = [zeros(size(a)) for a in nnw.delta_th]
         nnw.delta_s_b = [zeros(size(a)) for a in nnw.delta_b]
     end
+
+    # dropout
+    if hp.dropout
+        nnw.dropout_mask_units = [BitArray(ones(k)) for k in nnw.ks]
+    end
+
 
 end
 

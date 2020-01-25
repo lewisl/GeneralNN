@@ -63,10 +63,10 @@ function train(train_x, train_y, hp, testgrad=false)
                 "batchnorm_params" => bn, 
                 "hyper_params" => hp,
                 "stats" => stats,
-                "model" => model.ff_strstack
+                "model" => model.ff_execstack
                 )
 
-    return ret
+    return ret, stats
 
 end # _run_training_core, method with test data
 
@@ -86,7 +86,7 @@ function train(train_x, train_y, test_x, test_y, hp, testgrad=false)
     training_time = training_loop!(hp, train, test, mb, nnw, bn, stats, model)
 
     # save, print and plot training statistics
-    output_stats(train, test, nnw, hp, bn, training_time, stats, )
+    output_stats(train, test, nnw, hp, bn, training_time, stats, model)
 
     ret = Dict(
                 "train_inputs" => train_x, 
@@ -99,7 +99,7 @@ function train(train_x, train_y, test_x, test_y, hp, testgrad=false)
                 "test_targets" => test.targets, 
                 "test_preds" => test.a[nnw.output_layer],  
                 "stats" => stats,
-                "model" => model.ff_strstack
+                "model" => model.ff_execstack
                 )
 
     return ret, stats

@@ -111,6 +111,7 @@ end
     function backprop_weights!(delta_th, delta_b, epsilon, a_prev, n; showf = false)
         showf && begin; println("backprop_weights!"); return; end;
         mul!(delta_th, epsilon, a_prev')
+
         @fastmath delta_th[:] = delta_th .* (1.0 / n)
         @fastmath delta_b[:] = sum(epsilon, dims=2) ./ n
     end
@@ -204,16 +205,16 @@ end
 ##########################################################################
 
 
-function dropout_fwd!(dat,hp,hl)  # applied per layer
-    @inbounds dat.dropout_random[hl][:] = rand(Float64, size(dat.dropout_random[hl]))
-    @inbounds dat.dropout_mask_units[hl][:] = dat.dropout_random[hl] .< hp.droplim[hl]
+function dropout_fwd!(dat, hp, nnw, hl)  # applied per layer
+
+    @inbounds nnw.dropout_mask_units[hl][:] = Bool.(rand( Bernoulli( hp.droplim[hl] ), size(nnw.dropout_mask_units[hl], 1)))
     # choose activations to remain and scale
-    @inbounds dat.a[hl][:] = dat.a[hl] .* (dat.dropout_mask_units[hl] ./ hp.droplim[hl])
+    @inbounds dat.a[hl][:] = dat.a[hl] .* (nnw.dropout_mask_units[hl] ./ hp.droplim[hl])
 end
 
 
-function dropout_back!(dat, hl)
-    @inbounds dat.epsilon[hl][:] = dat.epsilon[hl] .* dat.dropout_mask_units[hl]
+function dropout_back!(dat, nnw, hp, hl)
+    @inbounds dat.epsilon[hl][:] = dat.epsilon[hl] .* (nnw.dropout_mask_units[hl])
 end
 
 

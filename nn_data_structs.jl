@@ -20,9 +20,12 @@ mutable struct Wgts              # we will use nnw as the struct variable
     delta_s_b::Array{Array{Float64,1},1}  
     theta_dims::Array{Tuple{Int64, Int64},1}
     output_layer::Int64
-    ks::Array{Int64,1}                     # number of output units in each layer (features for input layer)
+    ks::Array{Int64,1}                     # number of output units in each layer (e.g., features for input layer)
                                            #      is the no. of rows in the weight matrix for each layer
     norm_factors::Tuple{Array{Float64,2},Array{Float64,2}}   # note: each array is 1 row by 2 cols
+    # calculate dropout mask for training
+    dropout_mask_units::Array{Array{Bool,1}, 1}       # boolean filter for dropout--dims of a
+
 
     Wgts() = new(               # empty constructor
         Array{Array{Float64,2},1}(undef, 0),    # theta::Array{Array{Float64,2}}
@@ -36,7 +39,9 @@ mutable struct Wgts              # we will use nnw as the struct variable
         Array{Tuple{Int, Int},1}(undef, 0),     # theta_dims::Array{Array{Int64,2}}
         3,                                      # output_layer
         Array{Int64,1}(undef, 0),               # k
-        ([0.0 0.0], [1.0 0.0])                  # norm_factors (mean, std)
+        ([0.0 0.0], [1.0 0.0]),                 # norm_factors (mean, std)
+        Array{Array{Bool,1},1}(undef, 0)        # dropout_mask_units   Array{Array{Bool,2},1}
+
     )
 end
 
@@ -135,9 +140,6 @@ mutable struct Model_data               # we will use train for inputs and test 
     z_norm::T_model_data   # same size as z--for batch_norm
     # delta_z_norm::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}    # same size as z
     # delta_z::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}        # same size as z
-    # calculate dropout mask for training
-    dropout_random::Array{AbstractArray{Float64,2},1}     # randomization for dropout--dims of a
-    dropout_mask_units::Array{BitArray{2}, 1}       # boolean filter for dropout--dims of a
     # descriptive
     n::Int64                                  # number of examples
     in_k::Int64                               # number of input features
@@ -154,8 +156,6 @@ mutable struct Model_data               # we will use train for inputs and test 
         [zeros(0,0)],       # z_norm -- only pre-allocate if batch_norm
         # [zeros(0,0)],       # delta_z_norm
         # [zeros(0,0)],       # delta_z
-        Array{Array{Float64,2},1}(undef, 0),   # dropout_random
-        Array{BitArray{2},1}(undef, 0),        # dropout_mask_units   Array{Array{Bool,2},1}
         0,                              # n
         0,                              # in_k
         0                               # out_k
@@ -176,8 +176,8 @@ mutable struct Batch_view               # we will use mb for as the variable for
     # delta_z::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     grad::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     epsilon::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    dropout_random::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    dropout_mask_units::Array{SubArray{}}  #::Array{SubArray{Bool,2,BitArray{2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    # dropout_random::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
+    # dropout_mask_units::Array{SubArray{}}  #::Array{SubArray{Bool,2,BitArray{2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
 
     Batch_view() = new(                      # empty constructor
         Array{SubArray{}}[],  # a
@@ -188,8 +188,8 @@ mutable struct Batch_view               # we will use mb for as the variable for
         # Array{SubArray{}}[],  # delta_z
         Array{SubArray{}}[],  # grad
         Array{SubArray{}}[],  # epsilon
-        Array{SubArray{}}[],  # dropout_random
-        Array{SubArray{}}[]  # dropout_mask_units  
+        # Array{SubArray{}}[],  # dropout_random
+        # Array{SubArray{}}[]  # dropout_mask_units  
         )
 
         # [view(zeros(2,2),:,1:2) for i in 1:2],  # a

@@ -6,6 +6,35 @@
     update_batch_views!(onedat, dat, wgts, hp, example:example)
 
 
+# how we used to do the feedfwd function for the training loop
+function feedfwd!(dat::Union{Batch_view,Model_data}, nnw, hp, bn, ff_execstack)  
+!hp.quiet && println("feedfwd!(dat::Union{Batch_view, Model_data}, nnw, hp)")
+
+    # # dropout for input layer (if probability < 1.0) or noop
+    # dropout_fwd_function![1](dat,hp,1)  
+
+    # # hidden layers
+    # @fastmath @inbounds for hl = 2:nnw.output_layer-1  
+    #     affine_function!(dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl]) # if do_batch_norm, ignores bias arg
+    #     batch_norm_fwd_function!(dat, hl)  # do it or noop
+    #     unit_function![hl](dat.a[hl], dat.z[hl]) # per setup_functions
+    #     dropout_fwd_function![hl](dat,hp,hl)  # do it or noop
+    # end
+
+    # # output layer
+    # @inbounds affine!(dat.z[nnw.output_layer], dat.a[nnw.output_layer-1], 
+    #                   nnw.theta[nnw.output_layer], nnw.bias[nnw.output_layer])
+    # classify_function!(dat.a[nnw.output_layer], dat.z[nnw.output_layer])  # a = activations = predictions
+
+    for lr in 1:hp.n_layers
+        for f in ff_execstack[lr]
+            f(argfilt(dat, nnw, hp, bn, lr, f)...)
+        end
+    end
+
+end
+
+
     
 function printstruct(st)
     for it in propertynames(st)
