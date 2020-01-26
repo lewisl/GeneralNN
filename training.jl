@@ -63,7 +63,7 @@ function train(train_x, train_y, hp, testgrad=false)
                 "batchnorm_params" => bn, 
                 "hyper_params" => hp,
                 "stats" => stats,
-                "model" => model.ff_execstack
+                "model" => model
                 )
 
     return ret, stats
@@ -99,7 +99,7 @@ function train(train_x, train_y, test_x, test_y, hp, testgrad=false)
                 "test_targets" => test.targets, 
                 "test_preds" => test.a[nnw.output_layer],  
                 "stats" => stats,
-                "model" => model.ff_execstack
+                "model" => model
                 )
 
     return ret, stats
@@ -137,9 +137,11 @@ function pretrain(dat_x, dat_y, hp)
 
     # 5. choose layer functions and cost function based on inputs
         setup_functions!(hp, nnw, bn, dat) 
-        ff_dict = create_funcs(dat, nnw, bn, hp)
-        build_ff_string_stack!(model, hp, dat)
-        build_ff_exec_stack!(model, ff_dict)
+        func_dict = create_funcs() # for both feed forward and back propagation
+        model.ff_strstack = build_ff_string_stack(hp, nnw)
+        model.ff_execstack = build_exec_stack(model.ff_strstack, func_dict)
+        model.back_strstack = build_back_string_stack(hp)
+        model.back_execstack = build_exec_stack(model.back_strstack, func_dict)
 
     # 6. preallocate storage for data transforms
         preallocate_data!(dat, nnw, dat.n, hp)

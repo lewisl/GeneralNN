@@ -21,7 +21,7 @@ mutable struct Wgts              # we will use nnw as the struct variable
     theta_dims::Array{Tuple{Int64, Int64},1}
     output_layer::Int64
     ks::Array{Int64,1}                     # number of output units in each layer (e.g., features for input layer)
-                                           #      is the no. of rows in the weight matrix for each layer
+                                           #      = the no. of rows in the weight matrix for each layer
     norm_factors::Tuple{Array{Float64,2},Array{Float64,2}}   # note: each array is 1 row by 2 cols
     # calculate dropout mask for training
     dropout_mask_units::Array{Array{Bool,1}, 1}       # boolean filter for dropout--dims of a

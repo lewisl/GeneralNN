@@ -112,84 +112,190 @@ end
 
 
 # argfilt methods to pass in the training loop
-    # eventually we can replace these with a code generator
-function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
-    bn::Batch_norm_params, hl::Int, fn::typeof(affine!))
-    (dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
-end
-function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
-    bn::Batch_norm_params, hl::Int, fn::typeof(affine_nobias!))  #TODO: we can take bias out in layer_functions.jl
-    (dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
-end
-function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
-    bn::Batch_norm_params, hl::Int, fn::typeof(relu!))
-    (dat.a[hl], dat.z[hl])
-end
-function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
-    bn::Batch_norm_params, hl::Int, fn::typeof(softmax!))
-    (dat.a[hl], dat.z[hl])
-end
-function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
-    bn::Batch_norm_params, hl::Int, fn::typeof(batch_norm_fwd!))
-    (dat, bn, hp, hl)
-end
-function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
-    bn::Batch_norm_params, hl::Int, fn::typeof(batch_norm_fwd_predict!))
-    (dat, bn, hp, hl)
-end
-function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
-    bn::Batch_norm_params, hl::Int, fn::typeof(dropout_fwd!))
-    (dat, hp, nnw, hl)
-end
+# feed forward
+    # affine!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(affine!))
+        (dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
+    end
+    # affine_nobias!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(affine_nobias!))  #TODO: we can take bias out in layer_functions.jl
+        (dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
+    end
+# activation functions
+    # sigmoid!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(sigmoid!))
+        (dat.a[hl], dat.z[hl])
+    end
+    # tanh_act!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(tanh_act!))
+        (dat.a[hl], dat.z[hl])
+    end
+    # l_relu!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(l_relu!))
+        (dat.a[hl], dat.z[hl])
+    end
+    # relu!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(relu!))
+        (dat.a[hl], dat.z[hl])
+    end
+# classification functions
+    # softmax
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(softmax!))
+        (dat.a[hl], dat.z[hl])
+    end
+    # logistic!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(logistic!))
+        (dat.a[hl], dat.z[hl])
+    end
+    # regression!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(regression!))
+        (dat.a[hl], dat.z[hl])
+    end
+    # batch_norm_fwd!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(batch_norm_fwd!))
+        (dat, bn, hp, hl)
+    end
+    # batch_norm_fwd_predict!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(batch_norm_fwd_predict!))
+        (dat, bn, hp, hl)
+    end
+    # dropout_fwd!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(dropout_fwd!))
+        (dat, hp, nnw, hl)
+    end
 
-function create_funcs(dat, nnw, bn, hp)
+    # back propagation
+    # backprop_classify!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(backprop_classify!))
+            (dat.epsilon[nnw.output_layer], dat.a[nnw.output_layer], dat.targets)
+    end
+    # backprop_weights!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(backprop_weights!))
+            (nnw.delta_th[hl], nnw.delta_b[hl], dat.epsilon[hl], dat.a[hl-1], hp.mb_size)   
+    end
+    # backprop_weights_nobias!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(backprop_weights_nobias!))        # TODO fix
+            (nnw.delta_th[hl], nnw.delta_b[hl], dat.epsilon[hl], dat.a[hl-1], hp.mb_size)
+    end
+    # inbound_epsilon!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(inbound_epsilon!))
+            (dat.epsilon[hl], nnw.theta[hl+1], dat.epsilon[hl+1])
+    end
+    # dropout_back!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(dropout_back!))
+            (dat, nnw, hp, hl)    
+    end
+    # sigmoid_gradient!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(sigmoid_gradient!))
+            (dat.grad[hl], dat.z[hl])  
+    end
+    # tanh_act_gradient!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(tanh_act_gradient!))
+            (dat.grad[hl], dat.z[hl])  
+    end
+    # l_relu_gradient!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(l_relu_gradient!))
+            (dat.grad[hl], dat.z[hl])  
+    end
+    # relu_gradient!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(relu_gradient!))
+            (dat.grad[hl], dat.z[hl])  
+    end
+    # current_lr_epsilon!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(current_lr_epsilon!))
+            (dat.epsilon[hl], dat.grad[hl]) 
+    end
+    # batch_norm_back!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(batch_norm_back!))   
+            (nnw, dat, bn, hl, hp)
+    end
+
+
+function create_funcs()
     # indexable function container  TODO start with just feed fwd
-    func_dict = Dict(   # activation
-                        "affine" => affine!,
-                        "affine_nobias" => affine_nobias!,
-                        "sigmoid" => sigmoid!,
-                        "tanh_act" => tanh_act!,
-                        "l_relu" => l_relu!,
-                        "relu" => relu!,
-                        # classification
-                        "softmax" => softmax!,
-                        "logistic" => logistic!,
-                        "regression" => regression!,
+    func_dict = Dict(   
+                     # activation
+                    "affine" => affine!,
+                    "affine_nobias" => affine_nobias!,
+                    "sigmoid" => sigmoid!,
+                    "tanh_act" => tanh_act!,
+                    "l_relu" => l_relu!,
+                    "relu" => relu!,
+                    # classification
+                    "softmax" => softmax!,
+                    "logistic" => logistic!,
+                    "regression" => regression!,
 
-                        # batch norm
-                        "batch_norm_fwd" => batch_norm_fwd!,
+                    # batch norm
+                    "batch_norm_fwd" => batch_norm_fwd!,
 
-                        # optimization
-                        "dropout_fwd" => dropout_fwd!,
+                    # optimization
+                    "dropout_fwd" => dropout_fwd!,
 
-                        # gradient
-                        "affine_gradient" => affine_gradient!,
-                        "sigmoid_gradient" => sigmoid_gradient!,
-                        "tanh_act_gradient" => l_relu_gradient!,
-                        "l_relu_gradient" => l_relu_gradient!,
-                        "relu_gradient" => relu_gradient!,
+                    # back propagation
+                    "backprop_classify" => backprop_classify!,
+                    "backprop_weights" => backprop_weights!,
+                    "backprop_weights_nobias" => backprop_weights_nobias!,
 
-                        # optimization
-                        "dropout_back" => dropout_back!
-                    )
+                    "inbound_epsilon" => inbound_epsilon!,
+                    "current_lr_epsilon" => current_lr_epsilon!,
+
+                    # gradient
+                    "affine_gradient" => affine_gradient!,
+                    "sigmoid_gradient" => sigmoid_gradient!,
+                    "tanh_act_gradient" => l_relu_gradient!,
+                    "l_relu_gradient" => l_relu_gradient!,
+                    "relu_gradient" => relu_gradient!,
+
+                    # batch norm
+                    "batch_norm_back" => batch_norm_back!,
+
+                    # optimization
+                    "dropout_back" => dropout_back!
+                )
 end
 
 
-function build_ff_string_stack!(model, hp, dat)
+function build_ff_string_stack(hp, nnw)
     strstack = []
     n_hid = length(hp.hidden)
     n_layers = n_hid + 2
 
     #input layer
-    lr = 1
-        push!(strstack, String[]) # layer_group for input layer
+    layer = 1
+        layer_group = String[]
         if hp.dropout && (hp.droplim[1] < 1.0)
-            push!(strstack[lr], "dropout")
+            push!(layer_group, "dropout")
         end
+    push!(strstack, layer_group)
 
     # hidden layers
-    for lr = 2:n_hid+1
+    for layer = 2:n_hid+1
         layer_group = String[]
+        hl = layer - 1
 
         if hp.dropout && (hp.droplim[1] < 1.0)
             push!(layer_group, "dropout_fwd")
@@ -202,13 +308,13 @@ function build_ff_string_stack!(model, hp, dat)
         hp.do_batch_norm && push!(layer_group, "batch_norm_fwd")
         # unit_function or activation --> updates in place
         unit_function = 
-            if hp.hidden[lr-1][1] == "sigmoid"
+            if hp.hidden[hl][1] == "sigmoid"  # hp.hidden looks like [["relu", 80], ["sigmoid", 80]]
                 "sigmoid"
-            elseif hp.hidden[lr-1][1] == "l_relu"
+            elseif hp.hidden[hl][1] == "l_relu"
                 "l_relu"
-            elseif hp.hidden[lr-1][1] == "relu"
+            elseif hp.hidden[hl][1] == "relu"
                 "relu"
-            elseif hp.hidden[lr-1][1] == "tanh"
+            elseif hp.hidden[hl][1] == "tanh"
                 "tanh_act"
             end
         push!(layer_group, unit_function)
@@ -222,14 +328,13 @@ function build_ff_string_stack!(model, hp, dat)
     end
 
     #   output layer
-
-    i = n_hid + 2
-        layer_group = String[]
+    layer = n_hid + 2
+    layer_group = String[]
 
         push!(layer_group, "affine")
         # classify_function --> updates in place
         classify_function = 
-            if dat.out_k > 1  # more than one output (unit)
+            if nnw.ks[layer] > 1  # more than one output (unit)
                 if hp.classify == "sigmoid"
                     "sigmoid"
                 elseif hp.classify == "softmax"
@@ -247,37 +352,47 @@ function build_ff_string_stack!(model, hp, dat)
                 end
             end
         push!(layer_group, classify_function)
-        push!(strstack, layer_group) 
+    push!(strstack, layer_group) 
 
-        model.ff_strstack = strstack
+    return strstack
 end   
 
 
-function build_ff_exec_stack!(model, func_dict)
-    execstack = []
-    strstack = model.ff_strstack
+function build_exec_stack(strstack, func_dict)
+    execstack= []
     for i in 1:size(strstack,1)
         push!(execstack,[])
         for r in strstack[i]
             push!(execstack[i], func_dict[r])
         end
     end
-    model.ff_execstack = execstack
+
+    return execstack
 end
 
 
-function build_back_string_stack!(model, hp, dat)
+function build_back_string_stack(hp)
     strstack = []
     n_hid = length(hp.hidden)
     n_layers = n_hid + 2
 
     # input layer
+    layer = 1
+    layer_group = String[]
+        # usually nothing to do here  TODO resolve issue about backprop for the weights from the input layer
+    push!(strstack, layer_group)
 
     # hidden layers
     for layer in 2:n_layers-1 # for hidden layers: layers 2 through output - 1
         hl = hidden_layer = layer - 1
-        layer_group = String[]
+        layer_group = String[]  # start a new layer_group
 
+        push!(layer_group, "inbound_epsilon")   # required
+
+        if hp.dropout && (hp.droplim[hl] < 1.0)
+            push!(layer_group, "dropout_back")
+        end
+        
         gradient_function =
             if hp.hidden[hidden_layer][1] == "sigmoid" 
                 "sigmoid_gradient"
@@ -288,26 +403,26 @@ function build_back_string_stack!(model, hp, dat)
             elseif hp.hidden[hidden_layer][1] == "tanh_act"
                 "tanh_act_gradient"
             end
-            push(!layer_group, gradient_function)
+            push!(layer_group, gradient_function)
 
-        dropout_back_function =
-            if hp.dropout && (hp.droplim[hl] < 1.0)
-                "dropout_back"
-            end
-            push!(layer_group, dropout_back_function)
+        push!(layer_group, "current_lr_epsilon")        # required
+        
+        hp.do_batch_norm && push!(layer_group, "batch_norm_back")
+        # affine either or...
+        hp.do_batch_norm && push!(layer_group, "backprop_weights_nobias") # true
+        hp.do_batch_norm || push!(layer_group, "backprop_weights") # false
 
+        # done with layer_group for current hidden layer
+        push!(strstack, layer_group) 
     end
 
     #output layer
-        layer_group = String[]
-        #  do stuff
-        push!(strstack, layer_group) 
+    layer_group = String[]
+        push!(layer_group, "backprop_classify")
+        push!(layer_group, "backprop_weights")
+    push!(strstack, layer_group)  
 
-        model.back_strstack = strstack
-end
-
-
-function build_back_exec_stack!(model, func_dict)
+    return strstack
 end
 
 
@@ -321,44 +436,13 @@ function setup_functions!(hp, nnw, bn, dat)
         # the layer functions they point to are all module level (in file layer_functions.jl)
         # these are just substitute names or aliases
         # don't freak out about the word global--makes the aliases module level, too.
-    global gradient_function!
     global optimization_function!
     global cost_function
     global reg_function!
-    global dropout_back_function!
-    global batch_norm_back_function!
-    global backprop_weights_function!
 
     n_layers = length(hp.hidden) + 2
 
-    # TODO DO WE NEED THIS? allow different functions at each appropriate layer
-    gradient_function! = Array{Function}(undef, n_layers)
     reg_function! = Array{Function}(undef, n_layers)
-    dropout_back_function! = Array{Function}(undef, n_layers)
-
-    for layer in 2:n_layers-1 # for hidden layers: layers 2 through output - 1
-        hl = hidden_layer = layer - 1
-
-        gradient_function![layer] =
-            if hp.hidden[hidden_layer][1] == "sigmoid" 
-                sigmoid_gradient!
-            elseif hp.hidden[hidden_layer][1] == "l_relu"
-                l_relu_gradient!
-            elseif hp.hidden[hidden_layer][1] == "relu"
-                relu_gradient!
-            elseif hp.hidden[hidden_layer][1] == "tanh_act"
-                tanh_act_gradient!
-            end
-
-        dropout_back_function![layer] =
-            if hp.dropout && (hp.droplim[hl] < 1.0)
-                dropout_back!
-            else
-                noop
-            end
-    end
-
-
     # TODO update to enable different regulization at each layer
     for layer = 2:n_layers  # from the first hidden layer=2 to output layer
         reg_function![layer] = 
@@ -394,31 +478,5 @@ function setup_functions!(hp, nnw, bn, dat)
             cross_entropy_cost
         end
 
-    batch_norm_back_function! =
-        if hp.do_batch_norm
-            batch_norm_back_function! = create_curry_batch_norm_back!(hp, bn, nnw)
-        else
-            noop
-        end
-
-    backprop_weights_function! = 
-        if hp.do_batch_norm
-            backprop_weights_nobias!
-        else
-            backprop_weights!
-        end
-
     !hp.quiet && println("Setup functions completed.")
 end
-
-##############################################################
-# curried functions used by setup_functions
-##############################################################
-
-
-function create_curry_batch_norm_back!(hp, bn, nnw)  # arguments that are captured and "built-in" to curried function
-    return function create_curry_batch_norm_back_curry(dat, hl)  # arguments that will be passed in when new function called
-                batch_norm_back!(nnw, dat, bn, hl, hp)
-           end  # actual name of the resulting function set to return result of create_curry function
-end
-

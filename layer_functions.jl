@@ -96,20 +96,33 @@ end
 
 
 ###########################################################################
-#  layer functions:  back propagation chain rule
+#  layer functions for back propagation
 ###########################################################################
 
     # Choice of function determined in setup_functions! in setup_training.jl
 
+    function backprop_classify!(epsilon, preds, targets)
+        epsilon[:] = preds .- targets  
+    end
+
+
+    function inbound_epsilon!(epsilon, theta_above, eps_lr_above)
+        mul!(epsilon, theta_above', eps_lr_above)
+    end
+
+
+    function current_lr_epsilon!(epsilon, grad)
+        @inbounds epsilon[:] = epsilon .* grad
+    end
+
+
     # uses epsilon from the batchnorm_back calculations
-    function backprop_weights_nobias!(delta_th, delta_b, epsilon, a_prev, n; showf = false)
-        showf && begin; println("backprop_weights_nobias!"); return; end;
+    function backprop_weights_nobias!(delta_th, delta_b, epsilon, a_prev, n)
         mul!(delta_th, epsilon, a_prev')
         @fastmath delta_th[:] = delta_th .* (1.0 / n)
     end
 
-    function backprop_weights!(delta_th, delta_b, epsilon, a_prev, n; showf = false)
-        showf && begin; println("backprop_weights!"); return; end;
+    function backprop_weights!(delta_th, delta_b, epsilon, a_prev, n)
         mul!(delta_th, epsilon, a_prev')
 
         @fastmath delta_th[:] = delta_th .* (1.0 / n)
@@ -147,7 +160,6 @@ end
 
 
 function relu_gradient!(grad::AbstractArray{Float64}, z::AbstractArray{Float64})
-    # fill!(grad, 0.0)
     @simd for i = eachindex(z)
         @inbounds if z[i] > 0.0
             grad[i] = 1.0
@@ -291,6 +303,50 @@ end
 ##########################################################################
 # Regularization
 ##########################################################################
+
+# batch normalization
+# method for training that updates running averages of mu and std
+function batch_norm_fwd!(dat::Union{Model_data, Batch_view}, bn::Batch_norm_params, hp::Hyper_parameters, hl)
+!hp.quiet && println("batch_norm_fwd!(dat, bn, hp, hl)")
+
+    @inbounds begin
+        bn.mu[hl][:] = mean(dat.z[hl], dims=2)          # use in backprop
+        bn.stddev[hl][:] = std(dat.z[hl], dims=2)
+        dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu[hl]) ./ (bn.stddev[hl] .+ hp.ltl_eps) # normalized: often xhat or zhat  
+        dat.z[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: often called y 
+        bn.mu_run[hl][:] = (  bn.mu_run[hl][1] == 0.0 ? bn.mu[hl] :  
+            0.95 .* bn.mu_run[hl] .+ 0.05 .* bn.mu[hl]  )
+        bn.std_run[hl][:] = (  bn.std_run[hl][1] == 0.0 ? bn.stddev[hl] :  
+            0.95 .* bn.std_run[hl] + 0.05 .* bn.stddev[hl]  )
+    end
+end
+
+# method for prediction using running average of mu and std
+function batch_norm_fwd!(dat::Union{Model_data, Batch_view}, bn::Batch_norm_params, hp::Hyper_parameters, hl, notrain)
+!hp.quiet && println("batch_norm_fwd_predict!(hp, bn, dat, hl)")
+
+    @inbounds dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu_run[hl]) ./ (bn.std_run[hl] .+ hp.ltl_eps) # normalized: aka xhat or zhat 
+    @inbounds dat.z[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: often called y 
+end
+
+
+function batch_norm_back!(nnw, dat, bn, hl, hp)
+!hp.quiet && println("batch_norm_back!(nnw, dat, bn, hl, hp)")
+
+    mb = hp.mb_size
+    @inbounds bn.delta_bet[hl][:] = sum(dat.epsilon[hl], dims=2) ./ mb
+    @inbounds bn.delta_gam[hl][:] = sum(dat.epsilon[hl] .* dat.z_norm[hl], dims=2) ./ mb
+    @inbounds dat.epsilon[hl][:] = bn.gam[hl] .* dat.epsilon[hl]  # often called delta_z_norm at this stage
+
+    @inbounds dat.epsilon[hl][:] = (                               # often called delta_z, dx, dout, or dy
+        (1.0 / mb) .* (1.0 ./ (bn.stddev[hl] .+ hp.ltl_eps))  .* 
+            (          
+                mb .* dat.epsilon[hl] .- sum(dat.epsilon[hl], dims=2) .-
+                dat.z_norm[hl] .* sum(dat.epsilon[hl] .* dat.z_norm[hl], dims=2)
+                )
+        )
+end
+
 
 function maxnorm_reg!(nnw, hp, hl)    # (theta, maxnorm_lim)
     theta = nnw.theta[hl]

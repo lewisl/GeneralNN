@@ -34,7 +34,48 @@ function feedfwd!(dat::Union{Batch_view,Model_data}, nnw, hp, bn, ff_execstack)
 
 end
 
+# how we used to do the backprop loop for training
+"""
+function backprop!(nnw, dat, hp)
+    Argument nnw.delta_th holds the computed gradients for Wgts, delta_b for bias
+    Modifies dat.epsilon, nnw.delta_th, nnw.delta_b in place--caller uses nnw.delta_th, nnw.delta_b
+    Use for training iterations
+    Send it all of the data or a mini-batch
+    Intermediate storage of dat.a, dat.z, dat.epsilon, nnw.delta_th, nnw.delta_b reduces memory allocations
+"""
+function backprop!(nnw::Wgts, dat::Union{Batch_view,Model_data}, hp, bn, back_execstack)
+    !hp.quiet && println("backprop!(nnw, dat, hp)")
 
+
+
+    # println("size epsilon of output: ", size(dat.epsilon[nnw.output_layer]))
+    # println("size predictions: ", size(dat.a[nnw.output_layer]))
+    # println("size targets: ", size(dat.targets))
+
+    # output layer
+    @inbounds begin
+        # backprop classify
+        backprop_classify!(dat.epsilon[nnw.output_layer], dat.a[nnw.output_layer], dat.targets)
+            !hp.quiet && println("What is epsilon of output layer? ", mean(dat.epsilon[nnw.output_layer]))
+        backprop_weights!(nnw.delta_th[nnw.output_layer], nnw.delta_b[nnw.output_layer],  
+            dat.epsilon[nnw.output_layer], dat.a[nnw.output_layer-1], hp.mb_size)   
+    end
+
+    # loop over hidden layers
+    @fastmath @inbounds for hl = (nnw.output_layer - 1):-1:2  
+        # backprop activation
+        inbound_epsilon!(dat.epsilon[hl], nnw.theta[hl+1], dat.epsilon[hl+1])
+        dropout_back_function![hl](dat, nnw, hp, hl)  # noop if not applicable
+        gradient_function![hl](dat.grad[hl], dat.z[hl])  
+        current_lr_epsilon!(dat.epsilon[hl], dat.grad[hl]) 
+
+        batch_norm_back_function!(dat, hl)   # noop if not applicable
+        backprop_weights_function!(nnw.delta_th[hl], nnw.delta_b[hl], dat.epsilon[hl], dat.a[hl-1], hp.mb_size)
+
+        !hp.quiet && println("what is delta_th $hl? ", nnw.delta_th[hl])
+        !hp.quiet && println("what is delta_b $hl? ", nnw.delta_b[hl])
+    end
+end
     
 function printstruct(st)
     for it in propertynames(st)
