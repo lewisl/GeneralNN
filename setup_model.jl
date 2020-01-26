@@ -1,388 +1,482 @@
+# using Plots
 using JLD2
 using Printf
 using LinearAlgebra
 
 
-function build_model()
-    model = nothing # TODO
-    return model
-end
+function prep_training!(mb, hp, nnw, bn, n)
+    !hp.quiet && println("Setup_model beginning")
+    !hp.quiet && println("hp.dobatch: ", hp.dobatch)
 
-####################################################################
-#  verify hyper_parameter inputs from TOML or function arguments
-####################################################################
+    # debug
+    # println("norm_factors ", typeof(norm_factors))
+    # println(norm_factors)
 
-# Works with simple toml file containing all arguments at top level
-function args_verify(argsdict)
-    required = [:epochs, :hidden]
-    all(i -> i in Symbol.(keys(argsdict)), required) || error("Missing a required argument: epochs or hidden")
-
-    for (k,v) in argsdict
-        checklist = get(valid_toml, Symbol(k), nothing)
-        checklist === nothing && error("Parameter name is not valid: $k")
-
-        for tst in checklist
-            # eval the tst against the value in argsdict
-            result = all(tst.f(v, tst.check)) 
-            warn = get(tst, :warn, false)
-            msg = get(tst, :msg, warn ? "Input argument not ideal: $k: $v" : "Input argument not valid: $k: $v" )
-            !result && (warn ? @warn(msg) : error(msg))
-        end
+    #setup mini-batch
+    if hp.dobatch
+        @info("Be sure to shuffle training data when using minibatches.\n  Use utility function shuffle_data! or your own.")
+        if hp.mb_size_in < 1
+            hp.mb_size_in = n  
+            hp.dobatch = false    # user provided incompatible inputs
+        elseif hp.mb_size_in >= n
+            hp.mb_size_in = n
+            hp.dobatch = false   # user provided incompatible inputs
+        end 
+        hp.mb_size = hp.mb_size_in  # start value for hp.mb_size; changes if last minibatch is smaller
+        hp.do_batch_norm = hp.dobatch ? hp.do_batch_norm : false  
+    else
+        hp.mb_size_in = n
+        hp.mb_size = float(n)
     end
-end
 
-
-function args_verify_tables(argsdict)
-    # tables are: layer, training, results, plotting
-
-    #required tables
-    required_tables = [:layer, :training]
-    all(i -> i in Symbol.(keys(argsdict)), required_tables) || error("Missing a required table: layer, training, or output.")
-
-    args_training = argsdict["training"]
-    args_layer = argsdict["layer"]
-
-    args_verify_training(args_training)
-    args_verify_layer(args_layer)
-    
-    # optional tables (replaced with defaults if not present)
-    args_results = get(argsdict, "results", nothing)
-    args_plotting = get(argsdict, "plotting", nothing)
-
-    args_verify_results()
-    args_verify_plotting()
-
-end
-
-
-function args_verify_layer(argsdict)
-    # layer.output
-    key_output = pop!(argsdict,"output",nothing)
-    key_output === nothing && error("Missing input for layer.output")
-    # check for keys and values of layer.output_layer
-    try
-        if key_output["classify"] in ["softmax", "sigmoid", "logistic", "regression"]
+    hp.do_learn_decay = 
+        if hp.learn_decay == [1.0, 1.0]
+            false
+        elseif hp.learn_decay == []
+            false
         else
-            error("classify must be one of softmax, sigmoid, logistic or regression.")
+            true
         end
-    catch
-        error("Missing argument classify for output layer.")
+
+    hp.do_learn_decay && (hp.learn_decay = [hp.learn_decay[1], floor(hp.learn_decay[2])])
+
+    hp.alphamod = hp.alpha
+
+    # dropout parameters: droplim is in hp (Hyper_parameters),
+    #    dropout_random and dropout_mask_units are in mb or train (Model_data)
+    # set a droplim for each layer 
+    if hp.dropout
+        if length(hp.droplim) == length(hp.hidden) + 2  # droplim for every layer
+            if hp.droplim[end] != 1.0
+                @warn("Poor performance when dropping units from output layer, continuing.")
+            end
+        elseif length(hp.droplim) == length(hp.hidden) + 1 # droplim for input and hidden layers
+            hp.droplim = [hp.droplim..., 1.0]  # keep all units in output layer
+        elseif length(hp.droplim) < length(hp.hidden)  # pad droplim for all hidden layers
+            for i = 1:length(hp.hidden)-length(hp.droplim)
+                push!(hp.droplim,hp.droplim[end]) 
+            end
+            hp.droplim = [1.0, hp.droplim..., 1.0] # use all units for input and output layers
+        else
+            @warn("More drop limits provided than total network layers, use limits ONLY for hidden layers.")
+            hp.droplim = hp.droplim[1:length(hp.hidden)]  # truncate
+            hp.droplim = [1.0, hp.droplim..., 1.0] # placeholders for input and output layers
+        end
     end
+
+    # setup parameters for maxnorm regularization
+    if titlecase(hp.reg) == "Maxnorm"
+        hp.reg = "Maxnorm"
+        if isempty(hp.maxnorm_lim)
+            @warn("Values in Float64 array must be set for maxnormlim to use Maxnorm Reg, continuing without...")
+            hp.reg = "L2"
+        elseif length(hp.maxnorm_lim) == length(hp.hidden) + 1
+            hp.maxnorm_lim = append!([0.0], hp.maxnorm_lim) # add dummy for input layer
+        elseif length(hp.maxnorm_lim) > length(hp.hidden) + 1
+            @warn("Too many values in maxnorm_lim; truncating to hidden and output layers.")
+            hp.maxnorm_lim = append!([0.0], hp.maxnorm_lim[1:length(hp.hidden)+1]) # truncate and add dummy for input layer
+        elseif length(hp.maxnorm_lim) < length(hp.hidden) + 1
+            for i = 1:length(hp.hidden)-length(hp.maxnorm_lim) + 1
+                push!(hp.maxnorm_lim,hp.maxnorm_lim[end]) 
+            end
+            hp.maxnorm_lim = append!([0.0], hp.maxnorm_lim) # add dummy for input layer
+        end
+    end
+
+    !hp.quiet && println("end of setup_model: hp.dobatch: ", hp.dobatch)
+end
+
+
+# iterator for minibatches of training examples
+    struct MBrng  # values are set once to define the iterator stop point=cnt, and increment=incr
+        cnt::Int
+        incr::Int
+    end
+
+    function mbiter(mb::MBrng, start)  # new method for Base.iterate
+        nxtstart = start + mb.incr
+        stop = nxtstart - 1 < mb.cnt ? nxtstart - 1 : mb.cnt
+        ret = start < mb.cnt ? (start:stop, nxtstart) : nothing # return tuple of range and next state, or nothing--to stop iteration
+        return ret
+    end
+
+    function mblength(mb::MBrng)  # new method for Base.length
+        return ceil(Int,mb.cnt / mb.incr)
+    end
+
+    # add iterate methods: must supply type for the new methods--method dispatch selects the method for this type of iterator
+        # the function  names don't matter--we provide an alternate for the standard methods, but the functions
+        # need to do the right things
+    Base.iterate(mb::MBrng, start=1) = mbiter(mb::MBrng, start)   # canonical to use "state" instead of "start"
+    Base.length(mb::MBrng) = mblength(mb)
+
+
+# argfilt methods to pass in the training loop
+# feed forward
+    # affine!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(affine!))
+        (dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
+    end
+    # affine_nobias!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(affine_nobias!))  #TODO: we can take bias out in layer_functions.jl
+        (dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
+    end
+# activation functions
+    # sigmoid!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(sigmoid!))
+        (dat.a[hl], dat.z[hl])
+    end
+    # tanh_act!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(tanh_act!))
+        (dat.a[hl], dat.z[hl])
+    end
+    # l_relu!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(l_relu!))
+        (dat.a[hl], dat.z[hl])
+    end
+    # relu!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(relu!))
+        (dat.a[hl], dat.z[hl])
+    end
+# classification functions
+    # softmax
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(softmax!))
+        (dat.a[hl], dat.z[hl])
+    end
+    # logistic!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(logistic!))
+        (dat.a[hl], dat.z[hl])
+    end
+    # regression!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(regression!))
+        (dat.a[hl], dat.z[hl])
+    end
+    # batch_norm_fwd!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(batch_norm_fwd!))
+        (dat, bn, hp, hl)
+    end
+    # batch_norm_fwd_predict!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(batch_norm_fwd_predict!))
+        (dat, bn, hp, hl)
+    end
+    # dropout_fwd!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(dropout_fwd!))
+        (dat, hp, nnw, hl)
+    end
+
+    # back propagation
+    # backprop_classify!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(backprop_classify!))
+            (dat.epsilon[nnw.output_layer], dat.a[nnw.output_layer], dat.targets)
+    end
+    # backprop_weights!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(backprop_weights!))
+            (nnw.delta_th[hl], nnw.delta_b[hl], dat.epsilon[hl], dat.a[hl-1], hp.mb_size)   
+    end
+    # backprop_weights_nobias!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(backprop_weights_nobias!))        # TODO fix
+            (nnw.delta_th[hl], nnw.delta_b[hl], dat.epsilon[hl], dat.a[hl-1], hp.mb_size)
+    end
+    # inbound_epsilon!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(inbound_epsilon!))
+            (dat.epsilon[hl], nnw.theta[hl+1], dat.epsilon[hl+1])
+    end
+    # dropout_back!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(dropout_back!))
+            (dat, nnw, hp, hl)    
+    end
+    # sigmoid_gradient!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(sigmoid_gradient!))
+            (dat.grad[hl], dat.z[hl])  
+    end
+    # tanh_act_gradient!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(tanh_act_gradient!))
+            (dat.grad[hl], dat.z[hl])  
+    end
+    # l_relu_gradient!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(l_relu_gradient!))
+            (dat.grad[hl], dat.z[hl])  
+    end
+    # relu_gradient!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(relu_gradient!))
+            (dat.grad[hl], dat.z[hl])  
+    end
+    # current_lr_epsilon!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(current_lr_epsilon!))
+            (dat.epsilon[hl], dat.grad[hl]) 
+    end
+    # batch_norm_back!
+    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(batch_norm_back!))   
+            (nnw, dat, bn, hl, hp)
+    end
+
+
+function create_funcs()
+    # indexable function container  TODO start with just feed fwd
+    func_dict = Dict(   
+                     # activation
+                    "affine" => affine!,
+                    "affine_nobias" => affine_nobias!,
+                    "sigmoid" => sigmoid!,
+                    "tanh_act" => tanh_act!,
+                    "l_relu" => l_relu!,
+                    "relu" => relu!,
+                    # classification
+                    "softmax" => softmax!,
+                    "logistic" => logistic!,
+                    "regression" => regression!,
+
+                    # batch norm
+                    "batch_norm_fwd" => batch_norm_fwd!,
+
+                    # optimization
+                    "dropout_fwd" => dropout_fwd!,
+
+                    # back propagation
+                    "backprop_classify" => backprop_classify!,
+                    "backprop_weights" => backprop_weights!,
+                    "backprop_weights_nobias" => backprop_weights_nobias!,
+
+                    "inbound_epsilon" => inbound_epsilon!,
+                    "current_lr_epsilon" => current_lr_epsilon!,
+
+                    # gradient
+                    "affine_gradient" => affine_gradient!,
+                    "sigmoid_gradient" => sigmoid_gradient!,
+                    "tanh_act_gradient" => l_relu_gradient!,
+                    "l_relu_gradient" => l_relu_gradient!,
+                    "relu_gradient" => relu_gradient!,
+
+                    # batch norm
+                    "batch_norm_back" => batch_norm_back!,
+
+                    # optimization
+                    "dropout_back" => dropout_back!
+                )
+end
+
+
+function build_ff_string_stack(hp, nnw)
+    strstack = []
+    n_hid = length(hp.hidden)
+    n_layers = n_hid + 2
+
+    #input layer
+    layer = 1
+        layer_group = String[]
+        if hp.dropout && (hp.droplim[1] < 1.0)
+            push!(layer_group, "dropout")
+        end
+    push!(strstack, layer_group)
 
     # hidden layers
-        try
-            hls = parse.(Int, collect(keys(argsdict)))
-        catch
-            error("One or more hidden layers is not an integer.")
-        end
-        hls = sort(hls)
-        println(hls)
-        hls[1]:hls[end] != 1:size(hls,1) && error("Hidden layer numbers are not a sequence from 1 to $(size(hls,1)).")
-    # check for keys and and values of hidden layers
-    for (lyr,lyrdict) in argsdict
-        for (k,v) in lyrdict
-            checklist = get(valid_layers, Symbol(k), nothing)
-            checklist === nothing && error("Parameter name is not valid: $k")
+    for layer = 2:n_hid+1
+        layer_group = String[]
+        hl = layer - 1
 
-            for tst in checklist
-                # eval the tst against the value in argsdict
-                result = all(tst.f(v, tst.check)) 
-                warn = get(tst, :warn, false)
-                msg = get(tst, :msg, warn ? "Input argument not ideal: $k: $v" : "Input argument not valid: $k: $v" )
-                !result && (warn ? @warn(msg) : error("Layer $lyr", " ", msg))
+        if hp.dropout && (hp.droplim[1] < 1.0)
+            push!(layer_group, "dropout_fwd")
+        end
+
+        # affine either or...
+        hp.do_batch_norm && push!(layer_group, "affine_nobias") # true
+        hp.do_batch_norm || push!(layer_group, "affine") # false
+        # batch_norm_fwd 
+        hp.do_batch_norm && push!(layer_group, "batch_norm_fwd")
+        # unit_function or activation --> updates in place
+        unit_function = 
+            if hp.hidden[hl][1] == "sigmoid"  # hp.hidden looks like [["relu", 80], ["sigmoid", 80]]
+                "sigmoid"
+            elseif hp.hidden[hl][1] == "l_relu"
+                "l_relu"
+            elseif hp.hidden[hl][1] == "relu"
+                "relu"
+            elseif hp.hidden[hl][1] == "tanh"
+                "tanh_act"
             end
-        end
-    end       
-      
-    # put the dict back together after popping
-    argsdict["output"] = key_output
-end
+        push!(layer_group, unit_function)
+        # dropout --> updates in place
+        if hp.dropout && (hp.droplim[lr] < 1.0)
+            push!(layer_group, "dropout_fwd")
+        end        
+
+        # done with layer_group for current hidden layer
+        push!(strstack, layer_group) 
+    end
+
+    #   output layer
+    layer = n_hid + 2
+    layer_group = String[]
+
+        push!(layer_group, "affine")
+        # classify_function --> updates in place
+        classify_function = 
+            if nnw.ks[layer] > 1  # more than one output (unit)
+                if hp.classify == "sigmoid"
+                    "sigmoid"
+                elseif hp.classify == "softmax"
+                    "softmax"
+                else
+                    error("Function to classify output labels must be \"sigmoid\" or \"softmax\".")
+                end
+            else
+                if hp.classify == "sigmoid" || hp.classify == "logistic"
+                    "logistic"  # for one output label
+                elseif hp.classify == "regression"
+                    "regression"
+                else
+                    error("Function to classify output must be \"sigmoid\", \"logistic\" or \"regression\".")
+                end
+            end
+        push!(layer_group, classify_function)
+    push!(strstack, layer_group) 
+
+    return strstack
+end   
 
 
-
-function args_verify_training(argsdict)
-    required = [:epochs, :hidden]
-    all(i -> i in Symbol.(keys(argsdict)), required) || error("Missing a required argument: epochs or hidden")
-
-    for (k,v) in argsdict
-        checklist = get(valid_training, Symbol(k), nothing)
-        checklist === nothing && error("Parameter name is not valid: $k")
-
-        for tst in checklist
-            # eval the tst against the value in argsdict
-            result = all(tst.f(v, tst.check)) 
-            warn = get(tst, :warn, false)
-            msg = get(tst, :msg, warn ? "Input argument not ideal: $k: $v" : "Input argument not valid: $k: $v" )
-            !result && (warn ? @warn(msg) : error(msg))
+function build_exec_stack(strstack, func_dict)
+    execstack= []
+    for i in 1:size(strstack,1)
+        push!(execstack,[])
+        for r in strstack[i]
+            push!(execstack[i], func_dict[r])
         end
     end
 
+    return execstack
 end
 
-# functions used to verify input values in result = all(test.f(v, tst.check))
-    eqtype(item, check) = typeof(item) == check
-    ininterval(item, check) = check[1] .<= item .<= check[2] 
-    ininterval2(item, check) = check[1] .<= map(x -> parse(Int, x[2]), item) .<= check[2] # 2nd element of tuple item
-    oneof(item::String, check) = lowercase(item) in check 
-    oneof(item::Real, check) = item in check
-    lengthle(item, check) = length(item) <= check 
-    lengtheq(item, check) = length(item) == check
-    lrndecay(item, check) = ininterval(item[1],check[1]) && ininterval(item[2], check[2])
 
-# for stats
-valid_stats = ["learning", "cost", "train", "test", "batch", "epoch"]
-function checkstats(item, _)
-    if length(item) > 1
-        ok1 = all(i -> i in valid_stats, lowercase.(item)) 
-        ok2 = allunique(item) 
-        ok3 = !("batch" in item && "epoch" in item)  # can't have both, ok to have neither
-        ok = all([ok1, ok2, ok3])
-    elseif length(item) == 1
-        ok = item[1] in ["", "none"] 
-    else
-        ok = true
+function build_back_string_stack(hp)
+    strstack = []
+    n_hid = length(hp.hidden)
+    n_layers = n_hid + 2
+
+    # input layer
+    layer = 1
+    layer_group = String[]
+        # usually nothing to do here  TODO resolve issue about backprop for the weights from the input layer
+    push!(strstack, layer_group)
+
+    # hidden layers
+    for layer in 2:n_layers-1 # for hidden layers: layers 2 through output - 1
+        hl = hidden_layer = layer - 1
+        layer_group = String[]  # start a new layer_group
+
+        push!(layer_group, "inbound_epsilon")   # required
+
+        if hp.dropout && (hp.droplim[hl] < 1.0)
+            push!(layer_group, "dropout_back")
+        end
+        
+        gradient_function =
+            if hp.hidden[hidden_layer][1] == "sigmoid" 
+                "sigmoid_gradient"
+            elseif hp.hidden[hidden_layer][1] == "l_relu"
+                "l_relu_gradient"
+            elseif hp.hidden[hidden_layer][1] == "relu"
+                "relu_gradient"
+            elseif hp.hidden[hidden_layer][1] == "tanh_act"
+                "tanh_act_gradient"
+            end
+            push!(layer_group, gradient_function)
+
+        push!(layer_group, "current_lr_epsilon")        # required
+        
+        hp.do_batch_norm && push!(layer_group, "batch_norm_back")
+        # affine either or...
+        hp.do_batch_norm && push!(layer_group, "backprop_weights_nobias") # true
+        hp.do_batch_norm || push!(layer_group, "backprop_weights") # false
+
+        # done with layer_group for current hidden layer
+        push!(strstack, layer_group) 
     end
-    return ok
+
+    #output layer
+    layer_group = String[]
+        push!(layer_group, "backprop_classify")
+        push!(layer_group, "backprop_weights")
+    push!(strstack, layer_group)  
+
+    return strstack
 end
 
-# for training
-    # key for each input param; value is list of checks as tuples 
-    #     check keys are f=function, check=values, warn can be true--default is false, msg="something"
-    #     example:  :alpha =>  [(f=eqtype, check=Float64), (f=ininterval, check=(.000001, 9.0), warn=true)]
-const valid_training = Dict(
-          :epochs => [(f=eqtype, check=Int), (f=ininterval, check=(1,9999))],
-          :alpha =>  [(f=eqtype, check=Float64), (f=ininterval, check=(.000001, 9.0), warn=true)],
-          :reg =>  [(f=oneof, check=["l2", "l1", "maxnorm", "", "none"])],
-          :maxnorm_lim =>  [(f=eqtype, check=Array{Float64, 1})],
-          :lambda =>  [(f=eqtype, check=Float64), (f=ininterval, check=(0.0, 5.0))],
-          :learn_decay =>  [(f=eqtype, check=Array{Float64, 1}), (f=lengtheq, check=2), 
-                            (f=lrndecay, check=((.1,1.0), (1.0,20.0)))],
-          :mb_size_in =>  [(f=eqtype, check=Int), (f=ininterval, check=(0,1000))],
-          :norm_mode => [(f=oneof, check=["standard", "minmax", "", "none"])] ,
-          :dobatch =>  [(f=eqtype, check=Bool)],
-          :do_batch_norm =>  [(f=eqtype, check=Bool)],
-          :opt =>  [(f=oneof, check=["momentum", "rmsprop", "adam", "", "none"])],
-          :opt_params =>  [(f=eqtype, check=Array{Float64,1}), (f=ininterval, check=(0.5,1.0))],
-          :dropout =>  [(f=eqtype, check=Bool)],
-          :droplim =>  [(f=eqtype, check=Array{Float64, 1}), (f=ininterval, check=(0.2,1.0))],
-          :stats =>  [(f=checkstats, check=nothing)],
-          :plot_now =>  [(f=eqtype, check=Bool)],
-          :quiet =>  [(f=eqtype, check=Bool)],
-          :initializer => [(f=oneof, check=["xavier", "uniform", "normal", "zero"], warn=true, 
-                            msg="Setting to default: xavier")] ,
-          :scale_init =>  [(f=eqtype, check=Float64)],
-          :bias_initializer => [(f=eqtype, check=Float64, warn=true, msg="Setting to default 0.0"),
-                                (f=ininterval, check=(0.0,1.0), warn=true, msg="Setting to default 0.0")],
-          :sparse =>  [(f=eqtype, check=Bool)]
-        )
 
-# for layers
-const valid_layers = Dict(
-          :activation =>  [(f=oneof, check=["sigmoid", "l_relu", "relu", "tanh"]), 
-                           (f=oneof, check=["l_relu", "relu"], warn=true, 
-                            msg="Better results obtained with relu using input and/or batch normalization. Proceeding...")],
-          :units => [(f=eqtype, check=Int), (f=ininterval, check=(1, 8192))],
-          :linear => [(f=eqtype, check=Bool)]
-        )
+"""
+define and choose functions to be used in neural net training
+"""
+function setup_functions!(hp, nnw, bn, dat)
+!hp.quiet && println("Setup functions beginning")
 
-# for simple file containing all arguments at top level
-    # key for each input param; value is list of checks as tuples 
-    #     check keys are f=function, check=values, warn can be true--default is false, msg="something"
-    #     example:  :alpha =>  [(f=eqtype, check=Float64), (f=ininterval, check=(.000001, 9.0), warn=true)]
-const valid_toml = Dict(
-          :epochs => [(f=eqtype, check=Int), (f=ininterval, check=(1,9999))],
-          :hidden =>  [ (f=lengthle, check=11), (f=eqtype, check=Array{Array, 1}),
-                       (f=ininterval2, check=(1,8192))],                     
-          :alpha =>  [(f=eqtype, check=Float64), (f=ininterval, check=(.000001, 9.0), warn=true)],
-          :reg =>  [(f=oneof, check=["l2", "l1", "maxnorm", "", "none"])],
-          :maxnorm_lim =>  [(f=eqtype, check=Array{Float64, 1})],
-          :lambda =>  [(f=eqtype, check=Float64), (f=ininterval, check=(0.0, 5.0))],
-          :learn_decay =>  [(f=eqtype, check=Array{Float64, 1}), (f=lengtheq, check=2), 
-                            (f=lrndecay, check=((.1,1.0), (1.0,20.0)))],
-          :mb_size_in =>  [(f=eqtype, check=Int), (f=ininterval, check=(0,1000))],
-          :norm_mode => [(f=oneof, check=["standard", "minmax", "", "none"])] ,
-          :dobatch =>  [(f=eqtype, check=Bool)],
-          :do_batch_norm =>  [(f=eqtype, check=Bool)],
-          :opt =>  [(f=oneof, check=["momentum", "rmsprop", "adam", "", "none"])],
-          :opt_params =>  [(f=eqtype, check=Array{Float64,1}), (f=ininterval, check=(0.5,1.0))],
-          :units =>  [(f=oneof, check=["sigmoid", "l_relu", "relu", "tanh"]), 
-                      (f=oneof, check=["l_relu", "relu"], warn=true, 
-                       msg="Better results obtained with relu using input and/or batch normalization. Proceeding...")],
-          :classify => [(f=oneof, check=["softmax", "sigmoid", "logistic", "regression"])] ,
-          :dropout =>  [(f=eqtype, check=Bool)],
-          :droplim =>  [(f=eqtype, check=Array{Float64, 1}), (f=ininterval, check=(0.2,1.0))],
-          :stats =>  [(f=checkstats, check=nothing)],
-          :plot_now =>  [(f=eqtype, check=Bool)],
-          :quiet =>  [(f=eqtype, check=Bool)],
-          :initializer => [(f=oneof, check=["xavier", "uniform", "normal", "zero"], warn=true, 
-                            msg="Setting to default: xavier")] ,
-          :scale_init =>  [(f=eqtype, check=Float64)],
-          :bias_initializer => [(f=eqtype, check=Float64, warn=true, msg="Setting to default 0.0"),
-                                (f=ininterval, check=(0.0,1.0), warn=true, msg="Setting to default 0.0")],
-          :sparse =>  [(f=eqtype, check=Bool)]
-        )
+    # make these function variables module level 
+        # the layer functions they point to are all module level (in file layer_functions.jl)
+        # these are just substitute names or aliases
+        # don't freak out about the word global--makes the aliases module level, too.
+    global optimization_function!
+    global cost_function
+    global reg_function!
 
+    n_layers = length(hp.hidden) + 2
 
-function build_hyper_parameters(argsdict)
-    # assumes args have already been verified
+    reg_function! = Array{Function}(undef, n_layers)
+    # TODO update to enable different regulization at each layer
+    for layer = 2:n_layers  # from the first hidden layer=2 to output layer
+        reg_function![layer] = 
+            if hp.reg == "L2"
+                l2_reg!
+            elseif hp.reg == "L1"
+                l1_reg!
+            elseif hp.reg == "Maxnorm"
+                maxnorm_reg!
+            else
+                noop
+            end
+        
+    end
 
-    hp = Hyper_parameters()  # hyper_parameters constructor:  sets defaults
-
-    for (k,v) in argsdict
-        if k == "hidden"  # special case because of TOML limitation:  change [["relu", "80"]] to [("relu", 80)]
-            setproperty!(hp, Symbol(k), map( x -> (x[1], parse(Int, x[2])), v) ) 
+    optimization_function! = 
+        if hp.opt == "momentum"
+            momentum!
+        elseif hp.opt == "adam"
+            adam!
+        elseif hp.opt == "rmsprop"
+            rmsprop!
         else
-            setproperty!(hp, Symbol(k), v)
+            noop
         end
-    end
 
-    return hp
-end
-
-
-function preallocate_wgts!(nnw, hp, in_k, n, out_k)
-    # initialize and pre-allocate data structures to hold neural net training data
-    # theta = weight matrices for all calculated layers (e.g., not the input layer)
-    # bias = bias term used for every layer but input
-    # in_k = no. of features in input layer
-    # n = number of examples in input layer (and throughout the network)
-    # out_k = number of features in the targets--the output layer
-
-    # theta dimensions for each layer of the neural network
-    #    Follows the convention that rows = outputs of the current layer activation
-    #    and columns are the inputs from the layer below
-
-    # layers
-    nnw.output_layer = 2 + size(hp.hidden, 1) # input layer is 1, output layer is highest value
-    nnw.ks = [in_k, map(x -> x[2], hp.hidden)..., out_k]       # no. of output units by layer
-
-    # set dimensions of the linear Wgts for each layer
-    push!(nnw.theta_dims, (in_k, 1)) # weight dimensions for the input layer -- if using array, must splat as arg
-    for l = 2:nnw.output_layer  
-        push!(nnw.theta_dims, (nnw.ks[l], nnw.ks[l-1]))
-    end
-
-    # initialize the linear Wgts
-    nnw.theta = [zeros(2,2)] # layer 1 not used
-
-    # Xavier initialization--current best practice for relu
-    if hp.initializer == "xavier"
-        xavier_initialize!(nnw, hp.scale_init)
-    elseif hp.initializer == "uniform"
-        uniform_initialize!(nnw. hp.scale_init)
-    elseif hp.initializer == "normal"
-        normal_initialize!(nnw, hp.scale_init)
-    else # using zeros generally produces poor results
-        for l = 2:nnw.output_layer
-            push!(nnw.theta, zeros(nnw.theta_dims[l])) # sqrt of no. of input units
+    cost_function = 
+        if hp.classify=="regression" 
+            mse_cost 
+        elseif hp.classify == "softmax"
+            softmax_cost
+        else
+            cross_entropy_cost
         end
-    end
 
-    # bias initialization: small positive values can improve convergence
-    nnw.bias = [zeros(2)] # this is layer 1: never used.  placeholder to make layer indices consistent
-
-    if hp.bias_initializer == 0.0
-        bias_zeros(nnw.ks, nnw)  
-    elseif hp.bias_initializer == 1.0
-        bias_ones(nnw.ks, nnw)
-    elseif 0.0 < hp.bias_initializer < 1.0
-        bias_val(hp.bias_initializer, nnw.ks, nnw)
-    elseif np.bias_initializer == 99.9
-        bias_rand(nnw.ks, nnw)
-    else
-        bias_zeros(nnw.ks, nnw)
-    end
-
-    # structure of gradient matches theta
-    nnw.delta_th = deepcopy(nnw.theta)
-    nnw.delta_b = deepcopy(nnw.bias)
-
-    # initialize gradient, 2nd order gradient for Momentum or Adam or rmsprop
-    if hp.opt == "momentum" || hp.opt == "adam" || hp.opt == "rmsprop"
-        nnw.delta_v_th = [zeros(size(a)) for a in nnw.delta_th]
-        nnw.delta_v_b = [zeros(size(a)) for a in nnw.delta_b]
-    end
-    if hp.opt == "adam"
-        nnw.delta_s_th = [zeros(size(a)) for a in nnw.delta_th]
-        nnw.delta_s_b = [zeros(size(a)) for a in nnw.delta_b]
-    end
-
+    !hp.quiet && println("Setup functions completed.")
 end
-
-
-function xavier_initialize!(nnw, scale=2.0)
-    for l = 2:nnw.output_layer
-        push!(nnw.theta, randn(nnw.theta_dims[l]...) .* sqrt(scale/nnw.theta_dims[l][2])) # sqrt of no. of input units
-    end
-end
-
-
-function uniform_initialize!(nnw, scale=0.15)
-    for l = 2:nnw.output_layer
-        push!(nnw.theta, (rand(nnw.theta_dims[l]...) .- 0.5) .* (scale/.5)) # sqrt of no. of input units
-    end        
-end
-
-
-function normal_initialize!(nnw, scale=0.15)
-    for l = 2:nnw.output_layer
-        push!(nnw.theta, randn(nnw.theta_dims[l]...) .* scale) # sqrt of no. of input units
-    end
-end
-
-
-function bias_zeros(ks, nnw)
-    for l = 2:nnw.output_layer
-        push!(nnw.bias, zeros(ks[l]))
-    end
-end
-
-function bias_ones(ks, nnw)
-    for l = 2:nnw.output_layer
-        push!(nnw.bias, ones(ks[l]))
-    end
-end
-
-function bias_val(val, ks, nnw)
-    for l = 2:nnw.output_layer
-        push!(nnw.bias, fill(val, ks[l]))
-    end
-end
-
-function bias_rand(ks, nnw)
-    for l = 2:nnw.output_layer
-        push!(nnw.bias, rand(ks[l]) .* 0.1)
-    end
-end
-
-
-function preallocate_batchnorm!(bn, mb, k)
-    # initialize batch normalization parameters gamma and beta
-    # vector at each layer corresponding to no. of inputs from preceding layer, roughly "features"
-    # gamma = scaling factor for normalization standard deviation
-    # beta = bias, or new mean instead of zero
-    # should batch normalize for relu, can do for other unit functions
-    # note: beta and gamma are reserved keywords, using bet and gam
-    bn.gam = [ones(i) for i in k]  # gamma is a builtin function
-    bn.bet = [zeros(i) for i in k] # beta is a builtin function
-    bn.delta_gam = [zeros(i) for i in k]
-    bn.delta_bet = [zeros(i) for i in k]
-    bn.delta_v_gam = [zeros(i) for i in k]
-    bn.delta_s_gam = [zeros(i) for i in k]
-    bn.delta_v_bet = [zeros(i) for i in k]
-    bn.delta_s_bet = [zeros(i) for i in k]
-    bn.mu = [zeros(i) for i in k]  # same size as bias = no. of layer units
-    bn.mu_run = [zeros(i) for i in k]
-    bn.stddev = [zeros(i) for i in k]
-    bn.std_run = [zeros(i) for i in k]
-
-end
-
-
-feedfwd_funcs = Dict(
-    "relu" => (f=relu!, args=()),
-    )
-
-backprop_funcs = Dict(
-
-    )
