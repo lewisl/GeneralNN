@@ -6,6 +6,33 @@
     update_batch_views!(onedat, dat, wgts, hp, example:example)
 
 
+# a macro that creates new argfilt functions
+#    but each has a single method because the function names are tripped up by sysgen
+macro gen_argfilt(func, tpl)
+    return quote
+        function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts,
+             hp::Hyper_parameters, bn::Batch_norm_params, hl::Int, fn::typeof($func)); 
+             $tpl
+        end
+    end
+end
+
+
+# an alternative that is called differently and requires that the resuling functions be used differently
+    # this works but is silly clumsy to use
+macro gen_argfilt3(func,tpl_f) # tpl_f must be like:  () -> (dat.a[hl], dat.z[hl])
+       return quote
+           function argfilt(dat::Union{Model_data, Batch_view},nnw::Wgts,
+                   hp::Hyper_parameters, bn::Batch_norm_params, hl::Int,fn::typeof($func)) 
+                $tpl_f 
+            end # function definition
+       end # quote block
+end # macro definition
+# use to generate an argfilt function: af2 = @gen_argfilt2( GeneralNN.relu!, () -> (dat.a[hl],dat.z[hl]) );
+# use it the training loop as: relu!(af2(train, nnw, hp, bn, 1,relu!)()...) NOTE empty pair of () to call the
+#     anonymous function that was created
+
+
 # how we used to do the feedfwd function for the training loop
 function feedfwd!(dat::Union{Batch_view,Model_data}, nnw, hp, bn, ff_execstack)  
 !hp.quiet && println("feedfwd!(dat::Union{Batch_view, Model_data}, nnw, hp)")

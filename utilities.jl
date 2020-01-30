@@ -640,6 +640,38 @@ function print_functions_in_use()
 end
 
 
+function print_model(model::Model_def)
+
+    n_layers = length(model.ff_strstack)
+        println("\nFeed Forward")
+        for lr = 1:n_layers 
+            if lr == 1
+                println("1: Input")
+            elseif lr == n_layers
+                println(n_layers,": Output")
+            else
+                println(lr,": Hidden")
+            end
+            for (fncnt, item) in enumerate(model.ff_strstack[lr])
+                println("  ",fncnt, ": ", item)
+            end
+        end
+        println("\nBack Propagation")
+        for lr = n_layers:-1:1
+            if lr == 1
+                println("1: Input")
+            elseif lr == n_layers
+                println(n_layers,": Output")
+            else
+                println(lr,": Hidden")
+            end
+            for (fncnt, item) in enumerate(model.back_strstack[lr])
+                println("  ", fncnt, ": ", item)
+            end
+        end   
+
+end
+
 
 ##############################################################
 #

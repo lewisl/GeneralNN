@@ -35,12 +35,7 @@ end
 function _training_loop!(hp, train, test, mb, nnw, bn, stats, model)
 !hp.quiet && println("training_loop(hp, train, test mb, nnw, bn, stats; dotest=false)")
 
-    println("\nRunning current model:")
-    println("feedforward (by layer)")
-    dump(model.ff_strstack)
-    println("\nbackprop (by layer; note: layers run in reverse order)")
-    dump(model.back_strstack)
-    println()
+    print_model(model); println
 
     dotest = isempty(test.inputs) ? false : true
 
@@ -119,7 +114,7 @@ function feedfwd!(dat::Union{Batch_view,Model_data}, nnw, hp, bn, ff_execstack)
 
     for lr in 1:hp.n_layers
         for f in ff_execstack[lr]
-            f(argfilt(dat, nnw, hp, bn, lr, f)...)
+            f(argpicker(dat, nnw, hp, bn, lr, f)...)
         end
     end
 
@@ -138,7 +133,7 @@ function feedfwd_predict!(dat::Union{Batch_view, Model_data}, nnw::Wgts, hp, bn,
                 f(dat, bn, hp, lr, true)
                 continue
             end
-            f(argfilt(dat, nnw, hp, bn, lr, f)...)
+            f(argpicker(dat, nnw, hp, bn, lr, f)...)
         end
     end
 
@@ -158,7 +153,7 @@ function backprop!(nnw::Wgts, dat::Union{Batch_view,Model_data}, hp, bn, back_ex
 
     for lr in hp.n_layers:-1:1
         for f in back_execstack[lr]
-            f(argfilt(dat, nnw, hp, bn, lr, f)...)
+            f(argpicker(dat, nnw, hp, bn, lr, f)...)
         end
     end
 

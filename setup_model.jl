@@ -111,127 +111,140 @@ end
     Base.length(mb::MBrng) = mblength(mb)
 
 
-# argfilt methods to pass in the training loop
+# argpicker methods to pass in the training loop
 # feed forward
     # affine!
-    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+    function argpicker(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, hl::Int, fn::typeof(affine!))
         (dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
     end
     # affine_nobias!
-    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+    function argpicker(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, hl::Int, fn::typeof(affine_nobias!))  #TODO: we can take bias out in layer_functions.jl
         (dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
     end
 # activation functions
     # sigmoid!
-    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+    function argpicker(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, hl::Int, fn::typeof(sigmoid!))
         (dat.a[hl], dat.z[hl])
     end
     # tanh_act!
-    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+    function argpicker(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, hl::Int, fn::typeof(tanh_act!))
         (dat.a[hl], dat.z[hl])
     end
     # l_relu!
-    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+    function argpicker(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, hl::Int, fn::typeof(l_relu!))
         (dat.a[hl], dat.z[hl])
     end
     # relu!
-    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+    function argpicker(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, hl::Int, fn::typeof(relu!))
         (dat.a[hl], dat.z[hl])
     end
 # classification functions
     # softmax
-    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+    function argpicker(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, hl::Int, fn::typeof(softmax!))
         (dat.a[hl], dat.z[hl])
     end
     # logistic!
-    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+    function argpicker(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, hl::Int, fn::typeof(logistic!))
         (dat.a[hl], dat.z[hl])
     end
     # regression!
-    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+    function argpicker(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, hl::Int, fn::typeof(regression!))
         (dat.a[hl], dat.z[hl])
     end
     # batch_norm_fwd!
-    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+    function argpicker(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, hl::Int, fn::typeof(batch_norm_fwd!))
         (dat, bn, hp, hl)
     end
-    # batch_norm_fwd_predict!
-    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
-        bn::Batch_norm_params, hl::Int, fn::typeof(batch_norm_fwd_predict!))
-        (dat, bn, hp, hl)
-    end
+    # # batch_norm_fwd_predict!
+    # function argpicker(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+    #     bn::Batch_norm_params, hl::Int, fn::typeof(batch_norm_fwd_predict!))
+    #     (dat, bn, hp, hl)
+    # end
     # dropout_fwd!
-    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+    function argpicker(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, hl::Int, fn::typeof(dropout_fwd!))
         (dat, hp, nnw, hl)
     end
 
     # back propagation
     # backprop_classify!
-    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+    function argpicker(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, hl::Int, fn::typeof(backprop_classify!))
             (dat.epsilon[nnw.output_layer], dat.a[nnw.output_layer], dat.targets)
     end
     # backprop_weights!
-    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+    function argpicker(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, hl::Int, fn::typeof(backprop_weights!))
             (nnw.delta_th[hl], nnw.delta_b[hl], dat.epsilon[hl], dat.a[hl-1], hp.mb_size)   
     end
     # backprop_weights_nobias!
-    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+    function argpicker(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, hl::Int, fn::typeof(backprop_weights_nobias!))        # TODO fix
             (nnw.delta_th[hl], nnw.delta_b[hl], dat.epsilon[hl], dat.a[hl-1], hp.mb_size)
     end
     # inbound_epsilon!
-    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+    function argpicker(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, hl::Int, fn::typeof(inbound_epsilon!))
             (dat.epsilon[hl], nnw.theta[hl+1], dat.epsilon[hl+1])
     end
     # dropout_back!
-    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+    function argpicker(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, hl::Int, fn::typeof(dropout_back!))
             (dat, nnw, hp, hl)    
     end
     # sigmoid_gradient!
-    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+    function argpicker(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, hl::Int, fn::typeof(sigmoid_gradient!))
             (dat.grad[hl], dat.z[hl])  
     end
     # tanh_act_gradient!
-    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+    function argpicker(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, hl::Int, fn::typeof(tanh_act_gradient!))
             (dat.grad[hl], dat.z[hl])  
     end
     # l_relu_gradient!
-    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+    function argpicker(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, hl::Int, fn::typeof(l_relu_gradient!))
             (dat.grad[hl], dat.z[hl])  
     end
     # relu_gradient!
-    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+    function argpicker(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, hl::Int, fn::typeof(relu_gradient!))
             (dat.grad[hl], dat.z[hl])  
     end
     # current_lr_epsilon!
-    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+    function argpicker(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, hl::Int, fn::typeof(current_lr_epsilon!))
             (dat.epsilon[hl], dat.grad[hl]) 
     end
     # batch_norm_back!
-    function argfilt(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+    function argpicker(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, hl::Int, fn::typeof(batch_norm_back!))   
             (nnw, dat, bn, hl, hp)
     end
+
+
+
+# this macro allows you to pick a name for the func and create multiple methods for that function name
+macro gen_argpicker(func, tpl, fname)  # confirmed that this works
+    return quote
+        function $(esc(fname))(dat::Union{Model_data, Batch_view}, nnw::Wgts,
+            hp::Hyper_parameters, bn::Batch_norm_params, hl::Int, fn::typeof($func)); 
+            $tpl
+        end
+    end
+end
+
 
 
 function create_funcs()

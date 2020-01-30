@@ -112,7 +112,7 @@ function pretrain(dat_x, dat_y, hp)
 
     # 1. instantiate data and model containers
         dat = Model_data()
-        model = Model_runner()
+        model = Model_def()
         mb = Batch_view()
         nnw = Wgts()
         bn = Batch_norm_params()

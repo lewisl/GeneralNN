@@ -1,5 +1,6 @@
 #DONE
 
+
    
 
 
@@ -13,7 +14,6 @@
 # LSTM networks
 
 #TODO
-#   nicer printing of model
 #   better way to handle feedfwd predict: no dropout, use batchnorm running averages
 #   fix testgrad.jl: check_grads, prep_check for changes to predict using model and bn params
 #   fix nnpredict or get rid of it
@@ -138,7 +138,8 @@ export
     right_preds,
     plot_output,
     dodigit,
-    check_grads
+    check_grads,
+    gen_argfilt
 
 using MAT
 using JLD2
@@ -160,6 +161,8 @@ using Debugger
 using PyPlot
 
 import Measures: mm # for some plot dimensioning
+
+import Base.show  # for new methods to pretty-print our objects
 
 # be careful: order of includes matters!
 include("nn_data_structs.jl")

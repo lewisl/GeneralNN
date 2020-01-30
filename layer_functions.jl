@@ -306,7 +306,7 @@ end
 
 # batch normalization
 # method for training that updates running averages of mu and std
-function batch_norm_fwd!(dat::Union{Model_data, Batch_view}, bn::Batch_norm_params, hp::Hyper_parameters, hl)
+function batch_norm_fwd!(dat::Union{Model_data, Batch_view}, bn::Batch_norm_params, hp::Hyper_parameters, hl::Int)
 !hp.quiet && println("batch_norm_fwd!(dat, bn, hp, hl)")
 
     @inbounds begin
@@ -322,7 +322,7 @@ function batch_norm_fwd!(dat::Union{Model_data, Batch_view}, bn::Batch_norm_para
 end
 
 # method for prediction using running average of mu and std
-function batch_norm_fwd!(dat::Union{Model_data, Batch_view}, bn::Batch_norm_params, hp::Hyper_parameters, hl, notrain)
+function batch_norm_fwd!(dat::Union{Model_data, Batch_view}, bn::Batch_norm_params, hp::Hyper_parameters, hl::Int, notrain)
 !hp.quiet && println("batch_norm_fwd_predict!(hp, bn, dat, hl)")
 
     @inbounds dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu_run[hl]) ./ (bn.std_run[hl] .+ hp.ltl_eps) # normalized: aka xhat or zhat 
