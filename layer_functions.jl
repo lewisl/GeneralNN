@@ -64,6 +64,7 @@ function affine_nobias!(z, a, theta, bias)  # just ignore the bias term
     mul!(z, theta, a)  # crazy fast; no allocations
 end
 
+
 function affine!(z, a, theta, bias)
     # this is really fast with NO allocations!
     mul!(z, theta, a)

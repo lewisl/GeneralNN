@@ -114,7 +114,7 @@ function feedfwd!(dat::Union{Batch_view,Model_data}, nnw, hp, bn, ff_execstack)
 
     for lr in 1:hp.n_layers
         for f in ff_execstack[lr]
-            f(argpicker(dat, nnw, hp, bn, lr, f)...)
+            f(argset(dat, nnw, hp, bn, lr, f)...) # argset returns the tuple of arguments to function f
         end
     end
 
@@ -133,7 +133,7 @@ function feedfwd_predict!(dat::Union{Batch_view, Model_data}, nnw::Wgts, hp, bn,
                 f(dat, bn, hp, lr, true)
                 continue
             end
-            f(argpicker(dat, nnw, hp, bn, lr, f)...)
+            f(argset(dat, nnw, hp, bn, lr, f)...)
         end
     end
 
@@ -153,7 +153,7 @@ function backprop!(nnw::Wgts, dat::Union{Batch_view,Model_data}, hp, bn, back_ex
 
     for lr in hp.n_layers:-1:1
         for f in back_execstack[lr]
-            f(argpicker(dat, nnw, hp, bn, lr, f)...)
+            f(argset(dat, nnw, hp, bn, lr, f)...)
         end
     end
 
