@@ -60,21 +60,21 @@ function _training_loop!(hp, train, test, mb, nnw, bn, stats, model)
 
                     # stats for each minibatch--expensive!!!
                     stats["period"] == "batch" && begin
-                        gather_stats!(stats, "train", t, train, nnw, cost_function, hp, bn, model.ff_execstack)  
-                        dotest && gather_stats!(stats, "test", t, test, nnw, cost_function, hp, bn, model.ff_execstack) 
+                        gather_stats!(stats, "train", t, train, nnw, hp, bn, model)  
+                        dotest && gather_stats!(stats, "test", t, test, nnw, hp, bn, model) 
                     end
 
                 end # mini-batch loop
 
-            else
+            else  # full training set
                 t += 1
                 train_one_step!(train, nnw, bn, hp, t, model)
             end
 
             # stats across all mini-batches of one epoch (e.g.--no stats per minibatch)
             stats["period"] == "epoch" && begin
-                gather_stats!(stats, "train", ep_i, train, nnw, cost_function, hp, bn, model.ff_execstack)  
-                dotest && gather_stats!(stats, "test", ep_i, test, nnw, cost_function, hp, bn, model.ff_execstack) 
+                gather_stats!(stats, "train", ep_i, train, nnw, hp, bn, model)  
+                dotest && gather_stats!(stats, "test", ep_i, test, nnw, hp, bn, model) 
             end
 
         end # epoch loop
@@ -88,7 +88,7 @@ function train_one_step!(dat, nnw, bn, hp, t, model)
 
     feedfwd!(dat, nnw, hp, bn, model.ff_execstack)  # for all layers
     backprop!(nnw, dat, hp, bn, model.back_execstack)  # for all layers   
-    update_parameters!(nnw, hp, bn, t)
+    update_parameters!(nnw, hp, bn, t, model)
 
 end
 
@@ -143,16 +143,16 @@ function backprop!(nnw::Wgts, dat::Union{Batch_view,Model_data}, hp, bn, back_ex
 end
 
 
-function update_parameters!(nnw, hp, bn, t)  # =Batch_norm_params()
+function update_parameters!(nnw, hp, bn, t, model)  # =Batch_norm_params()
 !hp.quiet && println("update_parameters!(nnw, hp, bn)")
 
-    optimization_function!(nnw, hp, bn, t)
+    model.optimization_function!(nnw, hp, bn, t)
 
     # update theta, bias, and batch_norm parameters
     @fastmath @inbounds for hl = 2:nnw.output_layer       
         @inbounds nnw.theta[hl][:] = nnw.theta[hl] .- (hp.alphamod .* nnw.delta_th[hl])
         
-        reg_function![hl](nnw, hp, hl)  # regularize function per setup.jl setup_functions!
+        model.reg_function![hl](nnw, hp, hl)  # regularize function per setup.jl setup_functions!
 
         # @bp
 
@@ -233,13 +233,13 @@ function update_batch_views!(mb::Batch_view, train::Model_data, nnw::Wgts,
 end
 
  
-function gather_stats!(stats, series, i, dat, nnw, cost_function, hp, bn, ff_execstack)
+function gather_stats!(stats, series, i, dat, nnw, hp, bn, model)
 
     if stats["track"][series]
-        feedfwd!(dat, nnw, hp, bn, ff_execstack, dotrain=false)
+        feedfwd!(dat, nnw, hp, bn, model.ff_execstack, dotrain=false)
 
         if stats["track"]["cost"]
-            stats["cost"][i, stats["col_" * series]] = cost_function(dat.targets,
+            stats["cost"][i, stats["col_" * series]] = model.cost_function(dat.targets,
                 dat.a[nnw.output_layer], dat.n, nnw.theta, hp.lambda, hp.reg, nnw.output_layer)
         end
         if stats["track"]["learning"]

@@ -4,6 +4,16 @@ using Printf
 using LinearAlgebra
 
 
+function create_model!(model, hp, nnw)
+    func_dict = create_funcs() # for both feed forward and back propagation
+    model.ff_strstack = build_ff_string_stack(hp, nnw)
+    model.ff_execstack = build_exec_stack(model.ff_strstack, func_dict)
+    model.back_strstack = build_back_string_stack(hp)
+    model.back_execstack = build_exec_stack(model.back_strstack, func_dict)
+    model.cost_function, model.reg_function!, model.optimization_function! = setup_functions!(hp)
+end
+
+
 function prep_training!(mb, hp, nnw, bn, n)
     !hp.quiet && println("Setup_model beginning")
     !hp.quiet && println("hp.dobatch: ", hp.dobatch)
@@ -109,6 +119,203 @@ end
         # need to do the right things
     Base.iterate(mb::MBrng, start=1) = mbiter(mb::MBrng, start)   # canonical to use "state" instead of "start"
     Base.length(mb::MBrng) = mblength(mb)
+
+
+function build_ff_string_stack(hp, out_k)
+    strstack = []
+    n_hid = length(hp.hidden)
+    n_layers = n_hid + 2
+
+    #input layer
+    layer = 1
+        layer_group = String[]
+        if hp.dropout && (hp.droplim[1] < 1.0)
+            push!(layer_group, "dropout")
+        end
+    push!(strstack, layer_group)
+
+    # hidden layers
+    for layer = 2:n_hid+1
+        layer_group = String[]
+        hl = layer - 1
+
+        if hp.dropout && (hp.droplim[1] < 1.0)
+            push!(layer_group, "dropout_fwd")
+        end
+
+        # affine either or...
+        hp.do_batch_norm && push!(layer_group, "affine_nobias") # true
+        hp.do_batch_norm || push!(layer_group, "affine") # false
+        # batch_norm_fwd 
+        hp.do_batch_norm && push!(layer_group, "batch_norm_fwd")
+        # unit_function or activation --> updates in place
+        unit_function = 
+            if hp.hidden[hl][1] == "sigmoid"  # hp.hidden looks like [["relu", 80], ["sigmoid", 80]]
+                "sigmoid"
+            elseif hp.hidden[hl][1] == "l_relu"
+                "l_relu"
+            elseif hp.hidden[hl][1] == "relu"
+                "relu"
+            elseif hp.hidden[hl][1] == "tanh"
+                "tanh_act"
+            end
+        push!(layer_group, unit_function)
+        # dropout --> updates in place
+        if hp.dropout && (hp.droplim[lr] < 1.0)
+            push!(layer_group, "dropout_fwd")
+        end        
+
+        # done with layer_group for current hidden layer
+        push!(strstack, layer_group) 
+    end
+
+    #   output layer
+    layer = n_hid + 2
+    layer_group = String[]
+
+        push!(layer_group, "affine")
+        # classify_function --> updates in place
+        classify_function = 
+            if out_k > 1  # more than one output label (unit)
+                if hp.classify == "sigmoid"
+                    "sigmoid"
+                elseif hp.classify == "softmax"
+                    "softmax"
+                else
+                    error("Function to classify output labels must be \"sigmoid\" or \"softmax\".")
+                end
+            else
+                if hp.classify == "sigmoid" || hp.classify == "logistic"
+                    "logistic"  # for one output label
+                elseif hp.classify == "regression"
+                    "regression"
+                else
+                    error("Function to classify output must be \"sigmoid\", \"logistic\" or \"regression\".")
+                end
+            end
+        push!(layer_group, classify_function)
+    push!(strstack, layer_group) 
+
+    return strstack
+end   
+
+
+function build_exec_stack(strstack, func_dict)
+    execstack= []
+    for i in 1:size(strstack,1)
+        push!(execstack,[])
+        for r in strstack[i]
+            push!(execstack[i], func_dict[r])
+        end
+    end
+
+    return execstack
+end
+
+
+function build_back_string_stack(hp)
+    strstack = []
+    n_hid = length(hp.hidden)
+    n_layers = n_hid + 2
+
+    # input layer
+    layer = 1
+    layer_group = String[]
+        # usually nothing to do here  TODO resolve issue about backprop for the weights from the input layer
+    push!(strstack, layer_group)
+
+    # hidden layers
+    for layer in 2:n_layers-1 # for hidden layers: layers 2 through output - 1
+        hl = hidden_layer = layer - 1
+        layer_group = String[]  # start a new layer_group
+
+        push!(layer_group, "inbound_epsilon")   # required
+
+        if hp.dropout && (hp.droplim[hl] < 1.0)
+            push!(layer_group, "dropout_back")
+        end
+        
+        gradient_function =
+            if hp.hidden[hidden_layer][1] == "sigmoid" 
+                "sigmoid_gradient"
+            elseif hp.hidden[hidden_layer][1] == "l_relu"
+                "l_relu_gradient"
+            elseif hp.hidden[hidden_layer][1] == "relu"
+                "relu_gradient"
+            elseif hp.hidden[hidden_layer][1] == "tanh_act"
+                "tanh_act_gradient"
+            end
+            push!(layer_group, gradient_function)
+
+        push!(layer_group, "current_lr_epsilon")        # required
+        
+        hp.do_batch_norm && push!(layer_group, "batch_norm_back")
+        # affine either or...
+        hp.do_batch_norm && push!(layer_group, "backprop_weights_nobias") # true
+        hp.do_batch_norm || push!(layer_group, "backprop_weights") # false
+
+        # done with layer_group for current hidden layer
+        push!(strstack, layer_group) 
+    end
+
+    #output layer
+    layer_group = String[]
+        push!(layer_group, "backprop_classify")
+        push!(layer_group, "backprop_weights")
+    push!(strstack, layer_group)  
+
+    return strstack
+end
+
+
+"""
+define and choose functions to be used in neural net training
+"""
+function setup_functions!(hp)  # , nnw, bn, dat
+!hp.quiet && println("Setup functions beginning")
+
+    n_layers = length(hp.hidden) + 2
+
+    reg_function! = Array{Function}(undef, n_layers)
+    # TODO update to enable different regulization at each layer
+    for layer = 2:n_layers  # from the first hidden layer=2 to output layer
+        reg_function![layer] = 
+            if hp.reg == "L2"
+                l2_reg!
+            elseif hp.reg == "L1"
+                l1_reg!
+            elseif hp.reg == "Maxnorm"
+                maxnorm_reg!
+            else
+                noop
+            end
+        
+    end
+
+    optimization_function! = 
+        if hp.opt == "momentum"
+            momentum!
+        elseif hp.opt == "adam"
+            adam!
+        elseif hp.opt == "rmsprop"
+            rmsprop!
+        else
+            noop
+        end
+
+    cost_function = 
+        if hp.classify=="regression" 
+            mse_cost 
+        elseif hp.classify == "softmax"
+            softmax_cost
+        else
+            cross_entropy_cost
+        end
+
+    !hp.quiet && println("Setup functions completed.")
+    return cost_function, reg_function!, optimization_function!
+end
+
 
 ###################################################
 # argset methods to pass in the training loop
@@ -298,207 +505,4 @@ function create_funcs()
                     # optimization
                     "dropout_back" => dropout_back!
                 )
-end
-
-
-function build_ff_string_stack(hp, nnw)
-    strstack = []
-    n_hid = length(hp.hidden)
-    n_layers = n_hid + 2
-
-    #input layer
-    layer = 1
-        layer_group = String[]
-        if hp.dropout && (hp.droplim[1] < 1.0)
-            push!(layer_group, "dropout")
-        end
-    push!(strstack, layer_group)
-
-    # hidden layers
-    for layer = 2:n_hid+1
-        layer_group = String[]
-        hl = layer - 1
-
-        if hp.dropout && (hp.droplim[1] < 1.0)
-            push!(layer_group, "dropout_fwd")
-        end
-
-        # affine either or...
-        hp.do_batch_norm && push!(layer_group, "affine_nobias") # true
-        hp.do_batch_norm || push!(layer_group, "affine") # false
-        # batch_norm_fwd 
-        hp.do_batch_norm && push!(layer_group, "batch_norm_fwd")
-        # unit_function or activation --> updates in place
-        unit_function = 
-            if hp.hidden[hl][1] == "sigmoid"  # hp.hidden looks like [["relu", 80], ["sigmoid", 80]]
-                "sigmoid"
-            elseif hp.hidden[hl][1] == "l_relu"
-                "l_relu"
-            elseif hp.hidden[hl][1] == "relu"
-                "relu"
-            elseif hp.hidden[hl][1] == "tanh"
-                "tanh_act"
-            end
-        push!(layer_group, unit_function)
-        # dropout --> updates in place
-        if hp.dropout && (hp.droplim[lr] < 1.0)
-            push!(layer_group, "dropout_fwd")
-        end        
-
-        # done with layer_group for current hidden layer
-        push!(strstack, layer_group) 
-    end
-
-    #   output layer
-    layer = n_hid + 2
-    layer_group = String[]
-
-        push!(layer_group, "affine")
-        # classify_function --> updates in place
-        classify_function = 
-            if nnw.ks[layer] > 1  # more than one output (unit)
-                if hp.classify == "sigmoid"
-                    "sigmoid"
-                elseif hp.classify == "softmax"
-                    "softmax"
-                else
-                    error("Function to classify output labels must be \"sigmoid\" or \"softmax\".")
-                end
-            else
-                if hp.classify == "sigmoid" || hp.classify == "logistic"
-                    "logistic"  # for one output label
-                elseif hp.classify == "regression"
-                    "regression"
-                else
-                    error("Function to classify output must be \"sigmoid\", \"logistic\" or \"regression\".")
-                end
-            end
-        push!(layer_group, classify_function)
-    push!(strstack, layer_group) 
-
-    return strstack
-end   
-
-
-function build_exec_stack(strstack, func_dict)
-    execstack= []
-    for i in 1:size(strstack,1)
-        push!(execstack,[])
-        for r in strstack[i]
-            push!(execstack[i], func_dict[r])
-        end
-    end
-
-    return execstack
-end
-
-
-function build_back_string_stack(hp)
-    strstack = []
-    n_hid = length(hp.hidden)
-    n_layers = n_hid + 2
-
-    # input layer
-    layer = 1
-    layer_group = String[]
-        # usually nothing to do here  TODO resolve issue about backprop for the weights from the input layer
-    push!(strstack, layer_group)
-
-    # hidden layers
-    for layer in 2:n_layers-1 # for hidden layers: layers 2 through output - 1
-        hl = hidden_layer = layer - 1
-        layer_group = String[]  # start a new layer_group
-
-        push!(layer_group, "inbound_epsilon")   # required
-
-        if hp.dropout && (hp.droplim[hl] < 1.0)
-            push!(layer_group, "dropout_back")
-        end
-        
-        gradient_function =
-            if hp.hidden[hidden_layer][1] == "sigmoid" 
-                "sigmoid_gradient"
-            elseif hp.hidden[hidden_layer][1] == "l_relu"
-                "l_relu_gradient"
-            elseif hp.hidden[hidden_layer][1] == "relu"
-                "relu_gradient"
-            elseif hp.hidden[hidden_layer][1] == "tanh_act"
-                "tanh_act_gradient"
-            end
-            push!(layer_group, gradient_function)
-
-        push!(layer_group, "current_lr_epsilon")        # required
-        
-        hp.do_batch_norm && push!(layer_group, "batch_norm_back")
-        # affine either or...
-        hp.do_batch_norm && push!(layer_group, "backprop_weights_nobias") # true
-        hp.do_batch_norm || push!(layer_group, "backprop_weights") # false
-
-        # done with layer_group for current hidden layer
-        push!(strstack, layer_group) 
-    end
-
-    #output layer
-    layer_group = String[]
-        push!(layer_group, "backprop_classify")
-        push!(layer_group, "backprop_weights")
-    push!(strstack, layer_group)  
-
-    return strstack
-end
-
-
-"""
-define and choose functions to be used in neural net training
-"""
-function setup_functions!(hp, nnw, bn, dat)
-!hp.quiet && println("Setup functions beginning")
-
-    # make these function variables module level 
-        # the layer functions they point to are all module level (in file layer_functions.jl)
-        # these are just substitute names or aliases
-        # don't freak out about the word global--makes the aliases module level, too.
-    global optimization_function!
-    global cost_function
-    global reg_function!
-
-    n_layers = length(hp.hidden) + 2
-
-    reg_function! = Array{Function}(undef, n_layers)
-    # TODO update to enable different regulization at each layer
-    for layer = 2:n_layers  # from the first hidden layer=2 to output layer
-        reg_function![layer] = 
-            if hp.reg == "L2"
-                l2_reg!
-            elseif hp.reg == "L1"
-                l1_reg!
-            elseif hp.reg == "Maxnorm"
-                maxnorm_reg!
-            else
-                noop
-            end
-        
-    end
-
-    optimization_function! = 
-        if hp.opt == "momentum"
-            momentum!
-        elseif hp.opt == "adam"
-            adam!
-        elseif hp.opt == "rmsprop"
-            rmsprop!
-        else
-            noop
-        end
-
-    cost_function = 
-        if hp.classify=="regression" 
-            mse_cost 
-        elseif hp.classify == "softmax"
-            softmax_cost
-        else
-            cross_entropy_cost
-        end
-
-    !hp.quiet && println("Setup functions completed.")
 end

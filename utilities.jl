@@ -324,7 +324,7 @@ function _output_stats(train, test, nnw, hp, bn, training_time, stats, model)
         println(outfile, "Fraction correct labels predicted training: ",
                 hp.classify == "regression" ? r_squared(train.targets, train.a[nnw.output_layer])
                     : accuracy(train.targets, train.a[nnw.output_layer]))
-        println(outfile, "Final cost training: ", cost_function(train.targets, train.a[nnw.output_layer], train.n,
+        println(outfile, "Final cost training: ", model.cost_function(train.targets, train.a[nnw.output_layer], train.n,
                         nnw.theta, hp.lambda, hp.reg, nnw.output_layer))
 
         # output improvement of last few iterations for training data
@@ -346,7 +346,7 @@ function _output_stats(train, test, nnw, hp, bn, training_time, stats, model)
             println(outfile, "\n\nFraction correct labels predicted test: ",
                     hp.classify == "regression" ? r_squared(test.targets, test.a[nnw.output_layer])
                         : accuracy(test.targets, test.a[nnw.output_layer]))
-            println(outfile, "Final cost test: ", cost_function(test.targets, test.a[nnw.output_layer], test.n,
+            println(outfile, "Final cost test: ", model.cost_function(test.targets, test.a[nnw.output_layer], test.n,
                 nnw.theta, hp.lambda, hp.reg, nnw.output_layer))
         end
 
@@ -555,11 +555,11 @@ function compute_numerical_gradient(dat, nnw, bn, hp, model)
         for i in eachindex(nnw.theta[hl])
             nnw.theta[hl][i] += tweak   # this should be scalar
             feedfwd!(dat, nnw, hp, bn, model.ff_execstack, dotrain=false)
-            cost_plus = cost_function(dat.targets, dat.a[nnw.output_layer], dat.n,
+            cost_plus = model.cost_function(dat.targets, dat.a[nnw.output_layer], dat.n,
                         nnw.theta, hp.lambda, hp.reg, nnw.output_layer)
             nnw.theta[hl][i] -= 2 * tweak   # this should be scalar
             feedfwd!(dat, nnw, hp, bn, model.ff_execstack, dotrain=false)
-            cost_minus = cost_function(dat.targets, dat.a[nnw.output_layer], dat.n,
+            cost_minus = model.cost_function(dat.targets, dat.a[nnw.output_layer], dat.n,
                          nnw.theta, hp.lambda, hp.reg, nnw.output_layer)
             gradtheta[hl][i] = (cost_plus - cost_minus) / (2 * tweak)
             nnw.theta[hl][i] =+ tweak # back to starting value
@@ -569,11 +569,11 @@ function compute_numerical_gradient(dat, nnw, bn, hp, model)
         for i in eachindex(nnw.bias[hl])
             nnw.bias[hl][i] += tweak   # this should be scalar
             feedfwd!(dat, nnw, hp, bn, model.ff_execstack, dotrain=false)
-            cost_plus = cost_function(dat.targets, dat.a[nnw.output_layer], dat.n,
+            cost_plus = model.cost_function(dat.targets, dat.a[nnw.output_layer], dat.n,
                         nnw.theta, hp.lambda, hp.reg, nnw.output_layer)  # cost uses theta, not bias for regularization
             nnw.bias[hl][i] -= 2 * tweak   # this should be scalar
             feedfwd!(dat, nnw, hp, bn, model.ff_execstack, dotrain=false)
-            cost_minus = cost_function(dat.targets, dat.a[nnw.output_layer], dat.n,
+            cost_minus = model.cost_function(dat.targets, dat.a[nnw.output_layer], dat.n,
                          nnw.theta, hp.lambda, hp.reg, nnw.output_layer)
             gradbias[hl][i] = (cost_plus - cost_minus) / (2 * tweak)
             nnw.bias[hl][i] =+ tweak # back to starting value
@@ -669,6 +669,13 @@ function print_model(model::Model_def)
                 println("  ", fncnt, ": ", item)
             end
         end   
+        println("Cost Function: ",model.cost_function)
+        println("Optimization Function: ", model.optimization_function!)
+        println("Regularization Functions")
+        for lr = n_layers:-1:2
+            println("  ", lr, ": ", model.reg_function![lr])
+        end
+
 
 end
 
@@ -773,7 +780,7 @@ function nnpredict(inputs, targets, hp, nnw, bn, istest)
         dataset.inputs = inputs
         dataset.targets = targets
         dataset.in_k, dataset.n = size(inputs)  # number of features in_k (rows) by no. of examples n (columns)
-        dataset.out_k = size(dataset.targets,1)  # number of output units
+        out_k = dataset.out_k = size(dataset.targets,1)  # number of output units
 
     if hp.norm_mode == "standard" || hp.norm_mode == "minmax"
         normalize_replay!(dataset.inputs, hp.norm_mode, nnw.norm_factors)
@@ -781,8 +788,8 @@ function nnpredict(inputs, targets, hp, nnw, bn, istest)
 
     preallocate_data!(dataset, nnw, dataset.n, hp)
 
-    # TODO There is no way this call works--way out of date from API changes
-    setup_functions!(hp.units, dataset.out_k, hp.opt, hp.classify, istest)  # for feedforward calculations
+    model = Model_def()
+    model = create_model!(model, hp, out_k)  # for feedforward calculations
 
     feedfwd!(dataset, nnw, hp, bn, model.ff_execstack, dotrain=false)  # output for entire dataset
 

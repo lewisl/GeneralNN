@@ -100,7 +100,7 @@ end
 #  layer functions for back propagation
 ###########################################################################
 
-    # Choice of function determined in setup_functions! in setup_training.jl
+    # Choice of function determined in setup_functions! in setup_model.jl
 
     function backprop_classify!(epsilon, preds, targets)
         epsilon[:] = preds .- targets  
@@ -379,6 +379,6 @@ function l1_reg!(nnw, hp, hl)
 end
 
 
-############## noop stub  not used anymore, but handy to have around
+############## noop stub  
 function noop(args...)
 end

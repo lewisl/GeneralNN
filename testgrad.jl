@@ -27,7 +27,7 @@ function prep_check(hp, train_x, train_y, iters; samplepct=.005, quiet=false, tw
         minihp = hp  # leave hyper-parameters as is
     else
         minihp = set_hp(hp)
-        setup_functions!(minihp, nnw, bn, train)  
+        setup_functions!(model, minihp, train.out_k)  
         @bp
     end
 
@@ -115,7 +115,7 @@ function check_one(hp, inwgts, indat, model; tweak=1e-6, eps_wgt=(2,3,"bias"), e
 
     # 1. get the cost for a single example at current weights
     feedfwd!(onedat, wgts, hp, bn, model.ff_execstack, dotrain=false) 
-    cost = cost_function(onedat.targets[:,1], onedat.a[wgts.output_layer][:,1], 1, wgts.theta, hp.lambda, hp.reg,
+    cost = model.cost_function(onedat.targets[:,1], onedat.a[wgts.output_layer][:,1], 1, wgts.theta, hp.lambda, hp.reg,
                           wgts.output_layer)
     
     # 2. compute the gradient of the weight we will perturb by tweak (not yet...)
@@ -127,15 +127,15 @@ function check_one(hp, inwgts, indat, model; tweak=1e-6, eps_wgt=(2,3,"bias"), e
     w_plus = w + tweak
     getproperty(wgts, Symbol(typ))[selr][idx] = w_plus  # set the chosen weight to tweaked value
     feedfwd!(onedat, wgts, hp, bn, model.ff_execstack, dotrain=false) 
-    # cost_plus = cost_function(onedat.targets[:,1], onedat.a[wgts.output_layer][:,1], 1, wgts.theta, hp.lambda, hp.reg,
+    # cost_plus = model.cost_function(onedat.targets[:,1], onedat.a[wgts.output_layer][:,1], 1, wgts.theta, hp.lambda, hp.reg,
                           # wgts.output_layer)
-    costnew = cost_function(onedat.targets[:,1], onedat.a[wgts.output_layer][:,1], 1, wgts.theta, hp.lambda, hp.reg,
+    costnew = model.cost_function(onedat.targets[:,1], onedat.a[wgts.output_layer][:,1], 1, wgts.theta, hp.lambda, hp.reg,
                           wgts.output_layer)
 
     # w_minus = w - tweak
     # getproperty(wgts, Symbol(typ))[selr][idx] = w_minus  # set the chosen weight to tweaked value
     # feedfwd_predict!(onedat, wgts, hp) 
-    # cost_minus = cost_function(onedat.targets[:,1], onedat.a[wgts.output_layer][:,1], 1, wgts.theta, hp.lambda, hp.reg,
+    # cost_minus = model.cost_function(onedat.targets[:,1], onedat.a[wgts.output_layer][:,1], 1, wgts.theta, hp.lambda, hp.reg,
     #                       wgts.output_layer)    
     # costnew = (cost_plus + cost_minus) / (2.0)   # centered cost difference, can also use single-sided
 
@@ -393,7 +393,7 @@ function compute_numgrad!(numgradtheta, numgradbias, thetagradidx, biasgradidx, 
     # test first pass of cost
 
         # feedfwd_predict!(dat, wgts, hp)   
-        # loss1 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n)  
+        # loss1 = model.cost_function(dat.targets, dat.a[wgts.output_layer], dat.n)  
         # println("1st pass at cost ", loss1)   
 
     for lr in 2:wgts.output_layer  # loop by layer
@@ -405,13 +405,13 @@ function compute_numgrad!(numgradtheta, numgradbias, thetagradidx, biasgradidx, 
 
             feedfwd!(dat, wgts, hp, bn, model.ff_execstack, dotrain=false)       #feedfwd_predict!(dat, wgts, hp)
             kinktst1 = findkink(olddat, dat, output_layer)
-            loss1 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n) 
+            loss1 = model.cost_function(dat.targets, dat.a[wgts.output_layer], dat.n) 
 
             wgts.bias[lr][bi] -= 2.0 * tweak
 
             feedfwd!(dat, wgts, hp, bn, model.ff_execstack, dotrain=false)
             kinktst2 = findkink(olddat, dat, output_layer)
-            loss2 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n)   
+            loss2 = model.cost_function(dat.targets, dat.a[wgts.output_layer], dat.n)   
 
             wgts.bias[lr][bi] += tweak   
 
@@ -436,16 +436,16 @@ function compute_numgrad!(numgradtheta, numgradbias, thetagradidx, biasgradidx, 
 
             feedfwd!(dat, wgts, hp, bn, model.ff_execstack, dotrain=false)
             kinktst1 = findkink(olddat, dat, output_layer)
-            loss1 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n) 
+            loss1 = model.cost_function(dat.targets, dat.a[wgts.output_layer], dat.n) 
 
             wgts.theta[lr][thi] -= 2.0 * tweak
 
             feedfwd!(dat, wgts, hp, bn, model.ff_execstack, dotrain=false)
             kinktst2 = findkink(olddat, dat, output_layer)
-            loss2 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n)
+            loss2 = model.cost_function(dat.targets, dat.a[wgts.output_layer], dat.n)
 
             wgts.theta[lr][thi] += tweak   # set it back to starting value
-            comploss = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n) # diagnostic
+            comploss = model.cost_function(dat.targets, dat.a[wgts.output_layer], dat.n) # diagnostic
 
             if kinktst1 || kinktst2 
                 kinkcnt += 1
@@ -473,10 +473,10 @@ function compute_numgrad!(numgradtheta, numgradbias, thetagradidx, biasgradidx, 
                 println(idx)
                 bn.gam[lr][bi] += tweak
                 feedfwd!(dat, wgts, hp, bn, model.ff_execstack, dotrain=false)  # bn is closure in function placeholder
-                loss1 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n) 
+                loss1 = model.cost_function(dat.targets, dat.a[wgts.output_layer], dat.n) 
                 bn.gam[lr][bi] -= 2.0 * tweak
                 feedfwd!(dat, wgts, hp, bn, model.ff_execstack, dotrain=false)  # bn is closure in function placeholder
-                loss2 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n) 
+                loss2 = model.cost_function(dat.targets, dat.a[wgts.output_layer], dat.n) 
                 bn.gam[lr][bi] += tweak
                 gamgrad[lr][idx] = (loss1 - loss2) / (2.0 * tweak)
             end
@@ -485,10 +485,10 @@ function compute_numgrad!(numgradtheta, numgradbias, thetagradidx, biasgradidx, 
             for (idx,bi) in enumerate(biasgradidx[lr])
                 bn.bet[lr][bi] += tweak
                 feedfwd!(dat, wgts, hp, bn, model.ff_execstack, dotrain=false)  # bn is closure in function placeholder
-                loss1 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n) 
+                loss1 = model.cost_function(dat.targets, dat.a[wgts.output_layer], dat.n) 
                 bn.bet[lr][bi] -= 2.0 * tweak
                 feedfwd!(dat, wgts, hp, bn, model.ff_execstack, dotrain=false)  # bn is closure in function placeholder
-                loss2 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n) 
+                loss2 = model.cost_function(dat.targets, dat.a[wgts.output_layer], dat.n) 
                 bn.bet[lr][bi] += tweak
                 betgrad[lr][idx] = (loss1 - loss2) / (2.0 * tweak)
             end

@@ -138,8 +138,6 @@ mutable struct Model_data               # we will use train for inputs and test 
     epsilon::T_model_data       # dims of a
     # calculcated for batch_norm
     z_norm::T_model_data   # same size as z--for batch_norm
-    # delta_z_norm::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}    # same size as z
-    # delta_z::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}        # same size as z
     # descriptive
     n::Int64                                  # number of examples
     in_k::Int64                               # number of input features
@@ -154,8 +152,6 @@ mutable struct Model_data               # we will use train for inputs and test 
         [zeros(0,0)],       # grad
         [zeros(0,0)],       # epsilon
         [zeros(0,0)],       # z_norm -- only pre-allocate if batch_norm
-        # [zeros(0,0)],       # delta_z_norm
-        # [zeros(0,0)],       # delta_z
         0,                              # n
         0,                              # in_k
         0                               # out_k
@@ -172,36 +168,18 @@ mutable struct Batch_view               # we will use mb for as the variable for
     targets::SubArray{}  #::SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true}
     z::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     z_norm::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    # delta_z_norm::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    # delta_z::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     grad::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
     epsilon::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    # dropout_random::Array{SubArray{}}  #::Array{SubArray{Float64,2,Array{Float64,2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
-    # dropout_mask_units::Array{SubArray{}}  #::Array{SubArray{Bool,2,BitArray{2},Tuple{Base.Slice{Base.OneTo{Int64}},UnitRange{Int64}},true},1}
 
     Batch_view() = new(                      # empty constructor
         Array{SubArray{}}[],  # a
-        view([0.0],1:1),                 # targets
+        view([0.0],1:1),      # targets
         Array{SubArray{}}[],  # z
         Array{SubArray{}}[],  # z_norm
-        # Array{SubArray{}}[],  # delta_z_norm
-        # Array{SubArray{}}[],  # delta_z
         Array{SubArray{}}[],  # grad
         Array{SubArray{}}[],  # epsilon
-        # Array{SubArray{}}[],  # dropout_random
-        # Array{SubArray{}}[]  # dropout_mask_units  
         )
-
-        # [view(zeros(2,2),:,1:2) for i in 1:2],  # a
-        # view(zeros(2,2),:,1:2),                 # targets
-        # [view(zeros(2,2),:,1:2) for i in 1:2],  # z
-        # [view(zeros(2,2),:,1:2) for i in 1:2],  # z_norm
-        # [view(zeros(2,2),:,1:2) for i in 1:2],  # delta_z_norm
-        # [view(zeros(2,2),:,1:2) for i in 1:2],  # delta_z
-        # [view(zeros(2,2),:,1:2) for i in 1:2],  # grad
-        # [view(zeros(2,2),:,1:2) for i in 1:2],  # epsilon
-        # [view(zeros(2,2),:,1:2) for i in 1:2],  # dropout_random
-        # [view(BitArray([1 1; 1 1]),:,1:2) for i in 1:2]   # dropout_mask_units     
+   
 end
 
 
@@ -252,11 +230,18 @@ mutable struct Model_def
     ff_execstack::Array{Array{Function,1},1}
     back_strstack::Array{Array{String,1},1}
     back_execstack::Array{Array{Function,1},1}
+    reg_function!::Array{Function, 1}
+    cost_function::Function
+    optimization_function!::Function
+
 
     Model_def() = new(
         [String[]],
         [Function[]],
         [Function[]],
-        [Function[]]
+        [Function[]],
+        Function[],
+        noop,
+        noop
     )
 end

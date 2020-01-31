@@ -44,7 +44,8 @@ function train(train_x, train_y, hp, testgrad=false)
     !hp.quiet && println("Training setup beginning")
     dotest = false
 
-    train, mb, nnw, bn, model = pretrain(train_x, train_y, hp)
+    model_time = @elapsed train, mb, nnw, bn, model = pretrain(train_x, train_y, hp)
+    println("Time to build model and data structures: ",model_time)
 
     stats = setup_stats(hp, dotest)  
 
@@ -76,7 +77,9 @@ function train(train_x, train_y, test_x, test_y, hp, testgrad=false)
     !hp.quiet && println("Training setup beginning")
     dotest = true
 
-    train, mb, nnw, bn, model = pretrain(train_x, train_y, hp)
+    model_time = @elapsed train, mb, nnw, bn, model = pretrain(train_x, train_y, hp)
+    println("Time to build model and data structures: ",model_time)
+
     test = prepredict(test_x, test_y, hp, nnw, notrain=false)
         # use notrain=false because the test data is used during training
     stats = setup_stats(hp, dotest)  
@@ -118,7 +121,7 @@ function pretrain(dat_x, dat_y, hp)
         bn = Batch_norm_params()
         dat.inputs, dat.targets = dat_x, dat_y
         dat.in_k, dat.n = size(dat_x)
-        dat.out_k = size(dat_y, 1)
+        out_k = dat.out_k = size(dat_y, 1)
 
     # 2. optimization parameters, minibatches, regularization
         prep_training!(mb, hp, nnw, bn, dat.n)
@@ -135,13 +138,8 @@ function pretrain(dat_x, dat_y, hp)
         hp.do_batch_norm && preallocate_bn_params!(bn, mb, nnw.ks)
         !hp.quiet && println("Pre-allocate weights and minibatch storage completed")
 
-    # 5. choose layer functions and cost function based on inputs
-        setup_functions!(hp, nnw, bn, dat) 
-        func_dict = create_funcs() # for both feed forward and back propagation
-        model.ff_strstack = build_ff_string_stack(hp, nnw)
-        model.ff_execstack = build_exec_stack(model.ff_strstack, func_dict)
-        model.back_strstack = build_back_string_stack(hp)
-        model.back_execstack = build_exec_stack(model.back_strstack, func_dict)
+    # 5. choose layer functions and cost function based on inputs => all in model
+        create_model!(model, hp, out_k)
 
     # 6. preallocate storage for data transforms
         preallocate_data!(dat, nnw, dat.n, hp)
@@ -166,7 +164,7 @@ function prepredict(dat_x, dat_y, hp, nnw; notrain=true)
 
         # set some useful variables
         dat.in_k, dat.n = size(dat_x)  # number of features in_k (rows) by no. of examples n (columns)
-        dat.out_k = size(dat_y,1)  # number of output units
+        out_k = dat.out_k = size(dat_y,1)  # number of output units
 
     # 2. not needed
     # 3. normalize data
@@ -177,7 +175,7 @@ function prepredict(dat_x, dat_y, hp, nnw; notrain=true)
     # 4. not needed
 
     # 5. choose layer functions and cost function based on inputs
-        notrain && (setup_functions!(hp, nnw, bn, dat)) 
+        create_model!(model, hp, out_k)
 
     # 6. preallocate storage for data transforms
         !hp.quiet && println("Pre-allocate storage starting")
