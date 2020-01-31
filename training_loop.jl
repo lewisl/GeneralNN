@@ -250,3 +250,17 @@ function gather_stats!(stats, series, i, dat, nnw, hp, bn, model)
     end
 end
 
+# TODO this probably doesn't work any more: not used
+function quick_stats(dat, nnw, hp, model)
+
+    feedfwd(dat, nnw, hp, bn, model.ff_execstack, dotrain=false)
+
+    cost = model.cost_function(dat.targets,
+            dat.a[nnw.output_layer], dat.n, nnw.theta, hp.lambda, hp.reg, nnw.output_layer)
+
+    correct = (  hp.classify == "regression"
+                ? r_squared(dat.targets, dat.a[nnw.output_layer])
+                : accuracy(dat.targets, dat.a[nnw.output_layer])  )
+
+    return cost, correct
+end

@@ -520,7 +520,7 @@ function compute_modelgrad!(dat, nnw, hp, bn, model)
 
     # @bp
 
-    cost, accuracy = quick_stats(dat, nnw, hp)
+    cost, accuracy = quick_stats(dat, nnw, hp, model)
     println("accuracy: ", accuracy)
     println("cost: ", cost)
 
