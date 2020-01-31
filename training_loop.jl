@@ -35,7 +35,7 @@ end
 function _training_loop!(hp, train, test, mb, nnw, bn, stats, model)
 !hp.quiet && println("training_loop(hp, train, test mb, nnw, bn, stats; dotest=false)")
 
-    print_model(model); println
+    print_model(model); println()
 
     dotest = isempty(test.inputs) ? false : true
 
@@ -88,8 +88,7 @@ function train_one_step!(dat, nnw, bn, hp, t, model)
 
     feedfwd!(dat, nnw, hp, bn, model.ff_execstack)  # for all layers
     backprop!(nnw, dat, hp, bn, model.back_execstack)  # for all layers   
-    optimization_function!(nnw, hp, bn, t)
-    update_parameters!(nnw, hp, bn)
+    update_parameters!(nnw, hp, bn, t)
 
 end
 
@@ -109,31 +108,12 @@ function feedfwd!(dat, nnw, do_batch_norm)
 
     feed forward from inputs to output layer predictions
 """
-function feedfwd!(dat::Union{Batch_view,Model_data}, nnw, hp, bn, ff_execstack)  
+function feedfwd!(dat::Union{Batch_view,Model_data}, nnw, hp, bn, ff_execstack; dotrain=true)  
 !hp.quiet && println("feedfwd!(dat::Union{Batch_view, Model_data}, nnw, hp)")
 
     for lr in 1:hp.n_layers
         for f in ff_execstack[lr]
-            f(argset(dat, nnw, hp, bn, lr, f)...) # argset returns the tuple of arguments to function f
-        end
-    end
-
-end
-
-
-function feedfwd_predict!(dat::Union{Batch_view, Model_data}, nnw::Wgts, hp, bn, ff_execstack)
-!hp.quiet && println("feedfwd_predict!(dat, nnw, hp, bn, hp, ff_execstack)")
-
-    for lr in 1:hp.n_layers
-        for f in ff_execstack[lr]
-            if f == getfield(GeneralNN, Symbol("dropout_fwd!"))   # TODO this is hacky
-                continue
-            end
-            if f == getfield(GeneralNN, Symbol("batch_norm_fwd!"))  # use prediction method
-                f(dat, bn, hp, lr, true)
-                continue
-            end
-            f(argset(dat, nnw, hp, bn, lr, f)...)
+            f(argset(dat, nnw, hp, bn, lr, f, dotrain)...) # argset returns the tuple of arguments to function f
         end
     end
 
@@ -141,7 +121,7 @@ end
 
 
 """
-function backprop!(nnw, dat, hp)
+function backprop!(nnw, dat, hp, bn, back_execstack)
     Argument nnw.delta_th holds the computed gradients for Wgts, delta_b for bias
     Modifies dat.epsilon, nnw.delta_th, nnw.delta_b in place--caller uses nnw.delta_th, nnw.delta_b
     Use for training iterations
@@ -163,9 +143,12 @@ function backprop!(nnw::Wgts, dat::Union{Batch_view,Model_data}, hp, bn, back_ex
 end
 
 
-function update_parameters!(nnw, hp, bn)  # =Batch_norm_params()
+function update_parameters!(nnw, hp, bn, t)  # =Batch_norm_params()
 !hp.quiet && println("update_parameters!(nnw, hp, bn)")
-    # update Wgts, bias, and batch_norm parameters
+
+    optimization_function!(nnw, hp, bn, t)
+
+    # update theta, bias, and batch_norm parameters
     @fastmath @inbounds for hl = 2:nnw.output_layer       
         @inbounds nnw.theta[hl][:] = nnw.theta[hl] .- (hp.alphamod .* nnw.delta_th[hl])
         
@@ -253,7 +236,7 @@ end
 function gather_stats!(stats, series, i, dat, nnw, cost_function, hp, bn, ff_execstack)
 
     if stats["track"][series]
-        feedfwd_predict!(dat, nnw, hp, bn, ff_execstack)
+        feedfwd!(dat, nnw, hp, bn, ff_execstack, dotrain=false)
 
         if stats["track"]["cost"]
             stats["cost"][i, stats["col_" * series]] = cost_function(dat.targets,
@@ -267,18 +250,3 @@ function gather_stats!(stats, series, i, dat, nnw, cost_function, hp, bn, ff_exe
     end
 end
 
-
-# TODO this probably doesn't work any more: not used
-function quick_stats(dat, nnw, hp, cost_function=cost_function)
-
-    feedfwd_predict!(dat, nnw, hp, bn)
-
-    cost = cost_function(dat.targets,
-            dat.a[nnw.output_layer], dat.n, nnw.theta, hp.lambda, hp.reg, nnw.output_layer)
-
-    correct = (  hp.classify == "regression"
-                ? r_squared(dat.targets, dat.a[nnw.output_layer])
-                : accuracy(dat.targets, dat.a[nnw.output_layer])  )
-
-    return cost, correct
-end

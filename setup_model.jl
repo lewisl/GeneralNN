@@ -110,60 +110,61 @@ end
     Base.iterate(mb::MBrng, start=1) = mbiter(mb::MBrng, start)   # canonical to use "state" instead of "start"
     Base.length(mb::MBrng) = mblength(mb)
 
-
+###################################################
 # argset methods to pass in the training loop
-# feed forward
+###################################################
+# feed forward feedfwd! passes dotrain argument
     # affine!
     function argset(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
-        bn::Batch_norm_params, hl::Int, fn::typeof(affine!))
+        bn::Batch_norm_params, hl::Int, fn::typeof(affine!), dotrain)
         (dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
     end
     # affine_nobias!
     function argset(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
-        bn::Batch_norm_params, hl::Int, fn::typeof(affine_nobias!))  #TODO: we can take bias out in layer_functions.jl
+        bn::Batch_norm_params, hl::Int, fn::typeof(affine_nobias!), dotrain)  #TODO: we can take bias out in layer_functions.jl
         (dat.z[hl], dat.a[hl-1], nnw.theta[hl], nnw.bias[hl])
     end
 # activation functions
     # sigmoid!
     function argset(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
-        bn::Batch_norm_params, hl::Int, fn::typeof(sigmoid!))
+        bn::Batch_norm_params, hl::Int, fn::typeof(sigmoid!), dotrain)
         (dat.a[hl], dat.z[hl])
     end
     # tanh_act!
     function argset(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
-        bn::Batch_norm_params, hl::Int, fn::typeof(tanh_act!))
+        bn::Batch_norm_params, hl::Int, fn::typeof(tanh_act!), dotrain)
         (dat.a[hl], dat.z[hl])
     end
     # l_relu!
     function argset(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
-        bn::Batch_norm_params, hl::Int, fn::typeof(l_relu!))
+        bn::Batch_norm_params, hl::Int, fn::typeof(l_relu!), dotrain)
         (dat.a[hl], dat.z[hl])
     end
     # relu!
     function argset(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
-        bn::Batch_norm_params, hl::Int, fn::typeof(relu!))
+        bn::Batch_norm_params, hl::Int, fn::typeof(relu!), dotrain)
         (dat.a[hl], dat.z[hl])
     end
 # classification functions
     # softmax
     function argset(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
-        bn::Batch_norm_params, hl::Int, fn::typeof(softmax!))
+        bn::Batch_norm_params, hl::Int, fn::typeof(softmax!), dotrain)
         (dat.a[hl], dat.z[hl])
     end
     # logistic!
     function argset(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
-        bn::Batch_norm_params, hl::Int, fn::typeof(logistic!))
+        bn::Batch_norm_params, hl::Int, fn::typeof(logistic!), dotrain)
         (dat.a[hl], dat.z[hl])
     end
     # regression!
     function argset(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
-        bn::Batch_norm_params, hl::Int, fn::typeof(regression!))
+        bn::Batch_norm_params, hl::Int, fn::typeof(regression!), dotrain)
         (dat.a[hl], dat.z[hl])
     end
     # batch_norm_fwd!
     function argset(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
-        bn::Batch_norm_params, hl::Int, fn::typeof(batch_norm_fwd!))
-        (dat, bn, hp, hl)
+        bn::Batch_norm_params, hl::Int, fn::typeof(batch_norm_fwd!), dotrain)
+        (dat, bn, hp, hl, dotrain)
     end
     # # batch_norm_fwd_predict!
     # function argset(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
@@ -172,11 +173,11 @@ end
     # end
     # dropout_fwd!
     function argset(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
-        bn::Batch_norm_params, hl::Int, fn::typeof(dropout_fwd!))
-        (dat, hp, nnw, hl)
+        bn::Batch_norm_params, hl::Int, fn::typeof(dropout_fwd!), dotrain)
+        (dat, hp, nnw, hl, dotrain)
     end
 
-    # back propagation
+    # back propagation backprop! does NOT pass dotrain
     # backprop_classify!
     function argset(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, hl::Int, fn::typeof(backprop_classify!))
@@ -240,7 +241,7 @@ This macro allows you to pick a name for the func and create multiple methods fo
 usage example: @gen_argset GeneralNN.relu! (dat.a[hl], dat.z[hl]) GeneralNN.argset
 will create the following method:
     function argset(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
-        bn::Batch_norm_params, hl::Int, fn::typeof(relu!))
+        bn::Batch_norm_params, hl::Int, fn::typeof(relu!), dotrain)
         (dat.a[hl], dat.z[hl])
     end
 
@@ -248,7 +249,7 @@ will create the following method:
 macro gen_argset(func, tpl, fname)  # confirmed that this works: always use GeneralNN.argset as the fname
     return quote
         function $(esc(fname))(dat::Union{Model_data, Batch_view}, nnw::Wgts,
-            hp::Hyper_parameters, bn::Batch_norm_params, hl::Int, fn::typeof($func)); 
+            hp::Hyper_parameters, bn::Batch_norm_params, hl::Int, fn::typeof($func), dotrain); 
             $tpl
         end
     end

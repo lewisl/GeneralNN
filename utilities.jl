@@ -320,7 +320,7 @@ function _output_stats(train, test, nnw, hp, bn, training_time, stats, model)
         println(outfile, "Training time: ",training_time, " seconds")  # cpu time since tic() =>  toq() returns secs without printing
 
         # output for entire training set
-        feedfwd_predict!(train, nnw, hp, bn, model.ff_execstack)  
+        feedfwd!(train, nnw, hp, bn, model.ff_execstack, dotrain=false)  
         println(outfile, "Fraction correct labels predicted training: ",
                 hp.classify == "regression" ? r_squared(train.targets, train.a[nnw.output_layer])
                     : accuracy(train.targets, train.a[nnw.output_layer]))
@@ -342,7 +342,7 @@ function _output_stats(train, test, nnw, hp, bn, training_time, stats, model)
 
         # output test statistics
         if dotest
-            feedfwd_predict!(test, nnw, hp, bn, model.ff_execstack)
+            feedfwd!(test, nnw, hp, bn, model.ff_execstack, dotrain=false)
             println(outfile, "\n\nFraction correct labels predicted test: ",
                     hp.classify == "regression" ? r_squared(test.targets, test.a[nnw.output_layer])
                         : accuracy(test.targets, test.a[nnw.output_layer]))
@@ -554,11 +554,11 @@ function compute_numerical_gradient(dat, nnw, bn, hp, model)
         println("****** perturbing each individual weight in theta layer $hl")
         for i in eachindex(nnw.theta[hl])
             nnw.theta[hl][i] += tweak   # this should be scalar
-            feedfwd_predict!(dat, nnw, hp, bn, model.ff_execstack)
+            feedfwd!(dat, nnw, hp, bn, model.ff_execstack, dotrain=false)
             cost_plus = cost_function(dat.targets, dat.a[nnw.output_layer], dat.n,
                         nnw.theta, hp.lambda, hp.reg, nnw.output_layer)
             nnw.theta[hl][i] -= 2 * tweak   # this should be scalar
-            feedfwd_predict!(dat, nnw, hp)
+            feedfwd!(dat, nnw, hp, bn, model.ff_execstack, dotrain=false)
             cost_minus = cost_function(dat.targets, dat.a[nnw.output_layer], dat.n,
                          nnw.theta, hp.lambda, hp.reg, nnw.output_layer)
             gradtheta[hl][i] = (cost_plus - cost_minus) / (2 * tweak)
@@ -568,11 +568,11 @@ function compute_numerical_gradient(dat, nnw, bn, hp, model)
         println("****** perturbing each individual weight in bias layer $hl")
         for i in eachindex(nnw.bias[hl])
             nnw.bias[hl][i] += tweak   # this should be scalar
-            feedfwd_predict!(dat, nnw, hp, bn, model.ff_execstack)
+            feedfwd!(dat, nnw, hp, bn, model.ff_execstack, dotrain=false)
             cost_plus = cost_function(dat.targets, dat.a[nnw.output_layer], dat.n,
                         nnw.theta, hp.lambda, hp.reg, nnw.output_layer)  # cost uses theta, not bias for regularization
             nnw.bias[hl][i] -= 2 * tweak   # this should be scalar
-            feedfwd_predict!(dat, nnw, hp, bn, model.ff_execstack)
+            feedfwd!(dat, nnw, hp, bn, model.ff_execstack, dotrain=false)
             cost_minus = cost_function(dat.targets, dat.a[nnw.output_layer], dat.n,
                          nnw.theta, hp.lambda, hp.reg, nnw.output_layer)
             gradbias[hl][i] = (cost_plus - cost_minus) / (2 * tweak)
@@ -784,7 +784,7 @@ function nnpredict(inputs, targets, hp, nnw, bn, istest)
     # TODO There is no way this call works--way out of date from API changes
     setup_functions!(hp.units, dataset.out_k, hp.opt, hp.classify, istest)  # for feedforward calculations
 
-    feedfwd_predict!(dataset, nnw, hp, bn)  # output for entire dataset
+    feedfwd!(dataset, nnw, hp, bn, model.ff_execstack, dotrain=false)  # output for entire dataset
 
     println("Fraction correct labels predicted: ",
         hp.classify == "regression" ? r_squared(dataset.targets, dataset.a[nnw.output_layer])

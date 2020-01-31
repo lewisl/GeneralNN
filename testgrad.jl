@@ -12,13 +12,13 @@ function prep_check(hp, train_x, train_y, iters; samplepct=.005, quiet=false, tw
 
     # prepare the model (sub-steps that are part of train() )
     dotest = false
-    train, mb, nnw, bn = pretrain(train_x, train_y, hp)
+    train, mb, nnw, bn, model = pretrain(train_x, train_y, hp)
 
     # advance the training loop with model hyper-parameters
         @printf("  ****** Advancing model %d iterations\n", iters)
         hp.epochs = iters  # set iters to train before grad testing
         stats = setup_stats(hp, dotest)
-        training_time = training_loop!(hp, train, mb, nnw, bn, stats)
+        training_time = training_loop!(hp, train, mb, nnw, bn, stats, model)
         output_stats(train, nnw, hp, bn, training_time, stats, model)
 
 
@@ -31,7 +31,7 @@ function prep_check(hp, train_x, train_y, iters; samplepct=.005, quiet=false, tw
         @bp
     end
 
-    return minihp, nnw, train, bn 
+    return minihp, nnw, train, bn, model 
 end
 
 
@@ -43,9 +43,9 @@ function check_grads(hp, train_x, train_y, iters; samplepct=.005, quiet=false, t
     println("  ****** Setting up model and data")
 
     @bp
-    hp, nnw, train, bn = prep_check(hp, train_x, train_y, iters; samplepct=samplepct, quiet=quiet, tweak=tweak)
+    hp, nnw, train, bn, model = prep_check(hp, train_x, train_y, iters; samplepct=samplepct, quiet=quiet, tweak=tweak)
 
-    run_check_grads(hp, nnw, train; bn=bn, samplepct=samplepct, tweak=tweak, quiet=quiet, iters=post_iters,
+    run_check_grads(hp, nnw, train, model; bn=bn, samplepct=samplepct, tweak=tweak, quiet=quiet, iters=post_iters,
                     biasgradidx = biasidx, thetagradidx = thetaidx)
 end
 
@@ -58,19 +58,19 @@ function prep_check(hp; in_k=3, out_k=3, m=5, hid=5, iters=30, samplepct=1.0, tw
 
     # create minidata and mini-model
     # @bp
-    minidat, minimb, miniwgts, minibn, ministats = use_minidata(minihp;
+    minidat, minimb, miniwgts, minibn, ministats, minimodel = use_minidata(minihp;
         in_k=in_k, out_k=out_k, m=m, hid=hid)   
 
     # advance some iterations using the analytic model
     @printf("\n  ****** Advancing model %d iterations\n", iters)
     minihp.epochs = iters
 
-    training_time = training_loop!(minihp, minidat, minimb, miniwgts, minibn, ministats)
+    training_time = training_loop!(minihp, minidat, minimb, miniwgts, minibn, ministats, minimodel)
 
     # TODO do we want this?  minihp and setup_stats currently setup so that no training stats get collected
-    quiet && output_stats(minidat, miniwgts, minihp, training_time, ministats)
+    quiet && output_stats(minidat, miniwgts, minihp, training_time, ministats, minimodel)
 
-    return minihp, miniwgts, minidat
+    return minihp, miniwgts, minidat, minimodel
 end
 
 
@@ -82,29 +82,18 @@ function check_grads(hp; in_k=3, out_k=3, m=5, hid=5, iters=30, samplepct=1.0, t
     println("  ****** Setting up model and test data")
 
     # @bp
-    minihp, miniwgts, minidat = prep_check(hp; in_k=in_k, out_k=out_k, m=m, hid=hid, iters=iters,
+    minihp, miniwgts, minidat, minimodel = prep_check(hp; in_k=in_k, out_k=out_k, m=m, hid=hid, iters=iters,
         samplepct=samplepct, tweak=tweak, quiet=false)
 
     # @bp
-    run_check_grads(minihp, miniwgts, minidat; samplepct=samplepct, tweak=tweak, quiet=quiet)
+    run_check_grads(minihp, miniwgts, minidat, minimodel; samplepct=samplepct, tweak=tweak, quiet=quiet)
 end
 
-
-function compare_tweak(hp, wgts, dat; eps_wgt=(2,3,"bias"), example=10)
-    tweaks = [1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7]
-    @printf("%16s %16s %16s %16s %16s %16s \n", "cost",   "costnew",  "diff",  "tweak*w", "err",     "tweak")
-
-    for tweak in tweaks
-        cost, costnew, w = check_one(hp, wgts, dat; tweak=tweak, eps_wgt=eps_wgt, example=example)
-        @printf("%16.12f  %16.12f %16.12f   %16.12f   %16.12f  %16.12f\n", cost, costnew, costnew-cost, tweak*w, 
-                                                        (costnew-cost)-tweak*w, tweak)
-    end
-end
 
 # eps_wgt = (lr, idx, typ) where lr is int of layer (either hidden or output) 
 #                                idx is the linear index of theta or bias for lr
 #                                typ must be "theta" or "bias"
-function check_one(hp, inwgts, indat; tweak=1e-6, eps_wgt=(2,3,"bias"), example=10)  
+function check_one(hp, inwgts, indat, model; tweak=1e-6, eps_wgt=(2,3,"bias"), example=10)  
     wgts = deepcopy(inwgts)
     dat = deepcopy(indat)
     selr = eps_wgt[1]
@@ -125,7 +114,7 @@ function check_one(hp, inwgts, indat; tweak=1e-6, eps_wgt=(2,3,"bias"), example=
     update_batch_views!(onedat, dat, wgts, hp, example:example)  # slice out column example
 
     # 1. get the cost for a single example at current weights
-    feedfwd_predict!(onedat, wgts, hp) 
+    feedfwd!(onedat, wgts, hp, bn, model.ff_execstack, dotrain=false) 
     cost = cost_function(onedat.targets[:,1], onedat.a[wgts.output_layer][:,1], 1, wgts.theta, hp.lambda, hp.reg,
                           wgts.output_layer)
     
@@ -137,7 +126,7 @@ function check_one(hp, inwgts, indat; tweak=1e-6, eps_wgt=(2,3,"bias"), example=
     w = getproperty(wgts, Symbol(typ))[selr][idx]  # bias or theta
     w_plus = w + tweak
     getproperty(wgts, Symbol(typ))[selr][idx] = w_plus  # set the chosen weight to tweaked value
-    feedfwd_predict!(onedat, wgts, hp) 
+    feedfwd!(onedat, wgts, hp, bn, model.ff_execstack, dotrain=false) 
     # cost_plus = cost_function(onedat.targets[:,1], onedat.a[wgts.output_layer][:,1], 1, wgts.theta, hp.lambda, hp.reg,
                           # wgts.output_layer)
     costnew = cost_function(onedat.targets[:,1], onedat.a[wgts.output_layer][:,1], 1, wgts.theta, hp.lambda, hp.reg,
@@ -161,7 +150,7 @@ function check_one(hp, inwgts, indat; tweak=1e-6, eps_wgt=(2,3,"bias"), example=
 end
 
 
-function run_check_grads(hp, wgts, dat; bn=Batch_norm_params(), samplepct=.015, tweak=1e-6, quiet=false, iters=0,
+function run_check_grads(hp, wgts, dat, model; bn=Batch_norm_params(), samplepct=.015, tweak=1e-6, quiet=false, iters=0,
     biasgradidx = [], thetagradidx = [])  # last 2 args are the indices of the bias and theta we sample
 
     println("\n\n ******   Starting run_check_grads")
@@ -193,7 +182,7 @@ function run_check_grads(hp, wgts, dat; bn=Batch_norm_params(), samplepct=.015, 
     # run model a few more iterations:  especially valuable if full model uses minibatches
     # TODO  does this work or mess things up?
     for i = 1:iters
-        feedfwd_predict!(dat, wgts, hp) # no batches, no batchnorm, no dropout
+        feedfwd!(dat, wgts, hp, bn, model.ff_execstack, dotrain=false) # no batches, no batchnorm, no dropout
         backprop!(wgts, dat, hp)
         update_parameters!(wgts, hp)
     end
@@ -205,13 +194,13 @@ function run_check_grads(hp, wgts, dat; bn=Batch_norm_params(), samplepct=.015, 
 
     # compute numgrad
     kinkrejecttheta, kinkrejectbias, numcost,  numpreds, bnnumgrads = compute_numgrad!(numgradtheta, numgradbias, 
-                        thetagradidx, biasgradidx, wgts, dat, hp; bn=bn, tweak=tweak)
+                        thetagradidx, biasgradidx, wgts, dat, hp, model; bn=bn, tweak=tweak)
     numgrad = (numgradtheta,numgradbias)
 
     # compute model grad
     println("  ****** Calculating feedfwd/backprop gradients")
     # @bp
-    modcost, modpreds, bnmodgrads = compute_modelgrad!(dat, wgts, hp, bn)  # changes dat, wgts and hp
+    modcost, modpreds, bnmodgrads = compute_modelgrad!(dat, wgts, hp, bn, model)  # changes dat, wgts and hp
     modgrad = (deepcopy(wgts.delta_th), deepcopy(wgts.delta_b))  # do I need to copy since compute_numgrad! does no backprop?
 
     
@@ -358,7 +347,7 @@ function use_minidata(minihp;in_k=3, out_k=3, m=5, hid=5)
     mini_y = collect(onehot(mini_y, out_k)')  # onehot encode categories
 
     # create training data structures and setup functions, etc (see pretrain function in setup_training.jl)
-    minidat, minimb, miniwgts, minibn = pretrain(mini_x, mini_y, minihp)
+    minidat, minimb, miniwgts, minibn, minimodel = pretrain(mini_x, mini_y, minihp)
 
     # repeatable initization of theta and bias
     for l = 2:miniwgts.output_layer
@@ -370,7 +359,7 @@ function use_minidata(minihp;in_k=3, out_k=3, m=5, hid=5)
     dotest = false
     ministats = setup_stats(minihp, dotest)  
 
-    return minidat, minimb, miniwgts, minibn, ministats
+    return minidat, minimb, miniwgts, minibn, ministats, minimodel
 end
 
 """
@@ -381,7 +370,7 @@ Note that it is possible to know if a kink was crossed in the evaluation of the 
 """
 
 
-function compute_numgrad!(numgradtheta, numgradbias, thetagradidx, biasgradidx, wgts, dat, hp; 
+function compute_numgrad!(numgradtheta, numgradbias, thetagradidx, biasgradidx, wgts, dat, hp, model; 
     bn=Batch_norm_params(), tweak=1e-7, quiet=true)
 
 #   TODO how to handle conditional passing of bn struct
@@ -414,13 +403,13 @@ function compute_numgrad!(numgradtheta, numgradbias, thetagradidx, biasgradidx, 
 
             wgts.bias[lr][bi] += tweak
 
-            feedfwd_predict!(dat, wgts, hp)       #feedfwd_predict!(dat, wgts, hp)
+            feedfwd!(dat, wgts, hp, bn, model.ff_execstack, dotrain=false)       #feedfwd_predict!(dat, wgts, hp)
             kinktst1 = findkink(olddat, dat, output_layer)
             loss1 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n) 
 
             wgts.bias[lr][bi] -= 2.0 * tweak
 
-            feedfwd_predict!(dat, wgts, hp)
+            feedfwd!(dat, wgts, hp, bn, model.ff_execstack, dotrain=false)
             kinktst2 = findkink(olddat, dat, output_layer)
             loss2 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n)   
 
@@ -445,13 +434,13 @@ function compute_numgrad!(numgradtheta, numgradbias, thetagradidx, biasgradidx, 
 
             wgts.theta[lr][thi] += tweak
 
-            feedfwd_predict!(dat, wgts, hp)
+            feedfwd!(dat, wgts, hp, bn, model.ff_execstack, dotrain=false)
             kinktst1 = findkink(olddat, dat, output_layer)
             loss1 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n) 
 
             wgts.theta[lr][thi] -= 2.0 * tweak
 
-            feedfwd_predict!(dat, wgts, hp)
+            feedfwd!(dat, wgts, hp, bn, model.ff_execstack, dotrain=false)
             kinktst2 = findkink(olddat, dat, output_layer)
             loss2 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n)
 
@@ -483,10 +472,10 @@ function compute_numgrad!(numgradtheta, numgradbias, thetagradidx, biasgradidx, 
             for (idx,bi) in enumerate(biasgradidx[lr]) 
                 println(idx)
                 bn.gam[lr][bi] += tweak
-                feedfwd_predict!(dat, wgts, hp)  # bn is closure in function placeholder
+                feedfwd!(dat, wgts, hp, bn, model.ff_execstack, dotrain=false)  # bn is closure in function placeholder
                 loss1 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n) 
                 bn.gam[lr][bi] -= 2.0 * tweak
-                feedfwd_predict!(dat, wgts, hp)  # bn is closure in function placeholder
+                feedfwd!(dat, wgts, hp, bn, model.ff_execstack, dotrain=false)  # bn is closure in function placeholder
                 loss2 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n) 
                 bn.gam[lr][bi] += tweak
                 gamgrad[lr][idx] = (loss1 - loss2) / (2.0 * tweak)
@@ -495,10 +484,10 @@ function compute_numgrad!(numgradtheta, numgradbias, thetagradidx, biasgradidx, 
             @printf("  ****** Calculating numeric batchnorm beta gradients layer: %d\n", lr)
             for (idx,bi) in enumerate(biasgradidx[lr])
                 bn.bet[lr][bi] += tweak
-                feedfwd_predict!(dat, wgts, hp)  # bn is closure in function placeholder
+                feedfwd!(dat, wgts, hp, bn, model.ff_execstack, dotrain=false)  # bn is closure in function placeholder
                 loss1 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n) 
                 bn.bet[lr][bi] -= 2.0 * tweak
-                feedfwd_predict!(dat, wgts, hp)  # bn is closure in function placeholder
+                feedfwd!(dat, wgts, hp, bn, model.ff_execstack, dotrain=false)  # bn is closure in function placeholder
                 loss2 = cost_function(dat.targets, dat.a[wgts.output_layer], dat.n) 
                 bn.bet[lr][bi] += tweak
                 betgrad[lr][idx] = (loss1 - loss2) / (2.0 * tweak)
@@ -527,7 +516,7 @@ function findkink(olddat, dat, output_layer)
 end
 
 
-function compute_modelgrad!(dat, nnw, hp, bn)
+function compute_modelgrad!(dat, nnw, hp, bn, model)
 
     # @bp
 
@@ -537,7 +526,7 @@ function compute_modelgrad!(dat, nnw, hp, bn)
 
     # @bp
     hp.mb_size = float(dat.n)
-    feedfwd_predict!(dat, nnw, hp)  
+    feedfwd!(dat, nnw, hp, bn, model.ff_execstack, dotrain=false)  
     backprop!(nnw, dat, hp)  # for all layers   
 
     if hp.do_batch_norm

@@ -218,11 +218,12 @@ end
 ##########################################################################
 
 
-function dropout_fwd!(dat, hp, nnw, hl)  # applied per layer
-
+function dropout_fwd!(dat, hp, nnw, hl, dotrain=true)  # applied per layer
+dotrain && begin
     @inbounds nnw.dropout_mask_units[hl][:] = Bool.(rand( Bernoulli( hp.droplim[hl] ), size(nnw.dropout_mask_units[hl], 1)))
     # choose activations to remain and scale
     @inbounds dat.a[hl][:] = dat.a[hl] .* (nnw.dropout_mask_units[hl] ./ hp.droplim[hl])
+end
 end
 
 
@@ -307,28 +308,35 @@ end
 
 # batch normalization
 # method for training that updates running averages of mu and std
-function batch_norm_fwd!(dat::Union{Model_data, Batch_view}, bn::Batch_norm_params, hp::Hyper_parameters, hl::Int)
+function batch_norm_fwd!(dat::Union{Model_data, Batch_view}, bn::Batch_norm_params, 
+    hp::Hyper_parameters, hl::Int, dotrain=true)
 !hp.quiet && println("batch_norm_fwd!(dat, bn, hp, hl)")
 
-    @inbounds begin
-        bn.mu[hl][:] = mean(dat.z[hl], dims=2)          # use in backprop
-        bn.stddev[hl][:] = std(dat.z[hl], dims=2)
-        dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu[hl]) ./ (bn.stddev[hl] .+ hp.ltl_eps) # normalized: often xhat or zhat  
-        dat.z[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: often called y 
-        bn.mu_run[hl][:] = (  bn.mu_run[hl][1] == 0.0 ? bn.mu[hl] :  
-            0.95 .* bn.mu_run[hl] .+ 0.05 .* bn.mu[hl]  )
-        bn.std_run[hl][:] = (  bn.std_run[hl][1] == 0.0 ? bn.stddev[hl] :  
-            0.95 .* bn.std_run[hl] + 0.05 .* bn.stddev[hl]  )
+    dotrain && @inbounds begin
+            bn.mu[hl][:] = mean(dat.z[hl], dims=2)          # use in backprop
+            bn.stddev[hl][:] = std(dat.z[hl], dims=2)
+            dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu[hl]) ./ (bn.stddev[hl] .+ hp.ltl_eps) # normalized: often xhat or zhat  
+            dat.z[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: often called y 
+            bn.mu_run[hl][:] = (  bn.mu_run[hl][1] == 0.0 ? bn.mu[hl] :  
+                0.95 .* bn.mu_run[hl] .+ 0.05 .* bn.mu[hl]  )
+            bn.std_run[hl][:] = (  bn.std_run[hl][1] == 0.0 ? bn.stddev[hl] :  
+                0.95 .* bn.std_run[hl] + 0.05 .* bn.stddev[hl]  )
+            return
     end
-end
 
-# method for prediction using running average of mu and std
-function batch_norm_fwd!(dat::Union{Model_data, Batch_view}, bn::Batch_norm_params, hp::Hyper_parameters, hl::Int, notrain)
-!hp.quiet && println("batch_norm_fwd_predict!(hp, bn, dat, hl)")
-
+    # else, e.g.--dotrain == false
     @inbounds dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu_run[hl]) ./ (bn.std_run[hl] .+ hp.ltl_eps) # normalized: aka xhat or zhat 
     @inbounds dat.z[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: often called y 
+
 end
+
+# # method for prediction using running average of mu and std
+# function batch_norm_fwd!(dat::Union{Model_data, Batch_view}, bn::Batch_norm_params, hp::Hyper_parameters, hl::Int, notrain)
+# !hp.quiet && println("batch_norm_fwd_predict!(hp, bn, dat, hl)")
+
+#     @inbounds dat.z_norm[hl][:] = (dat.z[hl] .- bn.mu_run[hl]) ./ (bn.std_run[hl] .+ hp.ltl_eps) # normalized: aka xhat or zhat 
+#     @inbounds dat.z[hl][:] = dat.z_norm[hl] .* bn.gam[hl] .+ bn.bet[hl]  # shift & scale: often called y 
+# end
 
 
 function batch_norm_back!(nnw, dat, bn, hl, hp)
@@ -371,6 +379,6 @@ function l1_reg!(nnw, hp, hl)
 end
 
 
-############## noop stub
+############## noop stub  not used anymore, but handy to have around
 function noop(args...)
 end
