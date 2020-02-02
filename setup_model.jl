@@ -10,7 +10,9 @@ function create_model!(model, hp, nnw)
     model.ff_execstack = build_exec_stack(model.ff_strstack, func_dict)
     model.back_strstack = build_back_string_stack(hp)
     model.back_execstack = build_exec_stack(model.back_strstack, func_dict)
-    model.cost_function, model.reg_function!, model.optimization_function! = setup_functions!(hp)
+    model.cost_function = setup_functions!(hp)
+    model.update_strstack = build_update_string_stack(hp)
+    model.update_execstack = build_exec_stack(model.update_strstack, func_dict)
 end
 
 
@@ -268,6 +270,74 @@ function build_back_string_stack(hp)
 end
 
 
+function build_update_string_stack(hp)
+    strstack = []
+    n_hid = length(hp.hidden)
+    n_layers = n_hid + 2
+
+    # input layer
+    layer = 1
+        layer_group = String[]
+            # usually nothing to do here  TODO resolve issue about backprop for the weights from the input layer
+        push!(strstack, layer_group)
+
+    # hidden layers
+    for layer in 2:n_layers # for hidden layers and output layer
+        hl = hidden_layer = layer - 1
+        layer_group = String[]  # start a new layer_group
+
+        optimization_function = 
+            if hp.opt == "momentum"
+                "momentum"
+            elseif hp.opt == "adam"
+                "adam"
+            elseif hp.opt == "rmsprop"
+                "rmsprop"
+            else
+                "noop"
+            end
+            if optimization_function == "noop"
+            else
+                push!(layer_group, optimization_function)
+            end
+
+        # update_wgts either or...
+        hp.do_batch_norm && push!(layer_group, "update_wgts_nobias") # true -- don't use bias
+        hp.do_batch_norm || push!(layer_group, "update_wgts") # false -- use bias
+        hp.do_batch_norm && push!(layer_group, "update_batch_norm")
+
+        reg_function = 
+            if hp.reg == "L2"
+                "l2_reg"
+            elseif hp.reg == "L1"
+                "l1_reg"
+            elseif hp.reg == "Maxnorm"
+                "maxnorm_reg"
+            else
+                "noop"
+            end        
+            if reg_function == "noop"
+            else
+                push!(layer_group, reg_function)
+            end
+
+
+        # done with layer_group for current hidden layer
+        push!(strstack, layer_group) 
+    end
+
+    #output layer
+        # same as hidden layers:  included in loop above
+        if !hp.opt_output   # false: remove the optimization function from output layer_group
+            # optimization worksk poorly on the output layer with softmax
+            optfunc = filter(x->in(x,["adam","rmsprop","momentum"]), strstack[n_layers])
+            deleteat!(strstack[n_layers], indexin(optfunc,strstack[n_layers])) 
+        end
+
+    return strstack
+end
+
+
 """
 define and choose functions to be used in neural net training
 """
@@ -276,32 +346,32 @@ function setup_functions!(hp)  # , nnw, bn, dat
 
     n_layers = length(hp.hidden) + 2
 
-    reg_function! = Array{Function}(undef, n_layers)
-    # TODO update to enable different regulization at each layer
-    for layer = 2:n_layers  # from the first hidden layer=2 to output layer
-        reg_function![layer] = 
-            if hp.reg == "L2"
-                l2_reg!
-            elseif hp.reg == "L1"
-                l1_reg!
-            elseif hp.reg == "Maxnorm"
-                maxnorm_reg!
-            else
-                noop
-            end
+    # reg_function! = Array{Function}(undef, n_layers)
+    # # TODO update to enable different regulization at each layer
+    # for layer = 2:n_layers  # from the first hidden layer=2 to output layer
+    #     reg_function![layer] = 
+    #         if hp.reg == "L2"
+    #             l2_reg!
+    #         elseif hp.reg == "L1"
+    #             l1_reg!
+    #         elseif hp.reg == "Maxnorm"
+    #             maxnorm_reg!
+    #         else
+    #             noop
+    #         end
         
-    end
+    # end
 
-    optimization_function! = 
-        if hp.opt == "momentum"
-            momentum!
-        elseif hp.opt == "adam"
-            adam!
-        elseif hp.opt == "rmsprop"
-            rmsprop!
-        else
-            noop
-        end
+    # optimization_function! = 
+    #     if hp.opt == "momentum"
+    #         momentum!
+    #     elseif hp.opt == "adam"
+    #         adam!
+    #     elseif hp.opt == "rmsprop"
+    #         rmsprop!
+    #     else
+    #         noop
+    #     end
 
     cost_function = 
         if hp.classify=="regression" 
@@ -313,7 +383,7 @@ function setup_functions!(hp)  # , nnw, bn, dat
         end
 
     !hp.quiet && println("Setup functions completed.")
-    return cost_function, reg_function!, optimization_function!
+    return cost_function
 end
 
 
@@ -441,6 +511,54 @@ end
             (nnw, dat, bn, hl, hp)
     end
 
+    # update parameters: optimization
+    # momentum
+    function argset(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, hl::Int, t::Int, fn::typeof(momentum!))   
+            (nnw, hp, bn, hl, t)
+    end
+
+    # adam
+    function argset(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, hl::Int, t::Int, fn::typeof(adam!))   
+            (nnw, hp, bn, hl, t)
+    end
+
+    # rmsprop
+    function argset(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, hl::Int, t::Int, fn::typeof(rmsprop!))   
+            (nnw, hp, bn, hl, t)
+    end
+
+    # update parameters
+    # update_wgts
+    function argset(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, hl::Int, t::Int, fn::typeof(update_wgts!))   
+        (nnw.theta[hl], nnw.bias[hl], hp.alphamod, nnw.delta_th[hl], nnw.delta_b[hl])
+    end
+
+    # update_wgts_nobias
+    function argset(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, hl::Int, t::Int, fn::typeof(update_wgts_nobias!))   
+        (nnw.theta[hl], hp.alphamod, nnw.delta_th[hl])
+    end
+
+    # update_batch_norm
+    function argset(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, hl::Int, t::Int, fn::typeof(update_batch_norm!))   
+        (bn.gam[hl], bn.bet[hl], hp.alphamod, bn.delta_gam[hl], bn.delta_bet[hl])
+    end
+
+    # update_parameters: regularization
+    # maxnorm
+    function argset(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, hl::Int, t::Int, fn::typeof(maxnorm_reg!))   
+            (nnw.theta, hp, hl)
+    end
+
+    # l1
+    function argset(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, hl::Int, t::Int, fn::typeof(l1_reg!))   
+            (nnw.theta, hp, hl)
+    end
+
+    # l2
+    function argset(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, hl::Int, t::Int, fn::typeof(l2_reg!))   
+            (nnw.theta, hp, hl)
+    end
+
 
 """
 This macro allows you to pick a name for the func and create multiple methods for that function name.
@@ -503,6 +621,19 @@ function create_funcs()
                     "batch_norm_back" => batch_norm_back!,
 
                     # optimization
-                    "dropout_back" => dropout_back!
+                    "dropout_back" => dropout_back!,
+                    "momentum" => momentum!,
+                    "adam" => adam!,
+                    "rmsprop" => rmsprop!,
+
+                    # update parameters
+                    "update_wgts" => update_wgts!,
+                    "update_wgts_nobias" => update_wgts_nobias!,
+                    "update_batch_norm" => update_batch_norm!,
+
+                    # regularization
+                    "maxnorm_reg" => maxnorm_reg!,
+                    "l1_reg" => l1_reg!,
+                    "l2_reg" => l2_reg!
                 )
 end

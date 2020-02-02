@@ -643,39 +643,49 @@ end
 function print_model(model::Model_def)
 
     n_layers = length(model.ff_strstack)
-        println("\nFeed Forward")
-        for lr = 1:n_layers 
-            if lr == 1
-                println("1: Input")
-            elseif lr == n_layers
-                println(n_layers,": Output")
-            else
-                println(lr,": Hidden")
-            end
-            for (fncnt, item) in enumerate(model.ff_strstack[lr])
-                println("  ",fncnt, ": ", item)
-            end
+    println("\nFeed Forward")
+    for lr = 1:n_layers 
+        if lr == 1
+            println("1: Input")
+        elseif lr == n_layers
+            println(n_layers,": Output")
+        else
+            println(lr,": Hidden")
         end
-        println("\nBack Propagation")
-        for lr = n_layers:-1:1
-            if lr == 1
-                println("1: Input")
-            elseif lr == n_layers
-                println(n_layers,": Output")
-            else
-                println(lr,": Hidden")
-            end
-            for (fncnt, item) in enumerate(model.back_strstack[lr])
-                println("  ", fncnt, ": ", item)
-            end
-        end   
-        println("Cost Function: ",model.cost_function)
-        println("Optimization Function: ", model.optimization_function!)
-        println("Regularization Functions")
-        for lr = n_layers:-1:2
-            println("  ", lr, ": ", model.reg_function![lr])
+        for (fncnt, item) in enumerate(model.ff_strstack[lr])
+            println("  ",fncnt, ": ", item)
         end
+    end
 
+    println("\nBack Propagation")
+    for lr = n_layers:-1:1
+        if lr == 1
+            println("1: Input")
+        elseif lr == n_layers
+            println(n_layers,": Output")
+        else
+            println(lr,": Hidden")
+        end
+        for (fncnt, item) in enumerate(model.back_strstack[lr])
+            println("  ", fncnt, ": ", item)
+        end
+    end   
+
+    println("\nUpdate Parameters")
+    for lr = n_layers:-1:1
+        if lr == 1
+            println("1: Input")
+        elseif lr == n_layers
+            println(n_layers,": Output")
+        else
+            println(lr,": Hidden")
+        end
+        for (fncnt, item) in enumerate(model.update_strstack[lr])
+            println("  ", fncnt, ": ", item)
+        end
+    end   
+
+    println("Cost Function: ",model.cost_function)
 
 end
 

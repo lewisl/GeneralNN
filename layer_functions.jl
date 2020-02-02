@@ -131,6 +131,29 @@ end
     end
 
 
+###########################################################################
+#  layer functions to upgrade trained parameters
+###########################################################################
+    # method for a single layer--caller indexes the array of arrays to pass single layer array
+    # (nnw.theta[hl], nnw.bias[hl], hp.alphamod, nnw.delta_th[hl], nnw.delta_b[hl])
+    function update_wgts!(theta, bias, alpha, delta_th, delta_b)   # could differentiate with method dispatch
+        @inbounds theta[:] = theta .- (alpha .* delta_th)
+        @inbounds bias[:] .= bias .- (alpha .* delta_b)
+    end
+
+    # method for a single layer--caller indexes the array of arrays to pass single layer array
+    function update_wgts_nobias!(theta, alpha, delta_th) # (nnw.theta[hl], hp.alphamod, nnw.delta_th[hl])
+        @inbounds theta[:] = theta .- (alpha .* delta_th)
+    end
+
+
+    # method for a single layer--caller indexes the array of arrays to pass single layer array
+    # (bn.gam[hl], bn.bet[hl], hp.alphamod, bn.delta_gam[hl], bn.delta_bet[hl])
+    function update_batch_norm!(gam, bet, alpha, delta_gam, delta_bet)
+        @inbounds gam[:] = gam .- (alpha .* delta_gam)
+        @inbounds bet[:] = bet .- (alpha .* delta_bet)
+    end
+
 
 ###########################################################################
 #  layer functions:  gradient 
@@ -246,53 +269,69 @@ function step_learn_decay!(hp, ep_i)
     end
 end
 
-
+# method for multiple layers in a loop
 function momentum!(nnw, hp, bn, t)
     @fastmath for hl = (nnw.output_layer - 1):-1:2  # loop over hidden layers
-        @inbounds nnw.delta_v_th[hl][:] = hp.b1 .* nnw.delta_v_th[hl] .+ (1.0 - hp.b1) .* nnw.delta_th[hl]  # @inbounds 
-        @inbounds nnw.delta_th[hl][:] = nnw.delta_v_th[hl]
-
-        if !hp.do_batch_norm  # no batchnorm so we need to do bias term
-            @inbounds nnw.delta_v_b[hl][:] = hp.b1 .* nnw.delta_v_b[hl] .+ (1.0 - hp.b1) .* nnw.delta_b[hl]  # @inbounds 
-            @inbounds nnw.delta_b[hl][:] = nnw.delta_v_b[hl]
-        elseif hp.opt_batch_norm # yes, doing batchnorm, but don't use optimization
-            @inbounds bn.delta_v_gam[hl][:] = hp.b1 .* bn.delta_v_gam[hl] .+ (1.0 - hp.b1) .* bn.delta_gam[hl]  # @inbounds 
-            @inbounds bn.delta_gam[hl][:] = bn.delta_v_gam[hl]
-            @inbounds bn.delta_v_bet[hl][:] = hp.b1 .* bn.delta_v_bet[hl] .+ (1.0 - hp.b1) .* bn.delta_bet[hl]  # @inbounds 
-            @inbounds bn.delta_bet[hl][:] = bn.delta_v_bet[hl]
-        end
+        momentum!(nnw, hp, bn, hl, t)  # this will get inlined by the compiler
     end
 end
 
 
+# method for a single layer
+function momentum!(nnw, hp, bn, hl, t)
+    @inbounds nnw.delta_v_th[hl][:] = hp.b1 .* nnw.delta_v_th[hl] .+ (1.0 - hp.b1) .* nnw.delta_th[hl]  # @inbounds 
+    @inbounds nnw.delta_th[hl][:] = nnw.delta_v_th[hl]
+
+    if !hp.do_batch_norm  # no batchnorm so we need to do bias term
+        @inbounds nnw.delta_v_b[hl][:] = hp.b1 .* nnw.delta_v_b[hl] .+ (1.0 - hp.b1) .* nnw.delta_b[hl]  # @inbounds 
+        @inbounds nnw.delta_b[hl][:] = nnw.delta_v_b[hl]
+    elseif hp.opt_batch_norm # yes, doing batchnorm, but don't use optimization
+        @inbounds bn.delta_v_gam[hl][:] = hp.b1 .* bn.delta_v_gam[hl] .+ (1.0 - hp.b1) .* bn.delta_gam[hl]  # @inbounds 
+        @inbounds bn.delta_gam[hl][:] = bn.delta_v_gam[hl]
+        @inbounds bn.delta_v_bet[hl][:] = hp.b1 .* bn.delta_v_bet[hl] .+ (1.0 - hp.b1) .* bn.delta_bet[hl]  # @inbounds 
+        @inbounds bn.delta_bet[hl][:] = bn.delta_v_bet[hl]
+    end
+end
+
+# method for looping over hidden layers
 function rmsprop!(nnw, hp, bn, t)
     @fastmath for hl = (nnw.output_layer - 1):-1:2  # loop over hidden layers
-        @inbounds nnw.delta_v_th[hl][:] = hp.b1 .* nnw.delta_v_th[hl] .+ (1.0 - hp.b1) .* nnw.delta_th[hl].^2   
-        @inbounds nnw.delta_th[hl][:] =  nnw.delta_th[hl] ./  (sqrt.(nnw.delta_v_th[hl]) .+ hp.ltl_eps)
-
-        if !hp.do_batch_norm  # then we need to do bias term
-            @inbounds nnw.delta_v_b[hl][:] = hp.b1 .* nnw.delta_v_b[hl] .+ (1.0 - hp.b1) .* nnw.delta_b[hl].^2   
-            @inbounds nnw.delta_b[hl][:] = nnw.delta_b[hl] ./ (sqrt.(nnw.delta_v_b[hl]) .+ hp.ltl_eps)
-        elseif hp.opt_batch_norm # yes, doing batchnorm, but don't use optimization
-            @inbounds bn.delta_v_gam[hl][:] = hp.b1 .* bn.delta_v_gam[hl] .+ (1.0 - hp.b1) .* bn.delta_gam[hl].^2   
-            @inbounds bn.delta_gam[hl][:] = bn.delta_gam[hl] ./ (sqrt.(bn.delta_v_gam[hl]) .+ hp.ltl_eps)
-            @inbounds bn.delta_v_bet[hl][:] = hp.b1 .* bn.delta_v_bet[hl] .+ (1.0 - hp.b1) .* bn.delta_bet[hl].^2   
-            @inbounds bn.delta_bet[hl][:] = bn.delta_bet[hl] ./ (sqrt.(bn.delta_v_bet[hl]) .+ hp.ltl_eps)
-        end
+        rmsprop!(nnw, hp, bn, hl, t)
     end
 end
 
+# method for a single layer
+function rmsprop!(nnw, hp, bn, hl, t)
+    @inbounds nnw.delta_v_th[hl][:] = hp.b1 .* nnw.delta_v_th[hl] .+ (1.0 - hp.b1) .* nnw.delta_th[hl].^2   
+    @inbounds nnw.delta_th[hl][:] =  nnw.delta_th[hl] ./  (sqrt.(nnw.delta_v_th[hl]) .+ hp.ltl_eps)
 
+    if !hp.do_batch_norm  # then we need to do bias term
+        @inbounds nnw.delta_v_b[hl][:] = hp.b1 .* nnw.delta_v_b[hl] .+ (1.0 - hp.b1) .* nnw.delta_b[hl].^2   
+        @inbounds nnw.delta_b[hl][:] = nnw.delta_b[hl] ./ (sqrt.(nnw.delta_v_b[hl]) .+ hp.ltl_eps)
+    elseif hp.opt_batch_norm # yes, doing batchnorm, but don't use optimization
+        @inbounds bn.delta_v_gam[hl][:] = hp.b1 .* bn.delta_v_gam[hl] .+ (1.0 - hp.b1) .* bn.delta_gam[hl].^2   
+        @inbounds bn.delta_gam[hl][:] = bn.delta_gam[hl] ./ (sqrt.(bn.delta_v_gam[hl]) .+ hp.ltl_eps)
+        @inbounds bn.delta_v_bet[hl][:] = hp.b1 .* bn.delta_v_bet[hl] .+ (1.0 - hp.b1) .* bn.delta_bet[hl].^2   
+        @inbounds bn.delta_bet[hl][:] = bn.delta_bet[hl] ./ (sqrt.(bn.delta_v_bet[hl]) .+ hp.ltl_eps)
+    end
+end
+
+# method that loops over hidden layers
 function adam!(nnw, hp, bn, t)
     @fastmath for hl = (nnw.output_layer - 1):-1:2  # loop over hidden layers
-        adam_helper!(nnw.delta_v_th[hl], nnw.delta_s_th[hl], nnw.delta_th[hl], hp, t)
+        adam!(nnw, hp, bn, hl, t)
+    end
+end
 
-        if !hp.do_batch_norm  # then we need to do bias term
-            adam_helper!(nnw.delta_v_b[hl], nnw.delta_s_b[hl], nnw.delta_b[hl], hp, t)
-        elseif hp.opt_batch_norm # yes, doing batchnorm, but don't use optimization
-            adam_helper!(bn.delta_v_gam[hl], bn.delta_s_gam[hl], bn.delta_gam[hl], hp, t)
-            adam_helper!(bn.delta_v_bet[hl], bn.delta_s_bet[hl], bn.delta_bet[hl], hp, t)            
-        end
+# method for a single layer
+function adam!(nnw, hp, bn, hl, t)
+    adam_helper!(nnw.delta_v_th[hl], nnw.delta_s_th[hl], nnw.delta_th[hl], hp, t)
+
+    if !hp.do_batch_norm  # then we need to do bias term
+        adam_helper!(nnw.delta_v_b[hl], nnw.delta_s_b[hl], nnw.delta_b[hl], hp, t)
+    elseif hp.opt_batch_norm # yes, doing batchnorm, but don't use optimization
+        adam_helper!(bn.delta_v_gam[hl], bn.delta_s_gam[hl], bn.delta_gam[hl], hp, t)
+        adam_helper!(bn.delta_v_bet[hl], bn.delta_s_bet[hl], bn.delta_bet[hl], hp, t)            
     end
 end
 
@@ -357,8 +396,8 @@ function batch_norm_back!(nnw, dat, bn, hl, hp)
 end
 
 
-function maxnorm_reg!(nnw, hp, hl)    # (theta, maxnorm_lim)
-    theta = nnw.theta[hl]
+function maxnorm_reg!(theta, hp, hl)    
+    theta = theta[hl]
     maxnorm_lim = hp.maxnorm_lim[hl]
     for i in 1:size(theta,1)  
         # row i of theta contains weights for output of unit i in current layer
@@ -370,12 +409,12 @@ function maxnorm_reg!(nnw, hp, hl)    # (theta, maxnorm_lim)
     end
 end
 
-function l2_reg!(nnw, hp, hl)
-    @inbounds nnw.theta[hl] .= nnw.theta[hl] .+ (hp.lambda / hp.mb_size .* nnw.theta[hl])
+function l2_reg!(theta, hp, hl)
+    @inbounds theta[hl][:] = theta[hl] .+ (hp.lambda / hp.mb_size .* theta[hl])
 end
 
-function l1_reg!(nnw, hp, hl)
-    @inbounds nnw.theta[hl] .= nnw.theta[hl] .+ (hp.lambda / hp.mb_size .* sign.(nnw.theta[hl]))
+function l1_reg!(theta, hp, hl)
+    @inbounds theta[hl][:] = theta[hl] .+ (hp.lambda / hp.mb_size .* sign.(theta[hl]))
 end
 
 

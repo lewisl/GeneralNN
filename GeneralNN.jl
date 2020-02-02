@@ -12,11 +12,14 @@
 # Recurrent Neural networks
     #   implement early stopping
 # LSTM networks
+# SVM
 
 #TODO
-#   better way to handle feedfwd predict: no dropout, use batchnorm running averages
+#   get_argset macro needs to allow different inputs depending on execution loop
+#   allow optimization on or off for the output layer
 #   fix testgrad.jl: check_grads, prep_check for changes to predict using model and bn params
 #   fix nnpredict or get rid of it
+#   implement gradient clipping (think I have it already)
 #   debug dropout in backprop
     #   does backprop for dropout go back to input layer if dropout done forward on input, 
     #   does backprop for output apply to filter a of output_layer -1?

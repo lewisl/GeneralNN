@@ -88,7 +88,7 @@ function train_one_step!(dat, nnw, bn, hp, t, model)
 
     feedfwd!(dat, nnw, hp, bn, model.ff_execstack)  # for all layers
     backprop!(nnw, dat, hp, bn, model.back_execstack)  # for all layers   
-    update_parameters!(nnw, hp, bn, t, model)
+    update_parameters!(nnw, hp, bn, t, model.update_execstack)
 
 end
 
@@ -143,27 +143,14 @@ function backprop!(nnw::Wgts, dat::Union{Batch_view,Model_data}, hp, bn, back_ex
 end
 
 
-function update_parameters!(nnw, hp, bn, t, model)  # =Batch_norm_params()
+function update_parameters!(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, t::Int, update_execstack)  # =Batch_norm_params()
 !hp.quiet && println("update_parameters!(nnw, hp, bn)")
 
-    model.optimization_function!(nnw, hp, bn, t)
-
-    # update theta, bias, and batch_norm parameters
-    @fastmath @inbounds for hl = 2:nnw.output_layer       
-        @inbounds nnw.theta[hl][:] = nnw.theta[hl] .- (hp.alphamod .* nnw.delta_th[hl])
-        
-        model.reg_function![hl](nnw, hp, hl)  # regularize function per setup.jl setup_functions!
-
-        # @bp
-
-        if hp.do_batch_norm  # update batch normalization parameters
-            @inbounds bn.gam[hl][:] .= bn.gam[hl][:] .- (hp.alphamod .* bn.delta_gam[hl])
-            @inbounds bn.bet[hl][:] .= bn.bet[hl][:] .- (hp.alphamod .* bn.delta_bet[hl])
-        else  # update bias
-            @inbounds nnw.bias[hl][:] .= nnw.bias[hl] .- (hp.alphamod .* nnw.delta_b[hl])
+    for lr in hp.n_layers:-1:1
+        for f in update_execstack[lr]
+            f(argset(nnw, hp, bn, lr, t, f)...)
         end
-
-    end  
+    end
 
 end
 

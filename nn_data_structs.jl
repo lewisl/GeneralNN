@@ -66,6 +66,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
     reg::String                 # L1, L2, maxnorm, or "none"
     maxnorm_lim::Array{Float64,1}# [] with limits for hidden layers and output layer
     opt::String                 # Adam or momentum or "none" or "" for optimization
+    opt_output::Bool               # appy optimization to output layer
     opt_batch_norm::Bool        # don't optimize batchnorm params if optimizing training weights
     opt_params::Array{Float64,1}# parameters for optimization
     classify::String            # behavior of output layer: "softmax", "sigmoid", or "regression"
@@ -100,6 +101,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         "",             # reg
         Float64[],      # maxnorm_lim
         "",             # opt
+        false,           # opt_output
         false,          # opt_batch_norm
         [],             # opt_params
         "sigmoid",      # classify
@@ -230,18 +232,19 @@ mutable struct Model_def
     ff_execstack::Array{Array{Function,1},1}
     back_strstack::Array{Array{String,1},1}
     back_execstack::Array{Array{Function,1},1}
-    reg_function!::Array{Function, 1}
+    update_strstack::Array{Array{String,1},1}
+    update_execstack::Array{Array{Function,1},1}
     cost_function::Function
-    optimization_function!::Function
 
 
     Model_def() = new(
-        [String[]],
-        [Function[]],
-        [Function[]],
-        [Function[]],
-        Function[],
-        noop,
-        noop
+        [String[]],         # ff_strstack
+        [Function[]],       # ff_execstack
+        [String[]],         # back_strstack
+        [Function[]],       # back_execstack
+        [String[]],         # update_strstack
+        [Function[]],       # update_execstack
+        noop,                # cost_function
+
     )
 end

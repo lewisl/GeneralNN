@@ -34,6 +34,7 @@ using LinearAlgebra
         norm_mode       ::= "standard", "minmax" or "" => normalize inputs
         do_batch_norm   ::= true or false => normalize each hidden layers linear outputs
         opt             ::= one of "Momentum", "RMSProp", "Adam" or "".  default is blank string "".
+        opt_output      ::= true or false: apply optimization to the weights of the output layer
         opt_batch_norm  ::= Bool.  Apply optimization to batchnorm_params (true) or not (false).
         opt_params      ::= parameters used by Momentum, RMSProp, or Adam
                            Momentum, RMSProp: one floating point value as [.9] (showing default)
@@ -110,6 +111,7 @@ function setup_params(
                 classify::String="softmax", 
                 norm_mode::String="none", 
                 opt::String="", 
+                opt_output::Bool=false,
                 opt_batch_norm=false,
                 opt_params::Array{Float64,1}=[0.9,0.999], 
                 dobatch=false, 
@@ -140,6 +142,7 @@ function setup_params(
         "classify"          => classify, 
         "norm_mode"         => norm_mode, 
         "opt"               => opt, 
+        "opt_output"        => opt_output,
         "opt_batch_norm"    => opt_batch_norm,
         "opt_params"        => opt_params, 
         "dobatch"           => dobatch, 
@@ -342,6 +345,7 @@ const valid_training = Dict(
           :dobatch =>  [(f=eqtype, check=Bool)],
           :do_batch_norm =>  [(f=eqtype, check=Bool)],
           :opt =>  [(f=oneof, check=["momentum", "rmsprop", "adam", "", "none"])],
+          :opt_output => [(f=eqtype, check=Bool)],
           :opt_batch_norm => [(f=eqtype, check=Bool)],
           :opt_params =>  [(f=eqtype, check=Array{Float64,1}), (f=ininterval, check=(0.5,1.0))],
           :dropout =>  [(f=eqtype, check=Bool)],
@@ -385,6 +389,7 @@ const valid_toml = Dict(
           :dobatch =>  [(f=eqtype, check=Bool)],
           :do_batch_norm =>  [(f=eqtype, check=Bool)],
           :opt =>  [(f=oneof, check=["momentum", "rmsprop", "adam", "", "none"])],
+          :opt_output => [(f=eqtype, check=Bool)],
           :opt_batch_norm => [(f=eqtype, check=Bool)],
           :opt_params =>  [(f=eqtype, check=Array{Float64,1}), (f=ininterval, check=(0.5,1.0))],
           :units =>  [(f=oneof, check=["sigmoid", "l_relu", "relu", "tanh"]), 
