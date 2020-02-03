@@ -626,20 +626,6 @@ Coll = Union{Array,Tuple}
 flat(arr::Coll) = mapreduce(x -> isa(x, Coll) ? flat(x) : x, append!, arr, init=[])
 
 
-
-
-function print_functions_in_use()
-    println("gradient_function!               ", gradient_function!) 
-    println("classify_function!               ", classify_function!) 
-    println("optimization_function!           ", optimization_function!) 
-    println("cost_function                    ", cost_function) 
-    println("reg_function                     ", reg_function!)
-    println("dropout_back_function!           ", dropout_back_function!) 
-    println("batch_norm_back_function!        ", batch_norm_back_function!) 
-    println("backprop_weights_function!       ", backprop_weights_function!) 
-end
-
-
 function print_model(model::Model_def)
 
     n_layers = length(model.ff_strstack)

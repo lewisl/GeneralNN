@@ -329,7 +329,7 @@ function build_update_string_stack(hp)
     #output layer
         # same as hidden layers:  included in loop above
         if !hp.opt_output   # false: remove the optimization function from output layer_group
-            # optimization worksk poorly on the output layer with softmax
+            # optimization works poorly on the output layer with softmax
             optfunc = filter(x->in(x,["adam","rmsprop","momentum"]), strstack[n_layers])
             deleteat!(strstack[n_layers], indexin(optfunc,strstack[n_layers])) 
         end
@@ -384,6 +384,117 @@ function setup_functions!(hp)  # , nnw, bn, dat
 
     !hp.quiet && println("Setup functions completed.")
     return cost_function
+end
+
+
+function create_funcs()
+    # indexable function container  TODO start with just feed fwd
+    func_dict = Dict(   
+                     # activation
+                    "affine" => affine!,
+                    "affine_nobias" => affine_nobias!,
+                    "sigmoid" => sigmoid!,
+                    "tanh_act" => tanh_act!,
+                    "l_relu" => l_relu!,
+                    "relu" => relu!,
+                    # classification
+                    "softmax" => softmax!,
+                    "logistic" => logistic!,
+                    "regression" => regression!,
+
+                    # batch norm
+                    "batch_norm_fwd" => batch_norm_fwd!,
+
+                    # optimization
+                    "dropout_fwd" => dropout_fwd!,
+
+                    # back propagation
+                    "backprop_classify" => backprop_classify!,
+                    "backprop_weights" => backprop_weights!,
+                    "backprop_weights_nobias" => backprop_weights_nobias!,
+
+                    "inbound_epsilon" => inbound_epsilon!,
+                    "current_lr_epsilon" => current_lr_epsilon!,
+
+                    # gradient
+                    "affine_gradient" => affine_gradient!,
+                    "sigmoid_gradient" => sigmoid_gradient!,
+                    "tanh_act_gradient" => l_relu_gradient!,
+                    "l_relu_gradient" => l_relu_gradient!,
+                    "relu_gradient" => relu_gradient!,
+
+                    # batch norm
+                    "batch_norm_back" => batch_norm_back!,
+
+                    # optimization
+                    "dropout_back" => dropout_back!,
+                    "momentum" => momentum!,
+                    "adam" => adam!,
+                    "rmsprop" => rmsprop!,
+
+                    # update parameters
+                    "update_wgts" => update_wgts!,
+                    "update_wgts_nobias" => update_wgts_nobias!,
+                    "update_batch_norm" => update_batch_norm!,
+
+                    # regularization
+                    "maxnorm_reg" => maxnorm_reg!,
+                    "l1_reg" => l1_reg!,
+                    "l2_reg" => l2_reg!
+                )
+end
+
+
+
+"""
+    macro gen_argset_ff(func, tpl, fname)
+
+This macro allows you to pick a name for the func and create multiple methods for that function name.
+Inputs:
+    func:  the name of the func that you are passing arguments to
+    tpl:   the tuple of arguments to be passed. These must reference the inputs to argset_ff, which are
+              inputs available in the feedfwd! loop.
+    fname: must be set to GeneralNN.argset
+
+usage example: 
+@gen_argset GeneralNN.relu! (dat.a[hl], dat.z[hl]) GeneralNN.argset
+
+
+Creates the following method:
+
+    function argset(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, hl::Int, fn::typeof(relu!), dotrain)
+        (dat.a[hl], dat.z[hl])
+    end
+
+"""
+macro gen_argset_ff(func, tpl, fname)  # confirmed that this works: always use GeneralNN.argset as the fname
+    return quote
+        function $(esc(fname))(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+                               bn::Batch_norm_params, hl::Int, fn::typeof($func), dotrain); 
+            $tpl
+        end
+    end
+end
+
+
+macro gen_argset_back(func, tpl, fname)  # confirmed that this works: always use GeneralNN.argset as the fname
+    return quote
+        function $(esc(fname))(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+                               bn::Batch_norm_params, hl::Int, fn::typeof($func)); 
+            $tpl
+        end
+    end
+end
+
+
+macro gen_argset_update(func, tpl, fname)  # confirmed that this works: always use GeneralNN.argset as the fname
+    return quote
+        function $(esc(fname))(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, 
+                hl::Int, fn::typeof($func)); 
+            $tpl
+        end
+    end
 end
 
 
@@ -454,7 +565,7 @@ end
         (dat, hp, nnw, hl, dotrain)
     end
 
-    # back propagation backprop! does NOT pass dotrain
+    # back propagation backprop! does NOT take dotrain as an input
     # backprop_classify!
     function argset(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, hl::Int, fn::typeof(backprop_classify!))
@@ -511,6 +622,7 @@ end
             (nnw, dat, bn, hl, hp)
     end
 
+    # for update_parameters loop: does NOT take dat or dotrain as iputs
     # update parameters: optimization
     # momentum
     function argset(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, hl::Int, t::Int, fn::typeof(momentum!))   
@@ -545,95 +657,19 @@ end
 
     # update_parameters: regularization
     # maxnorm
-    function argset(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, hl::Int, t::Int, fn::typeof(maxnorm_reg!))   
+    function argset(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, hl::Int, 
+        t::Int, fn::typeof(maxnorm_reg!))   
             (nnw.theta, hp, hl)
     end
 
     # l1
-    function argset(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, hl::Int, t::Int, fn::typeof(l1_reg!))   
+    function argset(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, hl::Int, 
+        t::Int, fn::typeof(l1_reg!))   
             (nnw.theta, hp, hl)
     end
 
     # l2
-    function argset(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, hl::Int, t::Int, fn::typeof(l2_reg!))   
+    function argset(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, hl::Int, 
+        t::Int, fn::typeof(l2_reg!))   
             (nnw.theta, hp, hl)
     end
-
-
-"""
-This macro allows you to pick a name for the func and create multiple methods for that function name.
-
-usage example: @gen_argset GeneralNN.relu! (dat.a[hl], dat.z[hl]) GeneralNN.argset
-will create the following method:
-    function argset(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
-        bn::Batch_norm_params, hl::Int, fn::typeof(relu!), dotrain)
-        (dat.a[hl], dat.z[hl])
-    end
-
-"""
-macro gen_argset(func, tpl, fname)  # confirmed that this works: always use GeneralNN.argset as the fname
-    return quote
-        function $(esc(fname))(dat::Union{Model_data, Batch_view}, nnw::Wgts,
-            hp::Hyper_parameters, bn::Batch_norm_params, hl::Int, fn::typeof($func), dotrain); 
-            $tpl
-        end
-    end
-end
-
-
-function create_funcs()
-    # indexable function container  TODO start with just feed fwd
-    func_dict = Dict(   
-                     # activation
-                    "affine" => affine!,
-                    "affine_nobias" => affine_nobias!,
-                    "sigmoid" => sigmoid!,
-                    "tanh_act" => tanh_act!,
-                    "l_relu" => l_relu!,
-                    "relu" => relu!,
-                    # classification
-                    "softmax" => softmax!,
-                    "logistic" => logistic!,
-                    "regression" => regression!,
-
-                    # batch norm
-                    "batch_norm_fwd" => batch_norm_fwd!,
-
-                    # optimization
-                    "dropout_fwd" => dropout_fwd!,
-
-                    # back propagation
-                    "backprop_classify" => backprop_classify!,
-                    "backprop_weights" => backprop_weights!,
-                    "backprop_weights_nobias" => backprop_weights_nobias!,
-
-                    "inbound_epsilon" => inbound_epsilon!,
-                    "current_lr_epsilon" => current_lr_epsilon!,
-
-                    # gradient
-                    "affine_gradient" => affine_gradient!,
-                    "sigmoid_gradient" => sigmoid_gradient!,
-                    "tanh_act_gradient" => l_relu_gradient!,
-                    "l_relu_gradient" => l_relu_gradient!,
-                    "relu_gradient" => relu_gradient!,
-
-                    # batch norm
-                    "batch_norm_back" => batch_norm_back!,
-
-                    # optimization
-                    "dropout_back" => dropout_back!,
-                    "momentum" => momentum!,
-                    "adam" => adam!,
-                    "rmsprop" => rmsprop!,
-
-                    # update parameters
-                    "update_wgts" => update_wgts!,
-                    "update_wgts_nobias" => update_wgts_nobias!,
-                    "update_batch_norm" => update_batch_norm!,
-
-                    # regularization
-                    "maxnorm_reg" => maxnorm_reg!,
-                    "l1_reg" => l1_reg!,
-                    "l2_reg" => l2_reg!
-                )
-end
