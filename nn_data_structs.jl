@@ -3,6 +3,7 @@ const T_model_data = Array{Union{Array{Float64},SparseVector{Float64,Int64},Spar
 const T_theta = Array{Array{Float64,2},1}
 const T_bias = Array{Array{Float64,1},1}
 const T_union_dense_sparse_array = Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}}
+const T_array_subarray = Union{Array{Float64}, SubArray{Float64}}
 
 
 

@@ -166,16 +166,19 @@ function prepredict(dat_x, dat_y, hp, nnw; notrain=true)
         dat.in_k, dat.n = size(dat_x)  # number of features in_k (rows) by no. of examples n (columns)
         out_k = dat.out_k = size(dat_y,1)  # number of output units
 
-    # 2. not needed
+    # 2. optimization parameters, minibatches, regularization
+        # not needed
+        
     # 3. normalize data
         if !(hp.norm_mode == "" || lowercase(hp.norm_mode) == "none")
-            nnw.norm_factors = normalize_inputs!(dat.inputs, hp.norm_mode)
+            nnw.norm_factors = normalize_inputs!(dat.inputs, nnw.norm_factors, hp.norm_mode)
         end       
 
-    # 4. not needed
+    # 4. preallocate model structure for weights and minibatch 
+        # not needed
 
     # 5. choose layer functions and cost function based on inputs
-        create_model!(model, hp, out_k)
+        # not neededs
 
     # 6. preallocate storage for data transforms
         !hp.quiet && println("Pre-allocate storage starting")

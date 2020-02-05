@@ -14,7 +14,7 @@ function cross_entropy_cost(targets, predictions, n, theta=[], lambda=0.1, reg="
         dot((1.0 .- targets), log.(max.(1.0 .- predictions, 1e-20))))
         
     @fastmath if reg == "L2"  # set reg="" if not using regularization
-        regterm = lambda/(2.0 * n) .* sum([dot(th, th) for th in theta[2:output_layer]])
+        @inbounds regterm = lambda/(2.0 * n) .* sum([dot(th, th) for th in theta[2:output_layer]])
         cost = cost + regterm
     end
     return cost
@@ -25,7 +25,7 @@ function softmax_cost(targets, predictions, n, theta=[], lambda=0.1, reg="", out
     cost = (-1.0 / n) * dot(targets,log.(max.(predictions, 1e-20))) 
         
     @fastmath if reg == "L2"  # set reg="" if not using regularization
-        regterm = lambda/(2.0 * n) .* sum([dot(th, th) for th in theta[2:output_layer]])
+        @inbounds regterm = lambda/(2.0 * n) .* sum([dot(th, th) for th in theta[2:output_layer]])
         cost = cost + regterm
     end
     return cost
@@ -70,7 +70,7 @@ function affine!(z, a, theta, bias)
     mul!(z, theta, a)
     for j = axes(z,2)
         for i = axes(bias, 1)
-            z[i,j] += bias[i]
+            @inbounds z[i,j] += bias[i]
         end
     end
 end
@@ -103,7 +103,7 @@ end
     # Choice of function determined in setup_functions! in setup_model.jl
 
     function backprop_classify!(epsilon, preds, targets)
-        epsilon[:] = preds .- targets  
+        @inbounds epsilon[:] = preds .- targets  
     end
 
 

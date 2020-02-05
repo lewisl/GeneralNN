@@ -632,25 +632,27 @@ function print_model(model::Model_def)
     println("\nFeed Forward")
     for lr = 1:n_layers 
         if lr == 1
-            println("1: Input")
+            println("1: Input Layer")
         elseif lr == n_layers
-            println(n_layers,": Output")
+            println(n_layers,": Output Layer")
         else
-            println(lr,": Hidden")
+            println(lr,": Hidden Layer")
         end
         for (fncnt, item) in enumerate(model.ff_strstack[lr])
             println("  ",fncnt, ": ", item)
         end
     end
 
+    println("Cost Function: ",model.cost_function)
+
     println("\nBack Propagation")
     for lr = n_layers:-1:1
         if lr == 1
-            println("1: Input")
+            println("1: Input Layer")
         elseif lr == n_layers
-            println(n_layers,": Output")
+            println(n_layers,": Output Layer")
         else
-            println(lr,": Hidden")
+            println(lr,": Hidden Layer")
         end
         for (fncnt, item) in enumerate(model.back_strstack[lr])
             println("  ", fncnt, ": ", item)
@@ -660,18 +662,16 @@ function print_model(model::Model_def)
     println("\nUpdate Parameters")
     for lr = n_layers:-1:1
         if lr == 1
-            println("1: Input")
+            println("1: Input Layer")
         elseif lr == n_layers
-            println(n_layers,": Output")
+            println(n_layers,": Output Layer")
         else
-            println(lr,": Hidden")
+            println(lr,": Hidden Layer")
         end
         for (fncnt, item) in enumerate(model.update_strstack[lr])
             println("  ", fncnt, ": ", item)
         end
     end   
-
-    println("Cost Function: ",model.cost_function)
 
 end
 

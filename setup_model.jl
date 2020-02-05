@@ -5,19 +5,24 @@ using LinearAlgebra
 
 
 function create_model!(model, hp, nnw)
+!hp.quiet && println("Create model beginning")
+
     func_dict = create_funcs() # for both feed forward and back propagation
     model.ff_strstack = build_ff_string_stack(hp, nnw)
     model.ff_execstack = build_exec_stack(model.ff_strstack, func_dict)
     model.back_strstack = build_back_string_stack(hp)
     model.back_execstack = build_exec_stack(model.back_strstack, func_dict)
-    model.cost_function = setup_functions!(hp)
     model.update_strstack = build_update_string_stack(hp)
     model.update_execstack = build_exec_stack(model.update_strstack, func_dict)
+
+    model.cost_function = setup_functions!(hp)
+
+    !hp.quiet && println("Create model completed")
 end
 
 
 function prep_training!(mb, hp, nnw, bn, n)
-    !hp.quiet && println("Setup_model beginning")
+    !hp.quiet && println("prep training beginning")
     !hp.quiet && println("hp.dobatch: ", hp.dobatch)
 
     # debug
@@ -51,8 +56,6 @@ function prep_training!(mb, hp, nnw, bn, n)
         end
 
     hp.do_learn_decay && (hp.learn_decay = [hp.learn_decay[1], floor(hp.learn_decay[2])])
-
-    hp.alphamod = hp.alpha
 
     # dropout parameters: droplim is in hp (Hyper_parameters),
     #    dropout_random and dropout_mask_units are in mb or train (Model_data)
@@ -163,7 +166,7 @@ function build_ff_string_stack(hp, out_k)
             end
         push!(layer_group, unit_function)
         # dropout --> updates in place
-        if hp.dropout && (hp.droplim[lr] < 1.0)
+        if hp.dropout && (hp.droplim[layer] < 1.0)
             push!(layer_group, "dropout_fwd")
         end        
 
@@ -342,36 +345,8 @@ end
 define and choose functions to be used in neural net training
 """
 function setup_functions!(hp)  # , nnw, bn, dat
-!hp.quiet && println("Setup functions beginning")
 
     n_layers = length(hp.hidden) + 2
-
-    # reg_function! = Array{Function}(undef, n_layers)
-    # # TODO update to enable different regulization at each layer
-    # for layer = 2:n_layers  # from the first hidden layer=2 to output layer
-    #     reg_function![layer] = 
-    #         if hp.reg == "L2"
-    #             l2_reg!
-    #         elseif hp.reg == "L1"
-    #             l1_reg!
-    #         elseif hp.reg == "Maxnorm"
-    #             maxnorm_reg!
-    #         else
-    #             noop
-    #         end
-        
-    # end
-
-    # optimization_function! = 
-    #     if hp.opt == "momentum"
-    #         momentum!
-    #     elseif hp.opt == "adam"
-    #         adam!
-    #     elseif hp.opt == "rmsprop"
-    #         rmsprop!
-    #     else
-    #         noop
-    #     end
 
     cost_function = 
         if hp.classify=="regression" 
@@ -382,7 +357,6 @@ function setup_functions!(hp)  # , nnw, bn, dat
             cross_entropy_cost
         end
 
-    !hp.quiet && println("Setup functions completed.")
     return cost_function
 end
 
@@ -562,7 +536,7 @@ end
     # dropout_fwd!
     function argset(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, hl::Int, fn::typeof(dropout_fwd!), dotrain)
-        (dat, hp, nnw, hl, dotrain)
+        (dat.a[hl], hp.droplim[hl], nnw.dropout_mask_units[hl], dotrain)
     end
 
     # back propagation backprop! does NOT take dotrain as an input
@@ -589,7 +563,7 @@ end
     # dropout_back!
     function argset(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, hl::Int, fn::typeof(dropout_back!))
-            (dat, nnw, hp, hl)    
+            (dat.epsilon[hl], nnw.dropout_mask_units[hl], hp.droplim[hl])    
     end
     # sigmoid_gradient!
     function argset(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 

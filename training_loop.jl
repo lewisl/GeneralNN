@@ -48,7 +48,7 @@ function _training_loop!(hp, train, test, mb, nnw, bn, stats, model)
 
             if hp.dobatch  # minibatch training
 
-                for colrng in MBrng(train.n, hp.mb_size_in)  # set setup.jl for definition of iterator
+                for colrng in MBrng(train.n, hp.mb_size_in)  # set setup.jl for definition of iterator MBrng
                     hp.mb_size = mbsize(colrng)
   
                     !hp.quiet && println("   Start minibatch for ", colrng)           

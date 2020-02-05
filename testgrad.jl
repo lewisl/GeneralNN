@@ -315,7 +315,7 @@ function set_hp(hp)
         minihp.learn_decay = [1.0, 1.0]  # no optimization
         minihp.do_batch_norm = false   # no batches
         minihp.dobatch = false         # no batches
-        minihp.alphamod = 0.2             # low learning rate
+        minihp.alphamod = 0.02             # low learning rate
         minihp.dropout = false
         minihp.norm_mode = "minmax"  # only used with minimodel
         minihp.bias_initializer = hp.bias_initializer  # only used with minimodel
