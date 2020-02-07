@@ -93,6 +93,7 @@ using LinearAlgebra
         learn_decay = [0.5,4.0]
         dobatch = true
         do_batch_norm =  true
+        reshuffle = true
         sparse = false
         initializer = "xavier"          # or "normal", "uniform"
         scale_init = 2.0, 
@@ -116,6 +117,7 @@ function setup_params(
                 opt_params::Array{Float64,1}=[0.9,0.999], 
                 dobatch=false, 
                 do_batch_norm::Bool=false, 
+                reshuffle::Bool=false,
                 reg::String="", 
                 maxnorm_lim::Array{Float64,1}=Float64[], 
                 dropout::Bool=false, 
@@ -147,6 +149,7 @@ function setup_params(
         "opt_params"        => opt_params, 
         "dobatch"           => dobatch, 
         "do_batch_norm"     => do_batch_norm, 
+        "reshuffle"         => reshuffle,
         "reg"               => reg, 
         "maxnorm_lim"       => maxnorm_lim, 
         "dropout"           => dropout, 
@@ -344,6 +347,7 @@ const valid_training = Dict(
           :norm_mode => [(f=oneof, check=["standard", "minmax", "", "none"])] ,
           :dobatch =>  [(f=eqtype, check=Bool)],
           :do_batch_norm =>  [(f=eqtype, check=Bool)],
+          :reshuffle => [(f=eqtype, check=Bool)],
           :opt =>  [(f=oneof, check=["momentum", "rmsprop", "adam", "", "none"])],
           :opt_output => [(f=eqtype, check=Bool)],
           :opt_batch_norm => [(f=eqtype, check=Bool)],
@@ -388,6 +392,7 @@ const valid_toml = Dict(
           :norm_mode => [(f=oneof, check=["standard", "minmax", "", "none"])] ,
           :dobatch =>  [(f=eqtype, check=Bool)],
           :do_batch_norm =>  [(f=eqtype, check=Bool)],
+          :reshuffle => [(f=eqtype, check=Bool)],
           :opt =>  [(f=oneof, check=["momentum", "rmsprop", "adam", "", "none"])],
           :opt_output => [(f=eqtype, check=Bool)],
           :opt_batch_norm => [(f=eqtype, check=Bool)],

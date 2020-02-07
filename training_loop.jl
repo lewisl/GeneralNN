@@ -46,9 +46,11 @@ function _training_loop!(hp, train, test, mb, nnw, bn, stats, model)
             !hp.quiet && println("Start epoch $ep_i")
             hp.do_learn_decay && step_learn_decay!(hp, ep_i)
 
+            hp.reshuffle && (ep_i % 2 == 0 && shuffle_data!(train.inputs, train.targets))
+
             if hp.dobatch  # minibatch training
 
-                for colrng in MBrng(train.n, hp.mb_size_in)  # set setup.jl for definition of iterator MBrng
+                for colrng in MBrng(train.n, hp.mb_size_in)  # set setup_model.jl for definition of iterator MBrng
                     hp.mb_size = mbsize(colrng)
   
                     !hp.quiet && println("   Start minibatch for ", colrng)           

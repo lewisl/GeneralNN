@@ -61,6 +61,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
     ltl_eps::Float64            # use in denominator with division of very small values to prevent overflow
     dobatch::Bool               # simple flag on whether to do minibatch training
     do_batch_norm::Bool         # true or false
+    reshuffle::Bool
     norm_mode::String           # "", "none", "standard", or "minmax"
     dropout::Bool               # true or false to choose dropout network
     droplim::Array{Float64,1}   # the probability a node output is kept
@@ -96,6 +97,7 @@ mutable struct Hyper_parameters          # we will use hp as the struct variable
         1e-8,           # ltl_eps
         false,          # dobatch
         false,          # do_batch_norm
+        false,          # reshuffle
         "none",         # norm_mode
         false,          # dropout
         [],             # droplim

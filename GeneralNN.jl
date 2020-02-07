@@ -15,7 +15,6 @@
 # SVM
 
 #TODO
-#   get_argset macro needs to allow different inputs depending on execution loop
 #   fix testgrad.jl: check_grads, prep_check for changes to predict using model and bn params
 #   fix nnpredict or get rid of it
 #   implement gradient clipping
@@ -27,18 +26,14 @@
 #   investigate Zygote.jl for automatic differentiation
 #   test if we can use batch normalization with full batch training
 #   check what happens to test cost with regularization:  it gets very big
-#   see if I can eliminate some of the function trickiness with clever use of optional args (or named args with defaults)
 #   should we have a normalize data option built-in (as we do)? or make the user do it when
          # preparing their own data?
 #   export onehot--decide how to transpose data
-#   should we eliminate the curried functions? it can be done, but lots of use of real or empty bn
 #   create a cost function method without L2 regularization
 #   create a cost prediction method that embeds the feedfwd predictions
 #   figure out memory requirements of pre-allocation.  is there someway to reduce and still get speed benefit?
 #   in testgrad, test for categorical data or provide other way to do onehot encoding if needed
 #   utilities for plotdef will break on old plotdefs because they are now called stats
-#   make sure we have a valid default for lambda
-#   try to speed up saving the plot stats
 #   use goodness function to hold either accuracy or r_squared?
 #   implement incremental load and train for massive datasets?
 #   fix dropout: should delta_theta be averaged using number of included units?
@@ -49,11 +44,9 @@
 #   stats on individual regression parameters
 #   do check on existence of matfname file and that type is .mat
 #   implement one vs. all for logistic classification with multiple classes
-#   is dropout dropping the same units on backprop as feedfwd?  seems like it but results are still poor
 #   set a directory for training stats (keep out of code project directory)
 #   try different versions of ensemble predictions_vector
 #   augment MINST data by perturbing the images
-#   separate plotdef from plot descriptive data?
 #   check for type stability: @code_warntype pisum(500,10000)
 #   still lots of memory allocations despite the pre-allocation
         # You can devectorize r -= d[j]*A[:,j] with r .= -.(r,d[j]*A[:.j]) 

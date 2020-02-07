@@ -113,7 +113,7 @@ end
 
 
     function current_lr_epsilon!(epsilon, grad)
-        @inbounds epsilon[:] = epsilon .* grad
+        @fastmath @inbounds epsilon[:] = epsilon .* grad
     end
 
 
@@ -137,21 +137,21 @@ end
     # method for a single layer--caller indexes the array of arrays to pass single layer array
     # (nnw.theta[hl], nnw.bias[hl], hp.alphamod, nnw.delta_th[hl], nnw.delta_b[hl])
     function update_wgts!(theta, bias, alpha, delta_th, delta_b)   # could differentiate with method dispatch
-        @inbounds theta[:] = theta .- (alpha .* delta_th)
-        @inbounds bias[:] .= bias .- (alpha .* delta_b)
+        @fastmath @inbounds theta[:] = theta .- (alpha .* delta_th)
+        @fastmath @inbounds bias[:] .= bias .- (alpha .* delta_b)
     end
 
     # method for a single layer--caller indexes the array of arrays to pass single layer array
     function update_wgts_nobias!(theta, alpha, delta_th) # (nnw.theta[hl], hp.alphamod, nnw.delta_th[hl])
-        @inbounds theta[:] = theta .- (alpha .* delta_th)
+        @fastmath @inbounds theta[:] = theta .- (alpha .* delta_th)
     end
 
 
     # method for a single layer--caller indexes the array of arrays to pass single layer array
     # (bn.gam[hl], bn.bet[hl], hp.alphamod, bn.delta_gam[hl], bn.delta_bet[hl])
     function update_batch_norm!(gam, bet, alpha, delta_gam, delta_bet)
-        @inbounds gam[:] = gam .- (alpha .* delta_gam)
-        @inbounds bet[:] = bet .- (alpha .* delta_bet)
+        @fastmath @inbounds gam[:] = gam .- (alpha .* delta_gam)
+        @fastmath @inbounds bet[:] = bet .- (alpha .* delta_bet)
     end
 
 
@@ -183,7 +183,7 @@ function l_relu_gradient!(grad::AbstractArray{Float64}, z::AbstractArray{Float64
 end
 
 
-function relu_gradient!(grad::AbstractArray{Float64}, z::AbstractArray{Float64})
+function relu_gradient!(grad::T_array_subarray, z::T_array_subarray)
     @simd for i = eachindex(z)
         @inbounds if z[i] > 0.0
             grad[i] = 1.0
