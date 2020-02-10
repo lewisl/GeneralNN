@@ -115,7 +115,7 @@ function feedfwd!(dat::Union{Batch_view,Model_data}, nnw, hp, bn, ff_execstack; 
 
     for lr in 1:hp.n_layers
         for f in ff_execstack[lr]
-            f(argset(dat, nnw, hp, bn, lr, f, dotrain)...) # argset returns the tuple of arguments to function f
+            f(dat, nnw, hp, bn, lr, dotrain) # argset returns the tuple of arguments to function f
         end
     end
 
@@ -135,7 +135,7 @@ function backprop!(nnw::Wgts, dat::Union{Batch_view,Model_data}, hp, bn, back_ex
 
     for lr in hp.n_layers:-1:1
         for f in back_execstack[lr]
-            f(argset(dat, nnw, hp, bn, lr, f)...)
+            f(dat, nnw, hp, bn, lr)
         end
     end
 
@@ -150,7 +150,7 @@ function update_parameters!(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_para
 
     for lr in hp.n_layers:-1:1
         for f in update_execstack[lr]
-            f(argset(nnw, hp, bn, lr, t, f)...)
+            f(nnw, hp, bn, lr, t)
         end
     end
 

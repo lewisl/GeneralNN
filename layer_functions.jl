@@ -60,15 +60,26 @@ end
 #     @inbounds z[:] = theta * a .+ bias
 # end
 
-function affine_nobias!(z, a, theta, bias)  # just ignore the bias term
+function affine_nobias!(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, lr::Int, dotrain)
+    affine_nobias!(dat.z[lr], dat.a[lr-1], nnw.theta[lr])
+end
+
+
+function affine_nobias!(z, a, theta)  # just ignore the bias term
     mul!(z, theta, a)  # crazy fast; no allocations
 end
 
 
+function affine!(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, lr::Int, dotrain)
+    affine!(dat.z[lr], dat.a[lr-1], nnw.theta[lr], nnw.bias[lr])
+end
+
 function affine!(z, a, theta, bias)
     # this is really fast with NO allocations!
     mul!(z, theta, a)
-    for j = axes(z,2)
+    @simd for j = axes(z,2)
         for i = axes(bias, 1)
             @inbounds z[i,j] += bias[i]
         end
@@ -76,20 +87,40 @@ function affine!(z, a, theta, bias)
 end
 
 
+function sigmoid!(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, lr::Int, dotrain)
+    sigmoid!(dat.a[lr], dat.z[lr])
+end
+
 function sigmoid!(a::AbstractArray{Float64}, z::AbstractArray{Float64})
     @fastmath a[:] = 1.0 ./ (1.0 .+ exp.(.-z))  
 end
 
+
+function tanh_act!(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, lr::Int, dotrain)
+    tanh_act!(dat.a[lr], dat.z[lr])
+end
 
 function tanh_act!(a::AbstractArray{Float64}, z::AbstractArray{Float64})
     @fastmath a[:] = tanh.(z)
 end
 
 
+function l_relu!(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, lr::Int, dotrain)
+    l_relu!(dat.a[lr], dat.z[lr])
+end
+
 function l_relu!(a::AbstractArray{Float64}, z::AbstractArray{Float64}) # leaky relu
     @fastmath a[:] = map(j -> j >= 0.0 ? j : l_relu_neg * j, z)
 end
 
+
+function relu!(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, lr::Int, dotrain)
+    relu!(dat.a[lr], dat.z[lr])
+end
 
 function relu!(a::AbstractArray{Float64}, z::AbstractArray{Float64})
     @fastmath a[:] = max.(z, 0.0)
@@ -100,72 +131,119 @@ end
 #  layer functions for back propagation
 ###########################################################################
 
-    # Choice of function determined in setup_functions! in setup_model.jl
+# Choice of function determined in setup_functions! in setup_model.jl
 
-    function backprop_classify!(epsilon, preds, targets)
-        @inbounds epsilon[:] = preds .- targets  
-    end
+function backprop_classify!(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, lr::Int)
+    # this will only ever be called when hl is the output layer: do we need to force it?
+    backprop_classify!(dat.epsilon[lr], dat.a[lr], dat.targets)
+end
 
-
-    function inbound_epsilon!(epsilon, theta_above, eps_lr_above)
-        mul!(epsilon, theta_above', eps_lr_above)
-    end
-
-
-    function current_lr_epsilon!(epsilon, grad)
-        @fastmath @inbounds epsilon[:] = epsilon .* grad
-    end
+function backprop_classify!(epsilon, preds, targets)
+    @inbounds epsilon[:] = preds .- targets  
+end
 
 
-    # uses epsilon from the batchnorm_back calculations
-    function backprop_weights_nobias!(delta_th, delta_b, epsilon, a_prev, n)
-        mul!(delta_th, epsilon, a_prev')
-        @fastmath delta_th[:] = delta_th .* (1.0 / n)
-    end
+function inbound_epsilon!(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, lr::Int)
+    inbound_epsilon!(dat.epsilon[lr], nnw.theta[lr+1], dat.epsilon[lr+1])
+end
 
-    function backprop_weights!(delta_th, delta_b, epsilon, a_prev, n)
-        mul!(delta_th, epsilon, a_prev')
+function inbound_epsilon!(epsilon, theta_above, eps_above)
+    mul!(epsilon, theta_above', eps_above)
+end
 
-        @fastmath delta_th[:] = delta_th .* (1.0 / n)
-        @fastmath delta_b[:] = sum(epsilon, dims=2) ./ n
-    end
+
+function current_lr_epsilon!(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, lr::Int)
+    current_lr_epsilon!(dat.epsilon[lr], dat.grad[lr])
+end
+
+function current_lr_epsilon!(epsilon, grad)
+    @fastmath @inbounds epsilon[:] = epsilon .* grad
+end
+
+
+function backprop_weights_nobias!(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, lr::Int)
+    backprop_weights_nobias!(nnw.delta_th[lr], dat.epsilon[lr], dat.a[lr-1], hp.mb_size)
+end
+
+# uses epsilon from the batchnorm_back calculations
+function backprop_weights_nobias!(delta_th, epsilon, a_prev, n)
+    mul!(delta_th, epsilon, a_prev')
+    @fastmath delta_th[:] = delta_th .* (1.0 / n)
+end
+
+
+function backprop_weights!(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, lr::Int)
+    backprop_weights!(nnw.delta_th[lr], nnw.delta_b[lr], dat.epsilon[lr], dat.a[lr-1], hp.mb_size)
+end
+
+function backprop_weights!(delta_th, delta_b, epsilon, a_prev, n)
+    mul!(delta_th, epsilon, a_prev')
+
+    @fastmath delta_th[:] = delta_th .* (1.0 / n)
+    @fastmath delta_b[:] = sum(epsilon, dims=2) ./ n
+end
 
 
 ###########################################################################
 #  layer functions to upgrade trained parameters
 ###########################################################################
-    # method for a single layer--caller indexes the array of arrays to pass single layer array
-    # (nnw.theta[hl], nnw.bias[hl], hp.alphamod, nnw.delta_th[hl], nnw.delta_b[hl])
-    function update_wgts!(theta, bias, alpha, delta_th, delta_b)   # could differentiate with method dispatch
-        @fastmath @inbounds theta[:] = theta .- (alpha .* delta_th)
-        @fastmath @inbounds bias[:] .= bias .- (alpha .* delta_b)
-    end
 
-    # method for a single layer--caller indexes the array of arrays to pass single layer array
-    function update_wgts_nobias!(theta, alpha, delta_th) # (nnw.theta[hl], hp.alphamod, nnw.delta_th[hl])
-        @fastmath @inbounds theta[:] = theta .- (alpha .* delta_th)
-    end
+function update_wgts!(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, lr::Int, t::Int)
+    update_wgts!(nnw.theta[lr], nnw.bias[lr], hp.alphamod, nnw.delta_th[lr], nnw.delta_b[lr])
+end
+
+# method for a single layer--caller indexes the array of arrays to pass single layer array
+# (nnw.theta[hl], nnw.bias[hl], hp.alphamod, nnw.delta_th[hl], nnw.delta_b[hl])
+function update_wgts!(theta, bias, alpha, delta_th, delta_b)   # could differentiate with method dispatch
+    @fastmath @inbounds theta[:] = theta .- (alpha .* delta_th)
+    @fastmath @inbounds bias[:] .= bias .- (alpha .* delta_b)
+end
 
 
-    # method for a single layer--caller indexes the array of arrays to pass single layer array
-    # (bn.gam[hl], bn.bet[hl], hp.alphamod, bn.delta_gam[hl], bn.delta_bet[hl])
-    function update_batch_norm!(gam, bet, alpha, delta_gam, delta_bet)
-        @fastmath @inbounds gam[:] = gam .- (alpha .* delta_gam)
-        @fastmath @inbounds bet[:] = bet .- (alpha .* delta_bet)
-    end
+function update_wgts_nobias!(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, lr::Int, t::Int)
+    update_wgts_nobias!(nnw.theta[lr], hp.alphamod, nnw.delta_th[lr])
+end
+
+# method for a single layer--caller indexes the array of arrays to pass single layer array
+function update_wgts_nobias!(theta, alpha, delta_th) # (nnw.theta[hl], hp.alphamod, nnw.delta_th[hl])
+    @fastmath @inbounds theta[:] = theta .- (alpha .* delta_th)
+end
+
+
+function update_batch_norm!(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, lr::Int, t::Int)
+    update_batch_norm!(bn.gam[lr], bn.bet[lr], hp.alphamod, bn.delta_gam[lr], bn.delta_bet[lr])
+end
+
+# method for a single layer--caller indexes the array of arrays to pass single layer array
+# (bn.gam[hl], bn.bet[hl], hp.alphamod, bn.delta_gam[hl], bn.delta_bet[hl])
+function update_batch_norm!(gam, bet, alpha, delta_gam, delta_bet)
+    @fastmath @inbounds gam[:] = gam .- (alpha .* delta_gam)
+    @fastmath @inbounds bet[:] = bet .- (alpha .* delta_bet)
+end
 
 
 ###########################################################################
-#  layer functions:  gradient 
+#  backprop layer functions:  gradient 
 ###########################################################################
+
 
 
 # two methods for gradient of linear layer units:  without bias and with
 # not using this yet
-function affine_gradient!(data, layer)  # no bias
-    return data.a[layer-1]'
+function affine_gradient!(dat, lr)  # no bias
+    return dat.a[layer-1]'
 end
 
+
+function sigmoid_gradient!(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, lr::Int)
+    sigmoid_gradient!(dat.grad[lr], dat.z[lr])
+end
 
 function sigmoid_gradient!(grad::AbstractArray{Float64}, z::AbstractArray{Float64})
     sigmoid!(grad, z)
@@ -173,15 +251,30 @@ function sigmoid_gradient!(grad::AbstractArray{Float64}, z::AbstractArray{Float6
 end
 
 
+function tanh_act_gradient!(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, lr::Int)
+    tanh_act_gradient!(dat.grad[lr], dat.z[lr])
+end
+
 function tanh_act_gradient!(grad::AbstractArray{Float64}, z::AbstractArray{Float64})
     @fastmath grad[:] = 1.0 .- tanh.(z).^2
 end
 
 
+function l_relu_gradient!(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, lr::Int)
+    l_relu_gradient!(dat.grad[lr], dat.z[lr])
+end
+
 function l_relu_gradient!(grad::AbstractArray{Float64}, z::AbstractArray{Float64})
     grad[:] = map(j -> j > 0.0 ? 1.0 : l_relu_neg, z);
 end
 
+
+function relu_gradient!(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, lr::Int)
+    relu_gradient!(dat.grad[lr], dat.z[lr])
+end
 
 function relu_gradient!(grad::T_array_subarray, z::T_array_subarray)
     @simd for i = eachindex(z)
@@ -195,8 +288,15 @@ end
 
 
 #############################################################################
-#  Classifiers
+#  Classifiers used in feedfwd! loop
 #############################################################################
+# each with 2 methods:  "outer" method visible in the loop accepts all loop inputs
+    # "inner" method is the function that receives needed arguments to do the calculations
+
+
+function softmax!(dat, nnw, hp, bn, lr, dotrain)
+    softmax!(dat.a[lr], dat.z[lr])
+end
 
 function softmax!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
     # z[:] = clamp.(z,-300.0, 300.0) # prevent NaNs in softmax with crazy learning rate
@@ -207,10 +307,18 @@ function softmax!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
 end
 
 
+function logistic!(dat, nnw, hp, bn, lr, dotrain)
+    logistic!(dat.a[lr], dat.z[lr])
+end
+
 function logistic!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
     @fastmath a .= 1.0 ./ (1.0 .+ exp.(.-z))  
 end
 
+
+function regression!(dat, nnw, hp, bn, lr, dotrain)
+    regression!(dat.a[lr], dat.z[lr])
+end
 
 function regression!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
     a[:] = z[:]
@@ -240,15 +348,24 @@ end
 # Optimization
 ##########################################################################
 
+function dropout_fwd!(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, lr::Int, dotrain::Bool)
+    dropout_fwd!(dat, hp, nnw, lr, dotrain)
+end
 
 function dropout_fwd!(dat, hp, nnw, hl, dotrain=true)  # applied per layer
-dotrain && begin
-    @inbounds nnw.dropout_mask_units[hl][:] = Bool.(rand( Bernoulli( hp.droplim[hl] ), size(nnw.dropout_mask_units[hl], 1)))
-    # choose activations to remain and scale
-    @inbounds dat.a[hl][:] = dat.a[hl] .* (nnw.dropout_mask_units[hl] ./ hp.droplim[hl])
-end
+    dotrain && begin
+        @inbounds nnw.dropout_mask_units[hl][:] = Bool.(rand( Bernoulli( hp.droplim[hl] ), size(nnw.dropout_mask_units[hl], 1)))
+        # choose activations to remain and scale
+        @inbounds dat.a[hl][:] = dat.a[hl] .* (nnw.dropout_mask_units[hl] ./ hp.droplim[hl])
+    end
 end
 
+
+function dropout_back!(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, lr::Int)
+    dropout_back!(dat.epsilon[lr], nnw.dropout_mask_units[lr], hp.droplim[lr])
+end
 
 function dropout_back!(dat, nnw, hp, hl)
     @inbounds dat.epsilon[hl][:] = dat.epsilon[hl] .* (nnw.dropout_mask_units[hl])
@@ -268,6 +385,11 @@ function step_learn_decay!(hp, ep_i)
         return
     end
 end
+
+
+# function momentum!(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, hl::Int, t::Int)
+#     momentum!(nnw, hp, bn, hl, t)
+# end
 
 # method for multiple layers in a loop
 function momentum!(nnw, hp, bn, t)
@@ -293,6 +415,11 @@ function momentum!(nnw, hp, bn, hl, t)
     end
 end
 
+
+# function rmsprop!(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, hl::Int, t::Int)
+#     rmsprop!(nnw, hp, bn, hl, t)
+# end
+
 # method for looping over hidden layers
 function rmsprop!(nnw, hp, bn, t)
     @fastmath for hl = (nnw.output_layer - 1):-1:2  # loop over hidden layers
@@ -315,6 +442,11 @@ function rmsprop!(nnw, hp, bn, hl, t)
         @inbounds bn.delta_bet[hl][:] = bn.delta_bet[hl] ./ (sqrt.(bn.delta_v_bet[hl]) .+ hp.ltl_eps)
     end
 end
+
+
+# function adam!(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, hl::Int, t::Int)
+#     adam!(nnw, hp, bn, hl, t)  # method for single layer
+# end
 
 # method that loops over hidden layers
 function adam!(nnw, hp, bn, t)
@@ -347,9 +479,16 @@ end
 
 # batch normalization
 # method for training that updates running averages of mu and std
+
+# TODO:  if we changed the order or input parameters we would not need the outer method
+function batch_norm_fwd!(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, lr::Int, dotrain::Bool)
+    batch_norm_fwd!(dat, bn, hp, lr, dotrain)
+end
+
 function batch_norm_fwd!(dat::Union{Model_data, Batch_view}, bn::Batch_norm_params, 
     hp::Hyper_parameters, hl::Int, dotrain=true)
-!hp.quiet && println("batch_norm_fwd!(dat, bn, hp, hl)")
+    !hp.quiet && println("batch_norm_fwd!(dat, bn, hp, hl)")
 
     dotrain && @inbounds begin
             bn.mu[hl][:] = mean(dat.z[hl], dims=2)          # use in backprop
@@ -378,6 +517,12 @@ end
 # end
 
 
+# TODO if we changed the order of parameters we would not need the outer method
+function batch_norm_back!(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+        bn::Batch_norm_params, lr::Int)
+    batch_norm_back!(nnw, dat, bn, lr, hp)
+end
+
 function batch_norm_back!(nnw, dat, bn, hl, hp)
 !hp.quiet && println("batch_norm_back!(nnw, dat, bn, hl, hp)")
 
@@ -396,6 +541,11 @@ function batch_norm_back!(nnw, dat, bn, hl, hp)
 end
 
 
+function maxnorm_reg!(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, lr::Int, 
+        t::Int)
+    maxnorm_reg!(nnw.theta, hp, lr)
+end
+
 function maxnorm_reg!(theta, hp, hl)    
     theta = theta[hl]
     maxnorm_lim = hp.maxnorm_lim[hl]
@@ -409,8 +559,20 @@ function maxnorm_reg!(theta, hp, hl)
     end
 end
 
+
+function l2_reg!(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, lr::Int, 
+        t::Int)
+    l2_reg!(nnw.theta, hp, lr)
+end
+
 function l2_reg!(theta, hp, hl)
     @inbounds theta[hl][:] = theta[hl] .+ (hp.lambda / hp.mb_size .* theta[hl])
+end
+
+
+function l1_reg!(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, lr::Int, 
+        t::Int)
+    l1_reg!(nnw.theta, hp, lr)
 end
 
 function l1_reg!(theta, hp, hl)

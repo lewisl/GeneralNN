@@ -15,6 +15,7 @@
 # SVM
 
 #TODO
+# change alphamod to alpha, change alpha to alpha_in
 #   fix testgrad.jl: check_grads, prep_check for changes to predict using model and bn params
 #   fix nnpredict or get rid of it
 #   implement gradient clipping
