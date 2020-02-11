@@ -1,5 +1,11 @@
-# cost functions, layer functions: activation, layer functions:  gradient,
-#       Classifiers, Optimization, Regularization
+# All layer functions except cost function are used in the training loop
+#    Training loop runs 3 sub-loops:
+#       feedfwd!
+#       backprop!
+#       update_parameters! which includes optimization and regularization
+
+# each with 2 methods:  "outer" method visible in the loop accepts all loop inputs
+    # "inner" method is the function that receives needed arguments to do the calculations
 
 
 ###############################################################################
@@ -290,8 +296,6 @@ end
 #############################################################################
 #  Classifiers used in feedfwd! loop
 #############################################################################
-# each with 2 methods:  "outer" method visible in the loop accepts all loop inputs
-    # "inner" method is the function that receives needed arguments to do the calculations
 
 
 function softmax!(dat, nnw, hp, bn, lr, dotrain)
