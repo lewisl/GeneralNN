@@ -57,7 +57,7 @@ function cost_target_zero(targets, predictions, n, theta=[], lambda=1.0, reg="",
 end
 
 ###########################################################################
-#  layer functions:  activation for feed forward
+#  layer functions:  activation used in feedfwd!
 ###########################################################################
 
 
@@ -66,6 +66,11 @@ end
 #     @inbounds z[:] = theta * a .+ bias
 # end
 
+
+# function affine_nobias!(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+#         bn::Batch_norm_params, lr::Int, dotrain)
+# function affine_nobias!(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+#         bn::Batch_norm_params, lr::Int, dotrain)
 function affine_nobias!(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, lr::Int, dotrain)
     affine_nobias!(dat.z[lr], dat.a[lr-1], nnw.theta[lr])
@@ -133,8 +138,62 @@ function relu!(a::AbstractArray{Float64}, z::AbstractArray{Float64})
 end
 
 
+#############################################################################
+#  Classifiers used in feedfwd! loop
+#############################################################################
+
+
+function softmax!(dat, nnw, hp, bn, lr, dotrain)
+    softmax!(dat.a[lr], dat.z[lr])
+end
+
+function softmax!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
+    # z[:] = clamp.(z,-300.0, 300.0) # prevent NaNs in softmax with crazy learning rate
+    expf = similar(a)
+    maxz = maximum(z)
+    @fastmath expf .= exp.(z .- maxz)  # inside maximum: ,dims=1  maximum(z)
+    @fastmath a .= expf ./  sum(expf, dims=1)  # 
+end
+
+
+function logistic!(dat, nnw, hp, bn, lr, dotrain)
+    logistic!(dat.a[lr], dat.z[lr])
+end
+
+function logistic!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
+    @fastmath a .= 1.0 ./ (1.0 .+ exp.(.-z))  
+end
+
+
+function regression!(dat, nnw, hp, bn, lr, dotrain)
+    regression!(dat.a[lr], dat.z[lr])
+end
+
+function regression!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
+    a[:] = z[:]
+end
+
+
+"""
+    function multiclass_pred(preds::AbstractArray{Float64,2})
+
+Converts vector of probabilities of each outcome class to a numeric category.
+Returns a 1-dimensional vector of ints with values from 1 to the number of classes.
+
+"""
+function multiclass_pred(preds::AbstractArray{Float64,2})
+    if size(targets,1) > 1
+        predmax = vec(map(x -> x[1], argmax(preds,dims=1)))
+    else
+        @error("Final targets must contain more than one outcome per example.")
+    end
+    return predmax
+end
+
+
+
 ###########################################################################
-#  layer functions for back propagation
+#  layer functions in backprop!
 ###########################################################################
 
 # Choice of function determined in setup_functions! in setup_model.jl
@@ -196,48 +255,8 @@ end
 
 
 ###########################################################################
-#  layer functions to upgrade trained parameters
+#  layer functions in backprop!  gradient 
 ###########################################################################
-
-function update_wgts!(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, lr::Int, t::Int)
-    update_wgts!(nnw.theta[lr], nnw.bias[lr], hp.alphamod, nnw.delta_th[lr], nnw.delta_b[lr])
-end
-
-# method for a single layer--caller indexes the array of arrays to pass single layer array
-# (nnw.theta[hl], nnw.bias[hl], hp.alphamod, nnw.delta_th[hl], nnw.delta_b[hl])
-function update_wgts!(theta, bias, alpha, delta_th, delta_b)   # could differentiate with method dispatch
-    @fastmath @inbounds theta[:] = theta .- (alpha .* delta_th)
-    @fastmath @inbounds bias[:] .= bias .- (alpha .* delta_b)
-end
-
-
-function update_wgts_nobias!(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, lr::Int, t::Int)
-    update_wgts_nobias!(nnw.theta[lr], hp.alphamod, nnw.delta_th[lr])
-end
-
-# method for a single layer--caller indexes the array of arrays to pass single layer array
-function update_wgts_nobias!(theta, alpha, delta_th) # (nnw.theta[hl], hp.alphamod, nnw.delta_th[hl])
-    @fastmath @inbounds theta[:] = theta .- (alpha .* delta_th)
-end
-
-
-function update_batch_norm!(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, lr::Int, t::Int)
-    update_batch_norm!(bn.gam[lr], bn.bet[lr], hp.alphamod, bn.delta_gam[lr], bn.delta_bet[lr])
-end
-
-# method for a single layer--caller indexes the array of arrays to pass single layer array
-# (bn.gam[hl], bn.bet[hl], hp.alphamod, bn.delta_gam[hl], bn.delta_bet[hl])
-function update_batch_norm!(gam, bet, alpha, delta_gam, delta_bet)
-    @fastmath @inbounds gam[:] = gam .- (alpha .* delta_gam)
-    @fastmath @inbounds bet[:] = bet .- (alpha .* delta_bet)
-end
-
-
-###########################################################################
-#  backprop layer functions:  gradient 
-###########################################################################
-
-
 
 # two methods for gradient of linear layer units:  without bias and with
 # not using this yet
@@ -293,59 +312,42 @@ function relu_gradient!(grad::T_array_subarray, z::T_array_subarray)
 end
 
 
-#############################################################################
-#  Classifiers used in feedfwd! loop
-#############################################################################
+###########################################################################
+#  layer functions in update_parameters!
+###########################################################################
 
-
-function softmax!(dat, nnw, hp, bn, lr, dotrain)
-    softmax!(dat.a[lr], dat.z[lr])
+function update_wgts!(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, lr::Int, t::Int)
+    update_wgts!(nnw.theta[lr], nnw.bias[lr], hp.alphamod, nnw.delta_th[lr], nnw.delta_b[lr])
 end
 
-function softmax!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
-    # z[:] = clamp.(z,-300.0, 300.0) # prevent NaNs in softmax with crazy learning rate
-    expf = similar(a)
-    maxz = maximum(z)
-    @fastmath expf .= exp.(z .- maxz)  # inside maximum: ,dims=1  maximum(z)
-    @fastmath a .= expf ./  sum(expf, dims=1)  # 
-end
-
-
-function logistic!(dat, nnw, hp, bn, lr, dotrain)
-    logistic!(dat.a[lr], dat.z[lr])
-end
-
-function logistic!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
-    @fastmath a .= 1.0 ./ (1.0 .+ exp.(.-z))  
+# method for a single layer--caller indexes the array of arrays to pass single layer array
+# (nnw.theta[hl], nnw.bias[hl], hp.alphamod, nnw.delta_th[hl], nnw.delta_b[hl])
+function update_wgts!(theta, bias, alpha, delta_th, delta_b)   # could differentiate with method dispatch
+    @fastmath @inbounds theta[:] = theta .- (alpha .* delta_th)
+    @fastmath @inbounds bias[:] .= bias .- (alpha .* delta_b)
 end
 
 
-function regression!(dat, nnw, hp, bn, lr, dotrain)
-    regression!(dat.a[lr], dat.z[lr])
+function update_wgts_nobias!(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, lr::Int, t::Int)
+    update_wgts_nobias!(nnw.theta[lr], hp.alphamod, nnw.delta_th[lr])
 end
 
-function regression!(a::AbstractArray{Float64,2}, z::AbstractArray{Float64,2})
-    a[:] = z[:]
-end
-
-
-"""
-    function multiclass_pred(preds::AbstractArray{Float64,2})
-
-Converts vector of probabilities of each outcome class to a numeric category.
-Returns a 1-dimensional vector of ints with values from 1 to the number of classes.
-
-"""
-function multiclass_pred(preds::AbstractArray{Float64,2})
-    if size(targets,1) > 1
-        predmax = vec(map(x -> x[1], argmax(preds,dims=1)))
-    else
-        @error("Final targets must contain more than one outcome per example.")
-    end
-    return predmax
+# method for a single layer--caller indexes the array of arrays to pass single layer array
+function update_wgts_nobias!(theta, alpha, delta_th) # (nnw.theta[hl], hp.alphamod, nnw.delta_th[hl])
+    @fastmath @inbounds theta[:] = theta .- (alpha .* delta_th)
 end
 
 
+function update_batch_norm!(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, lr::Int, t::Int)
+    update_batch_norm!(bn.gam[lr], bn.bet[lr], hp.alphamod, bn.delta_gam[lr], bn.delta_bet[lr])
+end
+
+# method for a single layer--caller indexes the array of arrays to pass single layer array
+# (bn.gam[hl], bn.bet[hl], hp.alphamod, bn.delta_gam[hl], bn.delta_bet[hl])
+function update_batch_norm!(gam, bet, alpha, delta_gam, delta_bet)
+    @fastmath @inbounds gam[:] = gam .- (alpha .* delta_gam)
+    @fastmath @inbounds bet[:] = bet .- (alpha .* delta_bet)
+end
 
 
 ##########################################################################

@@ -429,7 +429,6 @@ function build_hyper_parameters(argsdict)
     end
 
     hp.n_layers = length(hp.hidden) + 2
-    hp.alphamod = hp.alpha
 
     return hp
 end

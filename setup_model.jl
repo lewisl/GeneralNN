@@ -7,13 +7,13 @@ using LinearAlgebra
 function create_model!(model, hp, nnw)
 !hp.quiet && println("Create model beginning")
 
-    func_dict = create_funcs() # for both feed forward and back propagation
-    model.ff_strstack = build_ff_string_stack(hp, nnw)
-    model.ff_execstack = build_exec_stack(model.ff_strstack, func_dict)
-    model.back_strstack = build_back_string_stack(hp)
-    model.back_execstack = build_exec_stack(model.back_strstack, func_dict)
-    model.update_strstack = build_update_string_stack(hp)
-    model.update_execstack = build_exec_stack(model.update_strstack, func_dict)
+    func_dict = create_funcs() # for feed forward, back propagation and update parameters
+    model.ff_strstack = build_ff_string_stack(hp, nnw) # string names of functions
+    model.ff_execstack = build_exec_stack(model.ff_strstack, func_dict) # executable function references
+    model.back_strstack = build_back_string_stack(hp) # string names
+    model.back_execstack = build_exec_stack(model.back_strstack, func_dict) # executable function references
+    model.update_strstack = build_update_string_stack(hp) # string names
+    model.update_execstack = build_exec_stack(model.update_strstack, func_dict) # executable function references
 
     model.cost_function = setup_functions!(hp)
 
@@ -417,5 +417,3 @@ function create_funcs()
                     "l2_reg" => l2_reg!
                 )
 end
-
-

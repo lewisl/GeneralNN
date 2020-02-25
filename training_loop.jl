@@ -9,8 +9,8 @@ end
 
 # method with input of train and test data: test data used for training stats
 """
-    training_loop!(hp, train, mb, nnw, bn, stats)
-    training_loop!(hp, train, test, mb, nnw, bn, stats)
+    training_loop!(hp, train, mb, nnw, bn, stats, model)
+    training_loop!(hp, train, test, mb, nnw, bn, stats, model)
 
     Inputs:
     hp:       Hyper_parameters object
@@ -20,6 +20,7 @@ end
     nnw:      Wgts (trained parameters) object
     bn:       Batch_norm_params object
     stats:    Dict created by setup_stats function to hold training statistics
+    model:    Object containing definition of model
 
 Performs machine learning training using gradient descent. Enables minibatch learning and stochastic gradient
 descent with a batch size of 1. The full loop includes feed forward, back propagation, optimization of 
@@ -41,6 +42,7 @@ function _training_loop!(hp, train, test, mb, nnw, bn, stats, model)
 
     training_time = @elapsed begin # start the cpu clock and begin block for training process
         t = 0  # counter:  number of times parameters will have been updated: minibatches * epochs
+        hp.alphamod = hp.alpha # set alphamod which is actually used as the learning rate
 
         for ep_i = 1:hp.epochs  # loop for "epochs" with counter epoch i as ep_i
             !hp.quiet && println("Start epoch $ep_i")
@@ -88,8 +90,8 @@ end # function training_loop
 # function train_one_step!(dat, nnw, bn, hp, t)
 function train_one_step!(dat, nnw, bn, hp, t, model)
 
-    feedfwd!(dat, nnw, hp, bn, model.ff_execstack)  # for all layers
-    backprop!(nnw, dat, hp, bn, model.back_execstack)  # for all layers   
+    feedfwd!(dat, nnw, hp, bn, model.ff_execstack)  
+    backprop!(nnw, dat, hp, bn, model.back_execstack)     
     update_parameters!(nnw, hp, bn, t, model.update_execstack)
 
 end
@@ -115,7 +117,8 @@ function feedfwd!(dat::Union{Batch_view,Model_data}, nnw, hp, bn, ff_execstack; 
 
     for lr in 1:hp.n_layers
         for f in ff_execstack[lr]
-            f(dat, nnw, hp, bn, lr, dotrain) # argset returns the tuple of arguments to function f
+            f(dat, nnw, hp, bn, lr, dotrain) 
+            # use the same args for everything: f calls its method in layer_functions.jl with needed inputs
         end
     end
 
@@ -135,7 +138,8 @@ function backprop!(nnw::Wgts, dat::Union{Batch_view,Model_data}, hp, bn, back_ex
 
     for lr in hp.n_layers:-1:1
         for f in back_execstack[lr]
-            f(dat, nnw, hp, bn, lr)
+            f(dat, nnw, hp, bn, lr) 
+            # use the same args for everything: f calls its method in layer_functions.jl with needed inputs
         end
     end
 
@@ -150,7 +154,8 @@ function update_parameters!(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_para
 
     for lr in hp.n_layers:-1:1
         for f in update_execstack[lr]
-            f(nnw, hp, bn, lr, t)
+            f(nnw, hp, bn, lr, t) 
+            # use the same args for everything: f calls its method in layer_functions.jl with needed inputs
         end
     end
 
