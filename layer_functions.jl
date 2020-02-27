@@ -399,7 +399,7 @@ end
 
 # method for multiple layers in a loop
 function momentum!(nnw, hp, bn, t)
-    @fastmath for hl = (nnw.output_layer - 1):-1:2  # loop over hidden layers
+    @fastmath @simd for hl = (nnw.output_layer - 1):-1:2  # loop over hidden layers
         momentum!(nnw, hp, bn, hl, t)  # this will get inlined by the compiler
     end
 end
@@ -428,7 +428,7 @@ end
 
 # method for looping over hidden layers
 function rmsprop!(nnw, hp, bn, t)
-    @fastmath for hl = (nnw.output_layer - 1):-1:2  # loop over hidden layers
+    @fastmath @simd for hl = (nnw.output_layer - 1):-1:2  # loop over hidden layers
         rmsprop!(nnw, hp, bn, hl, t)
     end
 end
@@ -456,7 +456,7 @@ end
 
 # method that loops over hidden layers
 function adam!(nnw, hp, bn, t)
-    @fastmath for hl = (nnw.output_layer - 1):-1:2  # loop over hidden layers
+    @fastmath @simd for hl = (nnw.output_layer - 1):-1:2  # loop over hidden layers
         adam!(nnw, hp, bn, hl, t)
     end
 end
@@ -555,12 +555,12 @@ end
 function maxnorm_reg!(theta, hp, hl)    
     theta = theta[hl]
     maxnorm_lim = hp.maxnorm_lim[hl]
-    for i in 1:size(theta,1)  
+    @simd for i in 1:size(theta,1)  
         # row i of theta contains weights for output of unit i in current layer
         # column values in row i multiplied times input values from next lower layer activations
         norm_of_unit = norm(theta[i,:]) 
         if norm_of_unit > maxnorm_lim
-            theta[i,:] .= theta[i,:] .* (maxnorm_lim / norm_of_unit)
+            @inbounds theta[i,:] .= theta[i,:] .* (maxnorm_lim / norm_of_unit)
         end
     end
 end

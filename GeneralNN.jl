@@ -15,7 +15,13 @@
 # SVM
 
 #TODO
-# change alphamod to alpha, change alpha to alpha_in
+#   what's the difference between shuffling data to make different batches v. 
+            #choosing batches randomly (from data shuffled just once)
+            # we'd see all the data in each epoch for both approaches
+            # composition of batches different v.
+            # seeing the batches in a different order
+#   do we need both a and z?  can we keep re-using a?
+#   change alphamod to alpha, change alpha to alpha_in
 #   fix testgrad.jl: check_grads, prep_check for changes to predict using model and bn params
 #   fix nnpredict or get rid of it
 #   implement gradient clipping

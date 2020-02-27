@@ -41,6 +41,7 @@ function _training_loop!(hp, train, test, mb, nnw, bn, stats, model)
     dotest = isempty(test.inputs) ? false : true
 
     training_time = @elapsed begin # start the cpu clock and begin block for training process
+        # startup
         t = 0  # counter:  number of times parameters will have been updated: minibatches * epochs
         hp.alphamod = hp.alpha # set alphamod which is actually used as the learning rate
 
@@ -115,8 +116,8 @@ function feedfwd!(dat, nnw, do_batch_norm)
 function feedfwd!(dat::Union{Batch_view,Model_data}, nnw, hp, bn, ff_execstack; dotrain=true)  
 !hp.quiet && println("feedfwd!(dat::Union{Batch_view, Model_data}, nnw, hp)")
 
-    for lr in 1:hp.n_layers
-        for f in ff_execstack[lr]
+    @simd for lr in 1:hp.n_layers
+        @simd for f in ff_execstack[lr]
             f(dat, nnw, hp, bn, lr, dotrain) 
             # use the same args for everything: f calls its method in layer_functions.jl with needed inputs
         end
@@ -136,8 +137,8 @@ function backprop!(nnw, dat, hp, bn, back_execstack)
 function backprop!(nnw::Wgts, dat::Union{Batch_view,Model_data}, hp, bn, back_execstack)
     !hp.quiet && println("backprop!(nnw, dat, hp)")
 
-    for lr in hp.n_layers:-1:1
-        for f in back_execstack[lr]
+    @simd for lr in hp.n_layers:-1:1
+        @simd for f in back_execstack[lr]
             f(dat, nnw, hp, bn, lr) 
             # use the same args for everything: f calls its method in layer_functions.jl with needed inputs
         end
@@ -152,8 +153,8 @@ end
 function update_parameters!(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, t::Int, update_execstack)  # =Batch_norm_params()
 !hp.quiet && println("update_parameters!(nnw, hp, bn)")
 
-    for lr in hp.n_layers:-1:1
-        for f in update_execstack[lr]
+    @simd for lr in hp.n_layers:-1:1
+        @simd for f in update_execstack[lr]
             f(nnw, hp, bn, lr, t) 
             # use the same args for everything: f calls its method in layer_functions.jl with needed inputs
         end
