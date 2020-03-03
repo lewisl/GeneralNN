@@ -8,10 +8,13 @@ function create_model!(model, hp, nnw)
 !hp.quiet && println("Create model beginning")
 
     func_dict = create_funcs() # for feed forward, back propagation and update parameters
+
     model.ff_strstack = build_ff_string_stack(hp, nnw) # string names of functions
     model.ff_execstack = build_exec_stack(model.ff_strstack, func_dict) # executable function references
+
     model.back_strstack = build_back_string_stack(hp) # string names
     model.back_execstack = build_exec_stack(model.back_strstack, func_dict) # executable function references
+    
     model.update_strstack = build_update_string_stack(hp) # string names
     model.update_execstack = build_exec_stack(model.update_strstack, func_dict) # executable function references
 
@@ -19,111 +22,6 @@ function create_model!(model, hp, nnw)
 
     !hp.quiet && println("Create model completed")
 end
-
-
-function prep_training!(mb, hp, nnw, bn, n)
-    !hp.quiet && println("prep training beginning")
-    !hp.quiet && println("hp.dobatch: ", hp.dobatch)
-
-    # debug
-    # println("norm_factors ", typeof(norm_factors))
-    # println(norm_factors)
-
-    #setup mini-batch
-    if hp.dobatch
-        @info("Be sure to shuffle training data when using minibatches.\n  Use utility function shuffle_data! or your own.")
-        if hp.mb_size_in < 1
-            hp.mb_size_in = n  
-            hp.dobatch = false    # user provided incompatible inputs
-        elseif hp.mb_size_in >= n
-            hp.mb_size_in = n
-            hp.dobatch = false   # user provided incompatible inputs
-        end 
-        hp.mb_size = hp.mb_size_in  # start value for hp.mb_size; changes if last minibatch is smaller
-        hp.do_batch_norm = hp.dobatch ? hp.do_batch_norm : false  
-    else
-        hp.mb_size_in = n
-        hp.mb_size = float(n)
-    end
-
-    hp.do_learn_decay = 
-        if hp.learn_decay == [1.0, 1.0]
-            false
-        elseif hp.learn_decay == []
-            false
-        else
-            true
-        end
-
-    hp.do_learn_decay && (hp.learn_decay = [hp.learn_decay[1], floor(hp.learn_decay[2])])
-
-    # dropout parameters: droplim is in hp (Hyper_parameters),
-    #    dropout_random and dropout_mask_units are in mb or train (Model_data)
-    # set a droplim for each layer 
-    if hp.dropout
-        if length(hp.droplim) == length(hp.hidden) + 2  # droplim for every layer
-            if hp.droplim[end] != 1.0
-                @warn("Poor performance when dropping units from output layer, continuing.")
-            end
-        elseif length(hp.droplim) == length(hp.hidden) + 1 # droplim for input and hidden layers
-            hp.droplim = [hp.droplim..., 1.0]  # keep all units in output layer
-        elseif length(hp.droplim) < length(hp.hidden)  # pad droplim for all hidden layers
-            for i = 1:length(hp.hidden)-length(hp.droplim)
-                push!(hp.droplim,hp.droplim[end]) 
-            end
-            hp.droplim = [1.0, hp.droplim..., 1.0] # use all units for input and output layers
-        else
-            @warn("More drop limits provided than total network layers, use limits ONLY for hidden layers.")
-            hp.droplim = hp.droplim[1:length(hp.hidden)]  # truncate
-            hp.droplim = [1.0, hp.droplim..., 1.0] # placeholders for input and output layers
-        end
-    end
-
-    # setup parameters for maxnorm regularization
-    if titlecase(hp.reg) == "Maxnorm"
-        hp.reg = "Maxnorm"
-        if isempty(hp.maxnorm_lim)
-            @warn("Values in Float64 array must be set for maxnormlim to use Maxnorm Reg, continuing without...")
-            hp.reg = "L2"
-        elseif length(hp.maxnorm_lim) == length(hp.hidden) + 1
-            hp.maxnorm_lim = append!([0.0], hp.maxnorm_lim) # add dummy for input layer
-        elseif length(hp.maxnorm_lim) > length(hp.hidden) + 1
-            @warn("Too many values in maxnorm_lim; truncating to hidden and output layers.")
-            hp.maxnorm_lim = append!([0.0], hp.maxnorm_lim[1:length(hp.hidden)+1]) # truncate and add dummy for input layer
-        elseif length(hp.maxnorm_lim) < length(hp.hidden) + 1
-            for i = 1:length(hp.hidden)-length(hp.maxnorm_lim) + 1
-                push!(hp.maxnorm_lim,hp.maxnorm_lim[end]) 
-            end
-            hp.maxnorm_lim = append!([0.0], hp.maxnorm_lim) # add dummy for input layer
-        end
-    end
-
-    !hp.quiet && println("end of setup_model: hp.dobatch: ", hp.dobatch)
-end
-
-
-# iterator for minibatches of training examples
-    struct MBrng  # values are set once to define the iterator stop point=cnt, and increment=incr
-        cnt::Int
-        incr::Int
-    end
-
-    function mbiter(mb::MBrng, start)  # new method for Base.iterate
-        nxtstart = start + mb.incr
-        stop = nxtstart - 1 < mb.cnt ? nxtstart - 1 : mb.cnt
-        ret = start < mb.cnt ? (start:stop, nxtstart) : nothing # return tuple of range and next state, or nothing--to stop iteration
-        return ret
-    end
-
-    function mblength(mb::MBrng)  # new method for Base.length
-        return ceil(Int,mb.cnt / mb.incr)
-    end
-
-    # add iterate methods: must supply type for the new methods--method dispatch selects the method for this type of iterator
-        # the function  names don't matter--we provide an alternate for the standard methods, but the functions
-        # need to do the right things
-    Base.iterate(mb::MBrng, start=1) = mbiter(mb::MBrng, start)   # canonical to use "state" instead of "start"
-    Base.length(mb::MBrng) = mblength(mb)
 
 
 function build_ff_string_stack(hp, out_k)

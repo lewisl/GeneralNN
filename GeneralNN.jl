@@ -15,6 +15,7 @@
 # SVM
 
 #TODO
+# fix the accuracy calc to be more general or provide several versions
 #   what's the difference between shuffling data to make different batches v. 
             #choosing batches randomly (from data shuffled just once)
             # we'd see all the data in each epoch for both approaches

@@ -40,53 +40,39 @@ Now, you are ready to run function train.
         test_preds        ::= using final values of trained parameters
 """
 function train(train_x, train_y, hp, testgrad=false)
-# method with no test data
-    !hp.quiet && println("Training setup beginning")
-    dotest = false
+# method with no test data--stub in zeros
+    test_x = zeros(0,0); test_y = zeros(0,0)
 
-    model_time = @elapsed train, mb, nnw, bn, model = pretrain(train_x, train_y, hp)
-    println("Time to build model and data structures: ",model_time)
+    ret = _train(train_x, train_y, test_x, test_y, hp, testgrad)
 
-    stats = setup_stats(hp, dotest)  
+    return ret
 
-    !hp.quiet && println("Training setup complete")
-
-    training_time = training_loop!(hp, train, mb, nnw, bn, stats, model)
-
-    # save, print and plot training statistics
-    output_stats(train, nnw, hp, bn, training_time, stats, model)
-
-    ret = Dict(
-                "train_inputs" => train_x, 
-                "train_targets"=> train_y, 
-                "train_preds" => train.a[nnw.output_layer], 
-                "Wgts" => nnw, 
-                "batchnorm_params" => bn, 
-                "hyper_params" => hp,
-                "stats" => stats,
-                "model" => model
-                )
-
-    return ret, stats
-
-end # _run_training_core, method with test data
+end 
 
 
 function train(train_x, train_y, test_x, test_y, hp, testgrad=false)
 # method that includes test data
-    !hp.quiet && println("Training setup beginning")
-    dotest = true
 
-    model_time = @elapsed train, mb, nnw, bn, model = pretrain(train_x, train_y, hp)
-    println("Time to build model and data structures: ",model_time)
+    ret = _train(train_x, train_y, test_x, test_y, hp, testgrad)
 
-    test = prepredict(test_x, test_y, hp, nnw, notrain=false)
-        # use notrain=false because the test data is used during training
+    return ret
+
+end 
+
+
+function _train(train_x, train_y, test_x, test_y, hp, dotest, testgrad=false)
+    train, mb, nnw, bn, model = pretrain(train_x, train_y, hp)
+    test = prepredict(test_x, test_y, hp, nnw, notrain=false) #  notrain=false because test data used during training
+    dotest = size(test.inputs) == (0,0) ? false : true
     stats = setup_stats(hp, dotest)  
 
-    !hp.quiet && println("Training setup complete")
+    if hp.dobatch
+        train_method = minibatch_training
+    else
+        train_method = fullbatch_training
+    end
 
-    training_time = training_loop!(hp, train, test, mb, nnw, bn, stats, model)
+    training_time = training_loop!(hp, train, test, mb, nnw, bn, stats, model, train_method)
 
     # save, print and plot training statistics
     output_stats(train, test, nnw, hp, bn, training_time, stats, model)
@@ -98,16 +84,19 @@ function train(train_x, train_y, test_x, test_y, hp, testgrad=false)
                 "Wgts" => nnw, 
                 "batchnorm_params" => bn, 
                 "hyper_params" => hp,
-                "test_inputs" => test.inputs, 
-                "test_targets" => test.targets, 
-                "test_preds" => test.a[nnw.output_layer],  
                 "stats" => stats,
                 "model" => model
                 )
 
-    return ret, stats
+    if dotest
+        ret["test_inputs"] = test.inputs 
+        ret["test_targets"] = test.targets 
+        ret["test_preds"] = test.a[nnw.output_layer]
+    end
 
-end # _run_training_core, method with test data
+    return ret
+
+end
 
 
 function pretrain(dat_x, dat_y, hp)
@@ -121,10 +110,10 @@ function pretrain(dat_x, dat_y, hp)
         bn = Batch_norm_params()
         dat.inputs, dat.targets = dat_x, dat_y
         dat.in_k, dat.n = size(dat_x)
-        out_k = dat.out_k = size(dat_y, 1)
+        dat.out_k = size(dat_y, 1)
 
-    # 2. optimization parameters, minibatches, regularization
-        prep_training!(mb, hp, nnw, bn, dat.n)
+    # 2. setup parameters for batch_size, learn_decay, dropout, and Maxnorm regularization
+        prep_training!(hp, dat.n)
 
     # 3. normalize data
         if !(hp.norm_mode == "" || lowercase(hp.norm_mode) == "none")
@@ -139,7 +128,7 @@ function pretrain(dat_x, dat_y, hp)
         !hp.quiet && println("Pre-allocate weights and minibatch storage completed")
 
     # 5. choose layer functions and cost function based on inputs => all in model
-        create_model!(model, hp, out_k)
+        create_model!(model, hp, dat.out_k)
 
     # 6. preallocate storage for data transforms
         preallocate_data!(dat, nnw, dat.n, hp)

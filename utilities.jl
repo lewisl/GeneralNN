@@ -297,16 +297,6 @@ end
 
 """
 function output_stats(train, test, nnw, hp, bn, training_time, stats, model)
-    _output_stats(train, test, nnw, hp, bn, training_time, stats, model)
-end
-
-# TODO maybe we don't need a valid Model_data object
-function output_stats(train, nnw, hp, bn, training_time, stats, model)
-    _output_stats(train, Model_data(), nnw, hp, bn, training_time, stats, model)
-        # Model_data passes an empty test object
-end
-
-function _output_stats(train, test, nnw, hp, bn, training_time, stats, model)
 
     dotest = isempty(test.inputs) ? false : true
 

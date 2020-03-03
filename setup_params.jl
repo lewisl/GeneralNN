@@ -135,6 +135,7 @@ function setup_params(
     # this method serves to validate the input parameters and populate struct hp
     # for convenience use the TOML file input method
 
+    # create dict from input args
     argsdict = Dict(
         "epochs"            => epochs,
         "hidden"            => hidden,
@@ -198,7 +199,7 @@ end
 #  verify hyper_parameter inputs from TOML or function arguments
 ####################################################################
 
-# Works with simple toml file containing all arguments at top level
+# Works with dict containing all arguments at top level
 function args_verify(argsdict)
     required = [:epochs, :hidden]
     all(i -> i in Symbol.(keys(argsdict)), required) || error("Missing a required argument: epochs or hidden")
@@ -431,4 +432,116 @@ function build_hyper_parameters(argsdict)
     hp.n_layers = length(hp.hidden) + 2
 
     return hp
+end
+
+
+"""
+    function build_argsdict(hp::Hyper_parameters)
+
+Input: a Hyper_parameters object, which is a mutable struct
+
+Returns: a Dict of all of the hyperparameter fields
+
+"""
+function build_argsdict(hp::Hyper_parameters)
+    ret = Dict()
+    for hpsym in fieldnames(typeof(hp))
+        hpitem = String(hpsym)
+        ret[hpitem] = getfield(hp,hpsym)
+    end
+    return ret
+end
+
+
+"""
+    function prep_training(hp, n)
+    
+Collect parameter setup for batch_size, learn_decay, dropout, 
+and Maxnorm regularization in one function.
+"""
+function prep_training!(hp, n)
+    !hp.quiet && println("prep training beginning")
+    !hp.quiet && println("hp.dobatch: ", hp.dobatch)
+
+    setup_batch_size!(hp, n)
+    setup_learn_decay!(hp)
+    hp.dropout && (setup_dropout!(hp))
+    (titlecase(hp.reg) == "Maxnorm") && (setup_maxnorm!(hp))
+
+    !hp.quiet && println("end of setup_model: hp.dobatch: ", hp.dobatch)
+end
+
+
+function setup_batch_size!(hp, n)
+    if hp.dobatch
+        @info("Be sure to shuffle training data when using minibatches.\n  Use utility function shuffle_data! or your own.")
+        if hp.mb_size_in < 1
+            hp.mb_size_in = n  
+            hp.dobatch = false    # user provided incompatible inputs
+        elseif hp.mb_size_in >= n
+            @warn("Wrong size for minibatch training. Proceeding with full batch training.")
+            hp.mb_size_in = n
+            hp.dobatch = false   # user provided incompatible inputs
+        end 
+        hp.mb_size = hp.mb_size_in  # start value for hp.mb_size; changes if last minibatch is smaller
+        hp.do_batch_norm = hp.dobatch ? hp.do_batch_norm : false  
+    else
+        hp.mb_size_in = n
+        hp.mb_size = float(n)
+    end
+end
+
+
+function setup_learn_decay!(hp)
+    # requires error checking in setup_params.jl
+    if hp.learn_decay == [1.0, 1.0]
+        hp.do_learn_decay = false
+    elseif hp.learn_decay == []
+        hp.do_learn_decay = false
+    else
+        hp.do_learn_decay = true  
+        hp.learn_decay = [hp.learn_decay[1], floor(hp.learn_decay[2])]
+    end
+end
+
+
+function setup_dropout!(hp)
+    # dropout parameters: droplim is in hp (Hyper_parameters),
+    #    dropout_random and dropout_mask_units are in mb or train (Model_data)
+    # set a droplim for each layer 
+    if length(hp.droplim) == length(hp.hidden) + 2  # droplim for every layer
+        if hp.droplim[end] != 1.0
+            @warn("Poor performance when dropping units from output layer, continuing.")
+        end
+    elseif length(hp.droplim) == length(hp.hidden) + 1 # droplim for input and hidden layers
+        hp.droplim = [hp.droplim..., 1.0]  # keep all units in output layer
+    elseif length(hp.droplim) < length(hp.hidden)  # pad droplim for all hidden layers
+        for i = 1:length(hp.hidden)-length(hp.droplim)
+            push!(hp.droplim,hp.droplim[end]) 
+        end
+        hp.droplim = [1.0, hp.droplim..., 1.0] # use all units for input and output layers
+    else
+        @warn("More drop limits provided than total network layers, use limits ONLY for hidden layers.")
+        hp.droplim = hp.droplim[1:length(hp.hidden)]  # truncate
+        hp.droplim = [1.0, hp.droplim..., 1.0] # placeholders for input and output layers
+    end
+end
+
+
+function setup_maxnorm!(hp)
+    hp.reg = "Maxnorm"
+    if isempty(hp.maxnorm_lim)
+        @warn("Values in Float64 array must be set for maxnormlim to use Maxnorm Reg, continuing with no regularizaiton.")
+        hp.reg = ""
+    elseif length(hp.maxnorm_lim) == length(hp.hidden) + 1
+        hp.maxnorm_lim = append!([0.0], hp.maxnorm_lim) # add dummy for input layer
+    elseif length(hp.maxnorm_lim) > length(hp.hidden) + 1
+        @warn("Too many values in maxnorm_lim; truncating to hidden and output layers.")
+        hp.maxnorm_lim = append!([0.0], hp.maxnorm_lim[1:length(hp.hidden)+1]) # truncate and add dummy for input layer
+    elseif length(hp.maxnorm_lim) < length(hp.hidden) + 1
+        for i = 1:length(hp.hidden)-length(hp.maxnorm_lim) + 1
+            push!(hp.maxnorm_lim,hp.maxnorm_lim[end]) 
+        end
+        hp.maxnorm_lim = append!([0.0], hp.maxnorm_lim) # add dummy for input layer
+    end
 end

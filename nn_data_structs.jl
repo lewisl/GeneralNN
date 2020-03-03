@@ -227,7 +227,7 @@ end
 
 
 """
-struct Model_runner holds the functions that will run in a 
+struct Model_def holds the functions that will run in a 
 model based on the hyper_parameters and data
 """
 mutable struct Model_def

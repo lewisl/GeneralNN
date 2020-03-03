@@ -1,13 +1,7 @@
 
 using StatsBase # basic statistical functions
 
-# method with no input test data
-function training_loop!(hp, train, mb, nnw, bn, stats, model)
-    _training_loop!(hp, train, Model_data(), mb, nnw, bn, stats, model)
-        # Model_data() passes an empty test data object
-end
 
-# method with input of train and test data: test data used for training stats
 """
     training_loop!(hp, train, mb, nnw, bn, stats, model)
     training_loop!(hp, train, test, mb, nnw, bn, stats, model)
@@ -28,65 +22,88 @@ parameter updates and updating the trained parameters. The first method does not
 includes the test Model_data object to track training statistics on how cost and accuracy change for the 
 test or validation data set.
 """
-function training_loop!(hp, train, test, mb, nnw, bn, stats, model)
-    _training_loop!(hp, train, test, mb, nnw, bn, stats, model)
-end
-
-
-function _training_loop!(hp, train, test, mb, nnw, bn, stats, model)
+function training_loop!(hp, train, test, mb, nnw, bn, stats, model, train_method)
 !hp.quiet && println("training_loop(hp, train, test mb, nnw, bn, stats; dotest=false)")
 
     print_model(model); println()
 
-    dotest = isempty(test.inputs) ? false : true
-
     training_time = @elapsed begin # start the cpu clock and begin block for training process
         # startup
-        t = 0  # counter:  number of times parameters will have been updated: minibatches * epochs
         hp.alphamod = hp.alpha # set alphamod which is actually used as the learning rate
 
-        for ep_i = 1:hp.epochs  # loop for "epochs" with counter epoch i as ep_i
-            !hp.quiet && println("Start epoch $ep_i")
-            hp.do_learn_decay && step_learn_decay!(hp, ep_i)
+        train_method(hp, train, test, mb, nnw, bn, stats, model)
 
-            hp.reshuffle && (ep_i % 2 == 0 && shuffle_data!(train.inputs, train.targets))
-
-            if hp.dobatch  # minibatch training
-
-                for colrng in MBrng(train.n, hp.mb_size_in)  # set setup_model.jl for definition of iterator MBrng
-                    hp.mb_size = mbsize(colrng)
-  
-                    !hp.quiet && println("   Start minibatch for ", colrng)           
-                    
-                    update_batch_views!(mb, train, nnw, hp, colrng)  # select data columns for the minibatch   
-
-                    t += 1   # number of executions of minibatch loop
-                    train_one_step!(mb, nnw, bn, hp, t, model)
-
-                    # stats for each minibatch--expensive!!!
-                    stats["period"] == "batch" && begin
-                        gather_stats!(stats, "train", t, train, nnw, hp, bn, model)  
-                        dotest && gather_stats!(stats, "test", t, test, nnw, hp, bn, model) 
-                    end
-
-                end # mini-batch loop
-
-            else  # full training set
-                t += 1
-                train_one_step!(train, nnw, bn, hp, t, model)
-            end
-
-            # stats across all mini-batches of one epoch (e.g.--no stats per minibatch)
-            stats["period"] == "epoch" && begin
-                gather_stats!(stats, "train", ep_i, train, nnw, hp, bn, model)  
-                dotest && gather_stats!(stats, "test", ep_i, test, nnw, hp, bn, model) 
-            end
-
-        end # epoch loop
     end # training_time begin block
 
     return training_time
 end # function training_loop
+
+
+function minibatch_training(hp, train, test, mb, nnw, bn, stats, model)
+
+    dotest = isempty(test.inputs) ? false : true
+
+    t = 0  # counter:  number of times parameters will have been updated: minibatches * epochs
+
+    for ep_i = 1:hp.epochs  # loop for "epochs" with counter epoch i as ep_i
+        !hp.quiet && println("Start epoch $ep_i")
+        hp.do_learn_decay && step_learn_decay!(hp, ep_i)
+
+        hp.reshuffle && (ep_i % 2 == 0 && shuffle_data!(train.inputs, train.targets))
+
+        for colrng in MBrng(train.n, hp.mb_size_in)  # set setup_model.jl for definition of iterator MBrng
+            hp.mb_size = mbsize(colrng)
+
+            !hp.quiet && println("   Start minibatch for ", colrng)           
+            
+            update_batch_views!(mb, train, nnw, hp, colrng)  # select data columns for the minibatch   
+
+            t += 1   # number of executions of minibatch loop
+            train_one_step!(mb, nnw, bn, hp, t, model)
+
+            # stats for each minibatch--expensive!!!
+            stats["period"] == "batch" && begin
+                gather_stats!(stats, "train", t, train, nnw, hp, bn, model)  
+                dotest && gather_stats!(stats, "test", t, test, nnw, hp, bn, model) 
+            end
+
+        end # mini-batch loop
+
+        # stats across all mini-batches of one epoch (e.g.--no stats per minibatch)
+        stats["period"] == "epoch" && begin
+            gather_stats!(stats, "train", ep_i, train, nnw, hp, bn, model)  
+            dotest && gather_stats!(stats, "test", ep_i, test, nnw, hp, bn, model) 
+        end
+
+    end # epoch loop
+end
+
+
+function fullbatch_training(hp, train, test, mb, nnw, bn, stats, model)
+
+    dotest = isempty(test.inputs) ? false : true
+
+    t = 0  # counter:  number of times parameters will have been updated: minibatches * epochs
+
+    for ep_i = 1:hp.epochs  # loop for "epochs" with counter epoch i as ep_i
+        !hp.quiet && println("Start epoch $ep_i")
+        hp.do_learn_decay && step_learn_decay!(hp, ep_i)
+
+        hp.reshuffle && (ep_i % 2 == 0 && shuffle_data!(train.inputs, train.targets))
+
+        t += 1
+
+        train_one_step!(train, nnw, bn, hp, t, model)
+
+        # stats across all mini-batches of one epoch (e.g.--no stats per minibatch)
+        stats["period"] == "epoch" && begin
+            gather_stats!(stats, "train", ep_i, train, nnw, hp, bn, model)  
+            dotest && gather_stats!(stats, "test", ep_i, test, nnw, hp, bn, model) 
+        end
+
+    end # epoch loop
+end
+
 
 # function train_one_step!(dat, nnw, bn, hp, t)
 function train_one_step!(dat, nnw, bn, hp, t, model)
@@ -97,9 +114,35 @@ function train_one_step!(dat, nnw, bn, hp, t, model)
 
 end
 
+####################################################
+# batch training helper functions
+####################################################
 
-# little helper function
-mbsize(colrng) = float(size(colrng, 1))
+    mbsize(colrng) = float(size(colrng, 1))
+
+    # iterator for minibatches of training examples
+    struct MBrng  # values are set once to define the iterator stop point=cnt, and increment=incr
+        cnt::Int
+        incr::Int
+    end
+
+    function mbiter(mb::MBrng, start)  # new method for Base.iterate
+        nxtstart = start + mb.incr
+        stop = nxtstart - 1 < mb.cnt ? nxtstart - 1 : mb.cnt
+        ret = start < mb.cnt ? (start:stop, nxtstart) : nothing # return tuple of range and next state, or nothing--to stop iteration
+        return ret
+    end
+
+    function mblength(mb::MBrng)  # new method for Base.length
+        return ceil(Int,mb.cnt / mb.incr)
+    end
+
+    # add iterate methods: must supply type for the new methods--method dispatch selects the method for this type of iterator
+        # the function  names don't matter--we provide an alternate for the standard methods, but the functions
+        # need to do the right things
+    Base.iterate(mb::MBrng, start=1) = mbiter(mb::MBrng, start)   # canonical to use "state" instead of "start"
+    Base.length(mb::MBrng) = mblength(mb)
+
 
 #########################################################
 #  functions inside the training loop
