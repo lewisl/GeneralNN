@@ -507,13 +507,20 @@ end
 
 function setup_dropout!(hp)
     # dropout parameters: droplim is in hp (Hyper_parameters),
-    #    dropout_random and dropout_mask_units are in mb or train (Model_data)
+    #    dropout_random and dropout_mask are in mb or train (Model_data)
     # set a droplim for each layer 
     if length(hp.droplim) == length(hp.hidden) + 2  # droplim for every layer
         if hp.droplim[end] != 1.0
-            @warn("Poor performance when dropping units from output layer, continuing.")
+            @warn("Poor performance with dropout on output layer, continuing without.")
+            hp.droplim[end] = 1.0
         end
+        if hp.droplim[1] != 1.0
+            @warn("Inconsistent performance with dropout on input layer, continuing.")
+        end       
     elseif length(hp.droplim) == length(hp.hidden) + 1 # droplim for input and hidden layers
+        if hp.droplim[1] != 1.0
+            @warn("Inconsistent performance with dropout on input layer, continuing.")
+        end       
         hp.droplim = [hp.droplim..., 1.0]  # keep all units in output layer
     elseif length(hp.droplim) < length(hp.hidden)  # pad droplim for all hidden layers
         for i = 1:length(hp.hidden)-length(hp.droplim)
@@ -521,7 +528,7 @@ function setup_dropout!(hp)
         end
         hp.droplim = [1.0, hp.droplim..., 1.0] # use all units for input and output layers
     else
-        @warn("More drop limits provided than total network layers, use limits ONLY for hidden layers.")
+        @warn("More drop limits provided than total network layers, use dropout ONLY for hidden layers.")
         hp.droplim = hp.droplim[1:length(hp.hidden)]  # truncate
         hp.droplim = [1.0, hp.droplim..., 1.0] # placeholders for input and output layers
     end

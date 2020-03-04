@@ -25,7 +25,7 @@ mutable struct Wgts              # we will use nnw as the struct variable
                                            #      = the no. of rows in the weight matrix for each layer
     norm_factors::Tuple{Array{Float64,2},Array{Float64,2}}   # note: each array is 1 row by 2 cols
     # calculate dropout mask for training
-    dropout_mask_units::Array{Array{Bool,1}, 1}       # boolean filter for dropout--dims of a
+    dropout_mask::Array{Array{Bool,1}, 1}       # boolean filter for dropout--dims of a
 
 
     Wgts() = new(               # empty constructor
@@ -41,7 +41,7 @@ mutable struct Wgts              # we will use nnw as the struct variable
         3,                                      # output_layer
         Array{Int64,1}(undef, 0),               # k
         ([0.0 0.0], [1.0 0.0]),                 # norm_factors (mean, std)
-        Array{Array{Bool,1},1}(undef, 0)        # dropout_mask_units   Array{Array{Bool,2},1}
+        Array{Array{Bool,1},1}(undef, 0)        # dropout_mask   Array{Array{Bool,2},1}
 
     )
 end

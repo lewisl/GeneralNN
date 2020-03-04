@@ -134,7 +134,7 @@ function build_back_string_stack(hp)
 
         push!(layer_group, "inbound_epsilon")   # required
 
-        if hp.dropout && (hp.droplim[hl] < 1.0)
+        if hp.dropout && (hp.droplim[layer] < 1.0)
             push!(layer_group, "dropout_back")
         end
         

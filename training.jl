@@ -63,7 +63,7 @@ end
 function _train(train_x, train_y, test_x, test_y, hp, dotest, testgrad=false)
     train, mb, nnw, bn, model = pretrain(train_x, train_y, hp)
     test = prepredict(test_x, test_y, hp, nnw, notrain=false) #  notrain=false because test data used during training
-    dotest = size(test.inputs) == (0,0) ? false : true
+    dotest = isempty(test.inputs) ? false : true
     stats = setup_stats(hp, dotest)  
 
     if hp.dobatch

@@ -356,25 +356,25 @@ end
 
 function dropout_fwd!(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, lr::Int, dotrain::Bool)
-    dropout_fwd!(dat, hp, nnw, lr, dotrain)
+    dropout_fwd!(dat.a[lr], nnw.dropout_mask[lr], hp.droplim[lr], dotrain)
 end
 
-function dropout_fwd!(dat, hp, nnw, hl, dotrain=true)  # applied per layer
+function dropout_fwd!(a, dropout_mask, droplim, dotrain=true)  # applied on single layer
     dotrain && begin
-        @inbounds nnw.dropout_mask_units[hl][:] = Bool.(rand( Bernoulli( hp.droplim[hl] ), size(nnw.dropout_mask_units[hl], 1)))
+        @inbounds dropout_mask[:] = Bool.(rand( Bernoulli( droplim ), size(dropout_mask, 1)))
         # choose activations to remain and scale
-        @inbounds dat.a[hl][:] = dat.a[hl] .* (nnw.dropout_mask_units[hl] ./ hp.droplim[hl])
+        @inbounds a[:] = a .* (dropout_mask ./ droplim) # "inverted" dropout
     end
 end
 
 
 function dropout_back!(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, lr::Int)
-    dropout_back!(dat.epsilon[lr], nnw.dropout_mask_units[lr], hp.droplim[lr])
+    dropout_back!(dat.epsilon[lr], nnw.dropout_mask[lr], hp.droplim[lr])
 end
 
-function dropout_back!(dat, nnw, hp, hl)
-    @inbounds dat.epsilon[hl][:] = dat.epsilon[hl] .* (nnw.dropout_mask_units[hl])
+function dropout_back!(epsilon, dropout_mask, droplim)
+    @inbounds epsilon[:] = epsilon .* (dropout_mask ./ droplim) # "inverted" dropout
 end
 
 

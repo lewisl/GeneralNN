@@ -120,7 +120,7 @@ end
     # dropout_fwd!
     function argset(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, hl::Int, fn::typeof(dropout_fwd!), dotrain)
-        (dat.a[hl], hp.droplim[hl], nnw.dropout_mask_units[hl], dotrain)
+        (dat.a[hl], hp.droplim[hl], nnw.dropout_mask[hl], dotrain)
     end
 
     # back propagation backprop! does NOT take dotrain as an input
@@ -147,7 +147,7 @@ end
     # dropout_back!
     function argset(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, hl::Int, fn::typeof(dropout_back!))
-            (dat.epsilon[hl], nnw.dropout_mask_units[hl], hp.droplim[hl])    
+            (dat.epsilon[hl], nnw.dropout_mask[hl], hp.droplim[hl])    
     end
     # sigmoid_gradient!
     function argset(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 

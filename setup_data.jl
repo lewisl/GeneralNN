@@ -203,7 +203,7 @@ function preallocate_wgts!(nnw, hp, in_k, n, out_k)
 
     # dropout
     if hp.dropout
-        nnw.dropout_mask_units = [BitArray(ones(k)) for k in nnw.ks]
+        nnw.dropout_mask = [BitArray(ones(k)) for k in nnw.ks]
     end
 
 
