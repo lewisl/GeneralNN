@@ -15,7 +15,8 @@ mutable struct Wgts              # we will use nnw as the struct variable
     bias::Array{Array{Float64,1},1}
     delta_th::Array{Array{Float64,2},1}
     delta_b::Array{Array{Float64,1},1}
-    delta_v_th::Array{Array{Float64,2},1}  # optimization weighted average of gradient: momentum, rmsprop, Adam
+    # optimization weighted average of gradient: momentum, rmsprop, Adam
+    delta_v_th::Array{Array{Float64,2},1}  
     delta_v_b::Array{Array{Float64,1},1}  
     delta_s_th::Array{Array{Float64,2},1}  
     delta_s_b::Array{Array{Float64,1},1}  
@@ -138,7 +139,7 @@ mutable struct Model_data               # we will use train for inputs and test 
     # calculated in feedforward pass
     a::T_model_data  # 
     z::T_model_data
-    # calculated in backprop (training) pass for batch normalization
+    # calculated in backprop pass
     grad::T_model_data
     epsilon::T_model_data       # dims of a
     # calculcated for batch_norm

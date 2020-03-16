@@ -60,6 +60,10 @@ end
 #  layer functions:  activation used in feedfwd!
 ###########################################################################
 
+# feedfwd arguments
+# (dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+#        bn::Batch_norm_params, lr::Int, dotrain)
+#
 
 # two methods for linear layer units, with bias and without
 # function affine!(z, a, theta, bias)  # with bias
@@ -91,7 +95,7 @@ function affine!(z, a, theta, bias)
     # this is really fast with NO allocations!
     mul!(z, theta, a)
     @simd for j = axes(z,2)
-        for i = axes(bias, 1)
+        @simd for i = axes(bias, 1)
             @inbounds z[i,j] += bias[i]
         end
     end
@@ -196,7 +200,11 @@ end
 #  layer functions in backprop!
 ###########################################################################
 
-# Choice of function determined in setup_functions! in setup_model.jl
+# backprop loop arguments:
+# (dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+#     bn::Batch_norm_params, lr::Int)
+#
+
 
 function backprop_classify!(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
         bn::Batch_norm_params, lr::Int)
@@ -235,8 +243,8 @@ function backprop_weights_nobias!(dat::Union{Model_data, Batch_view}, nnw::Wgts,
 end
 
 # uses epsilon from the batchnorm_back calculations
-function backprop_weights_nobias!(delta_th, epsilon, a_prev, n)
-    mul!(delta_th, epsilon, a_prev')
+function backprop_weights_nobias!(delta_th, epsilon, a_below, n)
+    mul!(delta_th, epsilon, a_below')
     @fastmath delta_th[:] = delta_th .* (1.0 / n)
 end
 
@@ -246,8 +254,8 @@ function backprop_weights!(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hy
     backprop_weights!(nnw.delta_th[lr], nnw.delta_b[lr], dat.epsilon[lr], dat.a[lr-1], hp.mb_size)
 end
 
-function backprop_weights!(delta_th, delta_b, epsilon, a_prev, n)
-    mul!(delta_th, epsilon, a_prev')
+function backprop_weights!(delta_th, delta_b, epsilon, a_below, n)
+    mul!(delta_th, epsilon, a_below')
 
     @fastmath delta_th[:] = delta_th .* (1.0 / n)
     @fastmath delta_b[:] = sum(epsilon, dims=2) ./ n
@@ -316,13 +324,30 @@ end
 #  layer functions in update_parameters!
 ###########################################################################
 
-function update_wgts!(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, lr::Int, t::Int)
-    update_wgts!(nnw.theta[lr], nnw.bias[lr], hp.alphamod, nnw.delta_th[lr], nnw.delta_b[lr])
-end
+# These can be built with a single function that takes all feedfwd arguments
+#    or 2 methods:  one accepts all arguments then passes only needed arguments to a 2nd method
+
+# arguments for functions in update_parameters
+# (nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, lr::Int, t::Int)
+#
+
+# function update_wgts!(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, lr::Int, t::Int)
+#     update_wgts!(nnw.theta[lr], nnw.bias[lr], hp.alphamod, nnw.delta_th[lr], nnw.delta_b[lr])
+# end
 
 # method for a single layer--caller indexes the array of arrays to pass single layer array
 # (nnw.theta[hl], nnw.bias[hl], hp.alphamod, nnw.delta_th[hl], nnw.delta_b[hl])
-function update_wgts!(theta, bias, alpha, delta_th, delta_b)   # could differentiate with method dispatch
+# function update_wgts!(theta, bias, alpha, delta_th, delta_b)   # could differentiate with method dispatch
+#     @fastmath @inbounds theta[:] = theta .- (alpha .* delta_th)
+#     @fastmath @inbounds bias[:] .= bias .- (alpha .* delta_b)
+# end
+function update_wgts!(nnw::Wgts, hp::Hyper_parameters, bn::Batch_norm_params, lr::Int, t::Int)   
+    theta = nnw.theta[lr]
+    bias = nnw.bias[lr]
+    alpha = hp.alphamod
+    delta_th = nnw.delta_th[lr]
+    delta_b = nnw.delta_b[lr]
+
     @fastmath @inbounds theta[:] = theta .- (alpha .* delta_th)
     @fastmath @inbounds bias[:] .= bias .- (alpha .* delta_b)
 end
@@ -467,7 +492,7 @@ function adam!(nnw, hp, bn, hl, t)
 
     if !hp.do_batch_norm  # then we need to do bias term
         adam_helper!(nnw.delta_v_b[hl], nnw.delta_s_b[hl], nnw.delta_b[hl], hp, t)
-    elseif hp.opt_batch_norm # yes, doing batchnorm, but don't use optimization
+    elseif hp.opt_batch_norm # yes, doing batchnorm, and optimization of batch_norm params
         adam_helper!(bn.delta_v_gam[hl], bn.delta_s_gam[hl], bn.delta_gam[hl], hp, t)
         adam_helper!(bn.delta_v_bet[hl], bn.delta_s_bet[hl], bn.delta_bet[hl], hp, t)            
     end

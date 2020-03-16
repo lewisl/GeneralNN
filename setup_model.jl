@@ -3,13 +3,26 @@ using JLD2
 using Printf
 using LinearAlgebra
 
+"""
+    create_model!(model, hp, nnw)
 
-function create_model!(model, hp, nnw)
+Create training executation stacks for feed forward, back propagation, and updating parameters. A string
+version is created for printing and for selecting functions. A function version is created that will be 
+executed in the training loop. All are stored in a Model_def struct:
+
+- feedfwd: model.ff_strstack, model.ff_execstack
+- backprop: model.back_strstack, model.back_execstack
+- update parameters: model.update_strstack, model.update_execstack
+
+Updates the model struct in place.
+
+"""
+function create_model!(model, hp, out_k)
 !hp.quiet && println("Create model beginning")
 
     func_dict = create_funcs() # for feed forward, back propagation and update parameters
 
-    model.ff_strstack = build_ff_string_stack(hp, nnw) # string names of functions
+    model.ff_strstack = build_ff_string_stack(hp, out_k) # string names of functions
     model.ff_execstack = build_exec_stack(model.ff_strstack, func_dict) # executable function references
 
     model.back_strstack = build_back_string_stack(hp) # string names

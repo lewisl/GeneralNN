@@ -5,7 +5,6 @@
 
 
 #BRANCH TODO: layer-based API 
-#   change to layer based api, with simplified api as alternate front-end
 #   Convolutional networks
     #   convolutional layers
     #   pooling layers
@@ -15,20 +14,25 @@
 # SVM
 
 #TODO
+# allow choice in what to return from training: default should exclude data, full should be everything;
+    # none is none, maybe allow individual choices
+# should we split cached values from basic params?  should we combine bn parameters with weights?
+# save a model_def more easily
+# reuse a model def and run it with different data
+# should we have a bigger model obj that includes function stacks, hyper_parameters, and weights?
+# verify formula for Xavier initialization: decide whether to use normal or uniform (offer both?)
+# implement Kaiming initialization
+# enable plot display of train cost but not test cost
 # fix the accuracy calc to be more general or provide several versions
 #   what's the difference between shuffling data to make different batches v. 
             #choosing batches randomly (from data shuffled just once)
             # we'd see all the data in each epoch for both approaches
             # composition of batches different v.
             # seeing the batches in a different order
-#   do we need both a and z?  can we keep re-using a?
-#   change alphamod to alpha, change alpha to alpha_in
+#   change alphamod to alpha, change alpha to alpha_in??
 #   fix testgrad.jl: check_grads, prep_check for changes to predict using model and bn params
 #   fix nnpredict or get rid of it
 #   implement gradient clipping
-#   debug dropout in backprop
-    #   does backprop for dropout go back to input layer if dropout done forward on input, 
-    #   does backprop for output apply to filter a of output_layer -1?
 #   add ability to choose BN per layer (inc. for output layer or not)
 #   add ability to put bn after linear or after activation
 #   investigate Zygote.jl for automatic differentiation
@@ -44,8 +48,6 @@
 #   utilities for plotdef will break on old plotdefs because they are now called stats
 #   use goodness function to hold either accuracy or r_squared?
 #   implement incremental load and train for massive datasets?
-#   fix dropout: should delta_theta be averaged using number of included units?
-        #   are we scaling units during training?
 #   set an explicit data size variable for both test and train for preallocation?
 #   accuracy for logistic or other single class classifiers should allow -1 or 0 for "bad"
 #   implement precision and recall
@@ -63,7 +65,6 @@
         #        to get rid of all of the temporaries in there. 
         # To use an infix operator, you can use \cdot, as in view(A,:,j)⋅r.
 #   figure out memory use between train set and minibatch set
-#   someday, maybe, allow stats tracking for both batch and epoch--need up to 4 arrays
 
 # DEFER
 #   implement layer normalization with or without minibatches. should be easy, but side effects 
@@ -79,22 +80,24 @@ Module GeneralNN:
 
 Includes the following functions to run directly:
 
-- train_nn() -- train neural networks for up to 9 hidden layers
+- train() -- train neural networks for up to 9 hidden layers
+- setup_params -- load hyper_parameters and create Hyper_parameters object
+- extract_data() -- extracts data for MNIST from matlab files
+- shuffle_data!() -- shuffles training examples (do this before minibatch training)
 - test_score() -- cost and accuracy given test data and saved theta
 - save_params() -- save all model parameters
 - load_params() -- load all model parameters
 - predictions_vector() -- predictions given x and saved theta
 - accuracy() -- calculates accuracy of predictions compared to actual labels
-- extract_data() -- extracts data for MNIST from matlab files
 - normalize_inputs() -- normalize via standardization (mean, sd) or minmax
 - normalize_replay!() --
 - nnpredict() --  calculate predictions from previously trained parameters and new data
 - display_mnist_digit() --  show a digit
-- wrong_preds() --  return the indices of wrong predictions against supplied correct labels
-- right_preds() --  return the indices of correct predictions against supplied correct labels
-- plot_output() --  plot learning, cost for training and test for previously saved training runs
+- wrong_preds() -- return the indices of wrong predictions against supplied correct labels
+- right_preds() -- return the indices of correct predictions against supplied correct labels
+- plot_output() -- plot learning, cost for training and test for previously saved training runs
 
-To use, include() the file.  Then enter using .GeneralNN to use the module.
+Enter using .GeneralNN to use the module.
 
 These data structures are used to hold parameters and data:
 
@@ -106,6 +109,8 @@ These data structures are used to hold parameters and data:
 - Hyper_parameters holds user input hyper_parameters and some derived parameters.
 - Batch_view holds views on model data to hold the subset of data used in minibatches. 
   (This is not exported as there is no way to use it outside of the backprop loop.)
+- Model_def holds the string names and functions that define the layers of the training
+    model.
 
 """
 module GeneralNN
@@ -120,7 +125,7 @@ export
     Model_data, 
     Batch_norm_params, 
     Hyper_parameters,
-    Model_runner
+    Model_def
 
 # functions you can use
 export 
@@ -141,8 +146,7 @@ export
     right_preds,
     plot_output,
     dodigit,
-    check_grads,
-    gen_argfilt
+    check_grads
 
 using MAT
 using JLD2

@@ -129,7 +129,7 @@ y holds the targets, assuming columns are examples.  y must have one row for
 
 Setting returnidx parameter to true returns the permuted index so that you can compare the shuffled training data to unshuffled source data.
 """
-function shuffle_data!(x,y;returnidx = false)
+function shuffle_data!(x, y; returnidx = false)
     randidx = Random.randperm(size(x,2))
     x[:] = x[:,randidx]
     y[:] = y[:,randidx]

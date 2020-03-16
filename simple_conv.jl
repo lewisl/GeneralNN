@@ -408,25 +408,39 @@ end
 
     Returns padded array as: arr[m,n,c,z] with z = 1 or number of input channels.
 """
-function dopad(arr,pad; padval=0) 
+function dopad(arr,pad::Int; padval=0) 
     padval = convert(eltype(arr), padval)
     m,n = size(arr)
-    c = ndims(arr) == 3 ? size(arr,3) : 1
-    return [(i in 1:pad) || (j in 1:pad) || (i in m+pad+1:m+2*pad) || (j in n+pad+1:n+2*pad) ? padval : 
-        arr[i-pad,j-pad, z] for i=1:m+2*pad, j=1:n+2*pad, z=1:c]
+    out = zeros(eltype(arr), m+2pad, n+2pad)
+    for (jdx,j) = enumerate(pad+1:n+pad)
+        for (idx,i) = enumerate(pad+1:m+pad)
+            out[i,j] = arr[idx,jdx]
+        end
+    end
+    return out
 end
 
-
-function dopad(arr, pad, dims; padval=0) 
-    dims != 4 && error("dims argument value must be 4 for array as 4 dimensional tensor")
+# for dimensionality 3 tensor
+function dopad(arr, pad::Int, cdim::Int; padval=0)
     padval = convert(eltype(arr), padval)
-    m,n = size(arr)
-    c = size(arr,3)
-    k = size(arr,4)
-    return [(i in 1:pad) || (j in 1:pad) || (i in m+pad+1:m+2*pad) || (j in n+pad+1:n+2*pad) ? padval : 
-        arr[i-pad,j-pad, z, cnt] for i=1:m+2*pad, j=1:n+2*pad, z=1:c, cnt=1:k]
+    m,n,c = size(arr)
+    out = zeros(eltype(arr), m+2pad, n+2pad, c)
+    for cdx = 1:c
+        out[:,:,cdx] = dopad(arr[:,:,cdx], pad, padval=padval)
+    end 
+    return out
 end
 
+# for dimensionality 4 tensor
+function dopad(arr, pad::Int, cdim, xdim; padval=0)
+    padval = convert(eltype(arr), padval)
+    m,n,c,x = size(arr)
+    out = zeros(eltype(arr), m+2pad, n+2pad, c, x)
+    for xdx = 1:x
+        out[:,:,:,xdx] = dopad(arr[:,:,:,xdx], pad, c, padval=padval)
+    end
+    return out
+end
 
 function flip(arr)
     m,n = (size(arr,1), size(arr,2))

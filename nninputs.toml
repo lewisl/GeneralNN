@@ -1,6 +1,6 @@
 epochs = 25
 # hidden = [["relu","80"],["relu","80"]]  # cannot mix types in a TOML array
-hidden = [["relu", "1024"], ["relu", "1024"]]  # []   #, ["relu", "200"] [["relu", "80"], ["relu", "80"]]
+hidden = [["relu", "64"], ["relu", "64"]]  # []   #, ["relu", "200"] [["relu", "80"], ["relu", "80"]]
 alpha =  0.12		  # 0.74
 reg =  "L2"
 maxnorm_lim = [5.5]
@@ -16,7 +16,7 @@ opt_output = false
 opt_batch_norm = false
 opt_params = [0.90, 0.999]
 classify = "softmax"
-dropout = true
+dropout = false
 droplim = [0.6]  # hidden, hidden...   nothing for output or input
 stats = ["train", "test", "learning", "epoch"]
 plot_now = true

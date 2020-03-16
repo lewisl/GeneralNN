@@ -3,6 +3,16 @@
 # write and document.  And easier for "users" to create alternative functions that can plug in:  
 # much more obviously.
 
+# sort of slow way to do padding: lots of allocations, still better than broadcasting
+function dopad(arr, pad::Int, cdim::Int; padval=0) 
+    dims != 4 && error("dims argument value must be 4 for array as 4 dimensional tensor")
+    padval = convert(eltype(arr), padval)
+    m,n = size(arr)
+    c = size(arr,3)
+    k = size(arr,4)
+    return [(i in 1:pad) || (j in 1:pad) || (i in m+pad+1:m+2*pad) || (j in n+pad+1:n+2*pad) ? padval : 
+        arr[i-pad,j-pad, z, cnt] for i=1:m+2*pad, j=1:n+2*pad, z=1:c, cnt=1:k]
+end
 
 """
     macro gen_argset_ff(func, tpl, fname)

@@ -1,7 +1,7 @@
 
 """
     function train(train_x, train_y, hp, testgrad=false)
-    function train(train_x, train_y, test_x, test_y, hp, test_gradp=false)
+    function train(train_x, train_y, test_x, test_y, hp, test_grad=false)
 
 Train sigmoid/softmax neural networks up to 11 layers.  Detects
 number of output labels from data. Detects number of features from data for input units.
@@ -18,7 +18,7 @@ Enables any size minibatch (last batch will be smaller if minibatch size doesn't
 into number of examples).  Plots learning and cost outcomes by epoch for training and test data--or by
 minibatch, but this is VERY slow.
 
-First, run setup_params! using either a TOML file as input or named arguments.  See ?setup_params!  
+First, run setup_params using either a TOML file as input or named arguments.  See ?setup_params!  
 Second, prepare you data files with examples as COLUMNS and input features as rows.
 With minibatch training, you should shuffle your training data.  You may use shuffle_data!(train_x, train_y).
 Now, you are ready to run function train.
@@ -39,28 +39,28 @@ Now, you are ready to run function train.
         test_targets      ::= matches original inputs
         test_preds        ::= using final values of trained parameters
 """
-function train(train_x, train_y, hp, testgrad=false)
+function train(train_x, train_y, hp; testgrad=false, ret="basic")
 # method with no test data--stub in zeros
     test_x = zeros(0,0); test_y = zeros(0,0)
 
-    ret = _train(train_x, train_y, test_x, test_y, hp, testgrad)
+    ret = _train(train_x, train_y, test_x, test_y, hp; testgrad=testgrad, ret=ret)
 
     return ret
 
 end 
 
 
-function train(train_x, train_y, test_x, test_y, hp, testgrad=false)
+function train(train_x, train_y, test_x, test_y, hp; testgrad=false, ret="basic")
 # method that includes test data
 
-    ret = _train(train_x, train_y, test_x, test_y, hp, testgrad)
+    ret = _train(train_x, train_y, test_x, test_y, hp; testgrad=testgrad, ret=ret)
 
     return ret
 
 end 
 
 
-function _train(train_x, train_y, test_x, test_y, hp, dotest, testgrad=false)
+function _train(train_x, train_y, test_x, test_y, hp; testgrad=false, ret="basic")
     train, mb, nnw, bn, model = pretrain(train_x, train_y, hp)
     test = prepredict(test_x, test_y, hp, nnw, notrain=false) #  notrain=false because test data used during training
     dotest = isempty(test.inputs) ? false : true
@@ -77,24 +77,39 @@ function _train(train_x, train_y, test_x, test_y, hp, dotest, testgrad=false)
     # save, print and plot training statistics
     output_stats(train, test, nnw, hp, bn, training_time, stats, model)
 
-    ret = Dict(
-                "train_inputs" => train_x, 
-                "train_targets"=> train_y, 
-                "train_preds" => train.a[nnw.output_layer], 
-                "Wgts" => nnw, 
-                "batchnorm_params" => bn, 
-                "hyper_params" => hp,
-                "stats" => stats,
-                "model" => model
-                )
-
-    if dotest
-        ret["test_inputs"] = test.inputs 
-        ret["test_targets"] = test.targets 
-        ret["test_preds"] = test.a[nnw.output_layer]
+    if ret == "basic"  
+            out = Dict(
+                    # "train_inputs" => train_x, 
+                    # "train_targets"=> train_y, 
+                    # "train_preds" => train.a[nnw.output_layer], 
+                    "wgts" => nnw, 
+                    "batchnorm_params" => bn, 
+                    "hyper_params" => hp,
+                    # "stats" => stats,
+                    "model" => model
+                    )
+    elseif ret == "all"
+            out = Dict(
+                    "train_inputs" => train_x, 
+                    "train_targets"=> train_y, 
+                    "train_preds" => train.a[nnw.output_layer], 
+                    "wgts" => nnw, 
+                    "batchnorm_params" => bn, 
+                    "hyper_params" => hp,
+                    "stats" => stats,
+                    "model" => model
+                    )        
+        if dotest
+            try
+                out["test_inputs"] = test.inputs 
+                out["test_targets"] = test.targets 
+                out["test_preds"] = test.a[nnw.output_layer]
+            catch
+            end
+        end
     end
 
-    return ret
+    return out
 
 end
 
