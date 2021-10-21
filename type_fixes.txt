@@ -1,0 +1,16 @@
+k::Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}}
+
+mutable struct what3
+       inputs::Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}}
+       name::String
+       end
+
+       mutable struct what4
+       inputs::Array{Array{Float64},1}
+       name::String
+       end
+
+       mutable struct what5
+       inputs::Array{Union{Array{Float64},SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64}},1}
+       name::String
+       end

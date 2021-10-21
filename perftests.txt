@@ -1,0 +1,17 @@
+These are results of some performance tests.
+
+1. Set type of elements of Batch_view to Array{AbstractArray{Float64,2},1}
+
+	Training time: 31.0 seconds   No Benefit
+
+	vs: Set type of elements to Array Any
+
+	Training time: 30.2 seconds
+
+2. Update container arrays in update_batch_views!
+
+	Training time: 30.9 No benefit
+
+3. Split minibatch by slicing instead of view
+	
+	Training time: 71 seconds MUCH WORSE

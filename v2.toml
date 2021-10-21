@@ -1,0 +1,130 @@
+
+
+
+##################################################################################################
+# Defining the model
+##################################################################################################
+
+
+# hidden layers in order  or explicitly number them:  which?
+# [layer]
+#     type            = "conv"
+#     image           = { x = 24, y = 24 }    # don't think we need this since prior layer conv settings define it
+#     filter          = "something"
+#     stride          = "something"
+#     pad             = "something"
+#     activation      = "relu"
+
+# [layer]
+#     activation      = "tanh"   # without specifying type, a fully connected linear layer is assumed by default
+#     units           = 256
+#     dropout         = false
+#     droplim         = 0.8           # or for multiple layers [1.0, 0.8, 1.0], if for all except output
+
+# [layer]
+#     activation      = "relu"
+#     units           = 128
+
+# [layer]
+#     activation      = "tanh"
+#     units           = 64
+
+# [layer]                           # do we need to make this explicit or leave it implicit???
+#     type            = "linear"    # or "affine"  USE THIS TO FORCE FULLY CONNECTED OR DENSE AFTER CONV,RNN
+
+[layer.1]
+    type            = "conv"
+    image           = { x = 24, y = 24, z = 3 }    # don't think we need this since prior layer conv settings define it
+    filter          = "something"
+    stride          = "something"
+    pad             = "something"
+    activation      = "relu"
+    trainable       = true
+
+[layer.2]
+    activation      = "tanh"   # without specifying type, a fully connected linear layer is assumed by default
+    units           = 256
+    dropout         = false
+    droplim         = 0.8           # or for multiple layers [1.0, 0.8, 1.0], if for all except output
+    trainable       = true          # this is the default.  OK to leave this out.  use primarily for transfer
+                                    # learning with trainable = false
+[layer.3]
+    activation      = "relu"
+    units           = 128
+
+[layer.4]
+    activation      = "tanh"
+    units           = 64
+
+[layer.5]                           # do we need to make this explicit or leave it implicit???
+    type            = "linear"
+
+[output] # should this be an element in the layer array?--we can always stick it there
+# required
+    classify        = "softmax"
+    target          = "something" # we need a variable
+
+
+##################################################################################################
+# Defining the data
+##################################################################################################
+
+[data.train] # should this be an element in the layer array?--we can always stick it there  NO: use layer to mean hidden layer
+# required
+    norm_mode       = "none"   # maybe put this in training?
+    input           = "something" # we need a variable
+    image           = { x = 28, y = 28, z = 3 }  # need to know if it is stacked or flat
+    target          = "something"
+    # should we put the input variables in here?
+
+[data.test]
+    input           = "something"
+    target          = "something"
+
+##################################################################################################
+# Controlling the training process
+##################################################################################################
+
+[training]                  # required
+    epochs              = 24  # required
+    alpha               = 0.74  # learning rate or nu in some notation; required
+    learn_decay         = [0.5, 4.0] # or {factor = 0.5, steps = 4.0}
+    quiet               = true
+    initializer         = "xavier"
+    scale_init          = 2.0
+    bias_initializer    = 0.3
+    input_norm          = "none"   # put in training or input layer of model
+
+
+[minibatch]                             # global--applies to all layers; if excluded no minibatches
+    do_batch        = true
+    do_batch_norm   = true  # this can be by layer, but minibatch applies to the entire training run
+    mb_size_in      = 50
+    norm_after      = "linear"    # or "activation"--not implemented
+
+
+[optimization]                  # optional: if absent, no optimzation
+    opt             = "adam"
+    opt_params      = [0.9, 0.999]
+
+[regularization]                # global--applies to all hidden layers--this could be done per layer--not implemented
+# optional--if absent, no regularization
+    reg             = "Maxnorm"  # or "L2", "L1"
+    maxnorm_lim     = 4.0
+    lambda          = 0.000191   # only applies to L2 or L1--ignored otherwise
+
+[plotting]          # optional: if absent, no plotting or plot data
+    stats           = ["Train", "Learning", "Test", "Cost", "epoch"]    # or "batch"
+    plot_now        = true
+
+[results]
+    # all = true  # this is the default--and what you get if you don't include the results table
+    train_inputs = true
+    train_targets = true
+    train_preds = true
+    test_inputs = true
+    test_targets = true
+    test_preds = true
+    hyper_params = true
+    wgts = true
+    batchnorm_params = true

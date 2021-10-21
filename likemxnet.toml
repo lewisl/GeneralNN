@@ -1,0 +1,24 @@
+
+epochs =  20
+n_hid = [256, 128, 64]
+alpha =   0.5
+reg =  "L2"
+maxnorm_lim = [2.0]  # not used unless reg is maxnorm
+lambda =  0.0005
+learn_decay = [0.5,2.0]
+mb_size_in =   80
+norm_mode =   "minmax"
+dobatch = true
+do_batch_norm =  true
+opt =   "adam"
+opt_params = [0.9, 0.999]
+units =  "relu"
+classify = "softmax"
+dropout = false
+droplim = [1.0,0.8,1.0]
+quiet = true
+initializer = "xavier"
+scale_init = 2.2
+bias_initializer = 0.2
+plots = ["None"]
+plot_now = false

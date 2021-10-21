@@ -16,7 +16,7 @@ using Printf
 using GeneralNN
 
 
-function runjob(argfile="nninputs.toml", matfname="digits5000by400.mat"; testgrad=false)
+function runjob(; argfile="nninputs.toml", matfname="digits5000by400.mat", testgrad=false)
 
     println("........ Loading training and test data ........")
     train_x, train_y, test_x, test_y = extract_data(matfname);  #
@@ -35,10 +35,12 @@ function runjob(argfile="nninputs.toml", matfname="digits5000by400.mat"; testgra
     println("........ Training the neural network ........")
     if size(test_x) == (0,0)
         dotest = false
-        results = train(train_x, train_y, hp, testgrad)
+        println("........ No test data provided. ........")
+        results = train(train_x, train_y, hp, testgrad=testgrad, ret="all")
     else
         dotest = true
-        results = train(train_x, train_y, test_x, test_y, hp, testgrad)
+        println("........ Test data provided. ........")
+        results = train(train_x, train_y, test_x, test_y, hp, testgrad=testgrad, ret="all")
     end
 
     if testgrad
@@ -46,8 +48,7 @@ function runjob(argfile="nninputs.toml", matfname="digits5000by400.mat"; testgra
         return
     end
 
-     # train_inputs, train_targets, train_preds, test_inputs, test_targets, test_preds, wgts, batchnorm_params, 
-     # hyper_params
+    @show keys(results); println()
 
     dotest && (predmax = vec(map(x -> x[1], argmax(results["test_preds"],dims=1))));
 

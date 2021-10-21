@@ -14,8 +14,12 @@
 # SVM
 
 #TODO
-# allow choice in what to return from training: default should exclude data, full should be everything;
+# look at Julia Computing paper on Zygote.  Look at article on integrating zygote and xgboost
+# allow choice in what to return from training: basic should exclude data (default), full should be everything;
     # none is none, maybe allow individual choices
+# pooling: do we need asymmetrical pooling? pooling doesn't work with padding or same
+# should stride allow asymmetrical strides?  probably...
+# pooling doesn't work with example dimension.  does it need to?
 # should we split cached values from basic params?  should we combine bn parameters with weights?
 # save a model_def more easily
 # reuse a model def and run it with different data

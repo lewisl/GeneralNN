@@ -1,6 +1,6 @@
 epochs = 25
 # hidden = [["relu","80"],["relu","80"]]  # cannot mix types in a TOML array
-hidden = [["relu", "64"], ["relu", "64"]]  # []   #, ["relu", "200"] [["relu", "80"], ["relu", "80"]]
+hidden = [["relu", 256], ["relu", 256], ["relu", 256]]  # []   #, ["relu", "200"] [["relu", "80"], ["relu", "80"]]
 alpha =  0.12		  # 0.74
 reg =  "L2"
 maxnorm_lim = [5.5]

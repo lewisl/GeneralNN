@@ -1,0 +1,80 @@
+#  example of function composition with multiple dispatch
+
+
+julia> mutable struct Batch_norm_params               # we will use bn as the struct variable
+           gam::Array{Array{Float64,1},1}
+           bet::Array{Array{Float64,1},1}
+           delta_gam::Array{Array{Float64,1},1}
+           delta_bet::Array{Array{Float64,1},1}
+           delta_z_norm::Array{Array{Float64,2},1}    # same size as z
+           delta_z::Array{Array{Float64,2},1}         # same size as z
+           mu::Array{Array{Float64,1},1}              # same size as bias = no. of layer units
+           stddev::Array{Array{Float64,1},1}          #    ditto
+           mu_run::Array{Array{Float64,1},1}
+           std_run::Array{Array{Float64,1},1}
+           dobatchnorm::Union{Bool, Int}
+
+           Batch_norm_params() = new(           # empty constructor
+               Array{Array{Float64,1},1}(0),    # gam::Array{Array{Float64,1}}
+               Array{Array{Float64,1},1}(0),    # bet::Array{Array{Float64,1}}
+               Array{Array{Float64,2},1}(0),    # delta_gam
+               Array{Array{Float64,2},1}(0),    # delta_bet
+               Array{Array{Float64,2},1}(0),    # delta_z_norm
+               Array{Array{Float64,2},1}(0),    # delta_z
+               Array{Array{Float64,1},1}(0),    # mu
+               Array{Array{Float64,1},1}(0),    # stddev
+               Array{Array{Float64,1},1}(0),    # mu_run
+               Array{Array{Float64,1},1}(0),    # std_run
+               true
+           )
+       end
+
+julia> b1 = Batch_norm_params()
+Batch_norm_params(Array{Float64,1}[], Array{Float64,1}[], Array{Float64,1}[], Array{Float64,1}[], Array{Float64,2}[], Array{Float64,2}[], Array{Float64,2}[], Array{Float64,1}[], Array{Float64,1}[], Array{Float64,1}[], Array{Float64,1}[], true)
+
+julia> b1.dobatchnorm = 0
+0
+
+julia> b1
+Batch_norm_params(Array{Float64,1}[], Array{Float64,1}[], Array{Float64,1}[], Array{Float64,1}[], Array{Float64,2}[], Array{Float64,2}[], Array{Float64,2}[], Array{Float64,1}[], Array{Float64,1}[], Array{Float64,1}[], Array{Float64,1}[], 0)
+
+julia> b2 = Batch_norm_params()
+Batch_norm_params(Array{Float64,1}[], Array{Float64,1}[], Array{Float64,1}[], Array{Float64,1}[], Array{Float64,2}[], Array{Float64,2}[], Array{Float64,2}[], Array{Float64,1}[], Array{Float64,1}[], Array{Float64,1}[], Array{Float64,1}[], true)
+
+julia> typeof(b1)
+Batch_norm_params
+
+julia> typeof(b2)
+Batch_norm_params
+
+julia> typeof(b1.dobatchnorm)
+Int64
+
+julia> typeof(b2.dobatchnorm)
+Bool
+
+julia> function _bnorm(bn::Batch_norm_params,dobatchnorm::Bool)
+       println("we're going to do batch normalization")
+       end
+_bnorm (generic function with 1 method)
+
+julia> function _bnorm(bn::Batch_norm_params, dobatchnorm::Int)
+       println("nope, not doing batch normalization")
+       end
+_bnorm (generic function with 2 methods)
+
+julia> function bnorm(bn)
+       _bnorm(bn,bn.dobatchnorm)
+       end
+bnorm (generic function with 1 method)
+
+julia> bnorm(b1)
+nope, not doing batch normalization
+
+julia> bnorm(b2)
+we're going to do batch normalization
+
+julia> @time bnorm(b2)
+we're going to do batch normalization
+  0.000074 seconds (88 allocations: 6.201 KiB)
+

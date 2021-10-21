@@ -287,12 +287,42 @@ function basic(matfname, norm_mode="minmax"; unroll=false, pad=0)
 
 end
 
+function simpletest()
+    # use an input that has 2 obvious edges; create target using an 2x2 edge kernel; can we learn the kernel?
+
+    # create x
+    x = ones(6,8)
+    x[:,3:6] .= 0.0
+
+    # kernel
+    k = [1 -1]
+
+    # target with perfect edge recognition
+    y = convolve_multi(x,k)
+    
+    # initialize kernel
+    w = [-0.12 0.3]
+
+    # set data dims to h,w,c,n
+    x = reshape(x,6,8,1,1)
+    y = reshape(y,6,7,1,1)
+
+    for i = 1:10
+        
+
+    end
+
+
+
+
+
+end
 
 """
 Convolve a one or multi-channel image with a filter with one or more output channels.
 This is a 20x speedup over array broadcasting.
 """
-function convolve_multi(img, fil; same=false, stri=1, mode="normal")   # took out this arg: , pad=0
+function convolve_multi(img, fil; stri=1, mode="normal")   # took out this arg: , pad=0
     # TODO try another version use elementwise multiplication on views and sum the result
     # this way is faster! 
     if ndims(img) == 3
@@ -308,7 +338,7 @@ function convolve_multi(img, fil; same=false, stri=1, mode="normal")   # took ou
         filx, fily = size(fil)
         filc = filp = 1
         fil = reshape(fil,filx, fily, filc, filp)
-    elseif ndims(fil) == 3  # one filter
+    elseif ndims(fil) == 3  # one filter to match multiple input channels
         filx, fily, filc = size(fil)
         filp = 1
         fil = reshape(fil,filx, fily, filc, filp)       
@@ -321,14 +351,6 @@ function convolve_multi(img, fil; same=false, stri=1, mode="normal")   # took ou
     if !(filc == imgc)                    # & (mode == "normal")
         error("Number of channels in image and filter do not match.")
     end
-
-    # if same 
-    #     pad = ceil(Int, (filx - 1) / 2)
-    # end
-
-    # if pad > 0
-    #     img = dopad(img, pad)
-    # end
 
     # dimensions of the single plane convolution result
     x_out = floor(Int, (imgx - filx) / stri) + 1
@@ -394,24 +416,18 @@ function new_img_size(imgx, imgy, filx, fily; pad = 0, stri = 1, same=false)
 end
 
 """
-    dopad(arr, pad; padval=0)
-    a complicated one-liner:  yuck--but, it's 15 times faster that vector catenating!
+    dopad(arr, pad; padval=0.0)
 
-    arr is a 2d image, optionally with channels.
-    pad an integer for the number of border elements to pad.
+    arr is a 2d image, optionally with channels and examples.
+    pad an integer for the number of border elements to pad symmetrically.
     padval is the value to pad with.  Default 0 is nearly always the one you'll use.
 
-    Returns padded array as: arr[m,n,c] with c = 1 or number of input channels.
-
-    Alternative method for imgstack: dopad(arr, pad, 4; padval=0)
-    You must supply the dims argument as 4 to signal you have a tensor imgstack: arr[x,y,c,z].
-
-    Returns padded array as: arr[m,n,c,z] with z = 1 or number of input channels.
+    Returns padded array with same number of dimensions as input.
 """
-function dopad(arr,pad::Int; padval=0) 
+function dopad(arr::Array{T,2} where T<:Number, pad::Int; padval=0.0) 
     padval = convert(eltype(arr), padval)
     m,n = size(arr)
-    out = zeros(eltype(arr), m+2pad, n+2pad)
+    out = fill(padval, m+2pad, n+2pad)
     for (jdx,j) = enumerate(pad+1:n+pad)
         for (idx,i) = enumerate(pad+1:m+pad)
             out[i,j] = arr[idx,jdx]
@@ -420,24 +436,34 @@ function dopad(arr,pad::Int; padval=0)
     return out
 end
 
-# for dimensionality 3 tensor
-function dopad(arr, pad::Int, cdim::Int; padval=0)
+# for dimensionality 3 tensor of type T
+function dopad(arr::Array{T,3} where T<:Number, pad::Int; padval=0.0)
     padval = convert(eltype(arr), padval)
     m,n,c = size(arr)
-    out = zeros(eltype(arr), m+2pad, n+2pad, c)
+    out = fill(padval, m+2pad, n+2pad, c)
     for cdx = 1:c
-        out[:,:,cdx] = dopad(arr[:,:,cdx], pad, padval=padval)
+        for (jdx,j) = enumerate(pad+1:n+pad)
+            for (idx,i) = enumerate(pad+1:m+pad)
+                out[i, j, cdx] = arr[idx, jdx, cdx]
+            end
+        end
     end 
     return out
 end
 
-# for dimensionality 4 tensor
-function dopad(arr, pad::Int, cdim, xdim; padval=0)
+# for dimensionality 4 tensor of type T
+function dopad(arr::Array{T,4} where T<:Number, pad::Int; padval=0.0)
     padval = convert(eltype(arr), padval)
     m,n,c,x = size(arr)
-    out = zeros(eltype(arr), m+2pad, n+2pad, c, x)
+    out = fill(padval, m+2pad, n+2pad, c, x)
     for xdx = 1:x
-        out[:,:,:,xdx] = dopad(arr[:,:,:,xdx], pad, c, padval=padval)
+        for cdx = 1:c
+            for (jdx,j) = enumerate(pad+1:n+pad)
+                for (idx,i) = enumerate(pad+1:m+pad)
+                    out[i, j, cdx, xdx] = arr[idx, jdx, cdx, xdx]
+                end
+            end
+        end   
     end
     return out
 end
@@ -464,7 +490,7 @@ function flip(arr)
 end
 
 
-function pooling(img; pooldims=[2,2], same=false, stri=2, pad=0, mode="max")
+function pooling(img; pooldims=[2,2], stri=1, mode="max")
     if mode=="max"
         pfunc = maximum  # pfunc => pool function
     elseif mode=="avg"
@@ -478,17 +504,13 @@ function pooling(img; pooldims=[2,2], same=false, stri=2, pad=0, mode="max")
 
     poolx,pooly = pooldims
 
-    # if same 
-    #     pad = ceil(Int, (poolx - 1) / 2)
-    # end
-
-    # if pad > 0
-    #     img = dopad(img, pad)
-    # end
-
     # dimensions of the single plane pooling result
-    x_out = floor(Int, (img_x + 2 * pad - poolx ) / stri) + 1
-    y_out = floor(Int, (img_y + 2 * pad - pooly ) / stri) + 1
+    # pad not working
+    # x_out = floor(Int, (img_x + 2 * pad - poolx ) / stri) + 1
+    # y_out = floor(Int, (img_y + 2 * pad - pooly ) / stri) + 1
+
+    x_out = floor(Int, (img_x - poolx ) / stri) + 1
+    y_out = floor(Int, (img_y - pooly ) / stri) + 1
 
     ret = zeros(x_out, y_out, c)
     loc = Array{CartesianIndex{2},3}(undef,x_out, y_out,c)
@@ -543,13 +565,13 @@ function unpool(dx, dloc; pooldims = (2,2), mode="max") # works per image not ac
 end
 
 
-function avgpooling(img; pooldims=[2,2], same=false, stri=2, pad=0)
+function avgpooling(img; pooldims=[2,2], same=false, stri=1)
     pooling(img; pooldims=pooldims, same=same, stri=stri, pad=pad, mode="avg")
 end
 
 
-function maxpooling(img; pooldims=[2,2], same=false, stri=2, pad=0)
-    pooling(img; pooldims=pooldims, same=same, stri=stri, pad=pad, mode="max")
+function maxpooling(img; pooldims=[2,2], same=false, stri=1)
+    pooling(img; pooldims=pooldims, same=same, stri=stri, mode="max")
 end
 
 

@@ -1,0 +1,20 @@
+{
+    "matfname": "digits60000by784.mat",
+    "epochs":  35,
+    "n_hid": [600],
+    "alpha":   0.74,
+    "reg":  "L2",
+    "lambda":  0.00026,
+    "learn_decay": [0.52,3.0],
+    "do_batch_norm":  false,
+    "mb_size_in":   50, 
+    "norm_mode":   "standard",
+    "opt":   "adam",
+    "opt_params": [0.90, 0.999],
+    "units":  "relu",
+    "classify": "softmax",
+    "dropout": true,
+    "droplim": [0.45,0.45,1.0],
+    "plots": ["Training", "Learning", "Test"],
+    "plot_now": true
+}

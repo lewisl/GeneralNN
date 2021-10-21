@@ -1,0 +1,8 @@
+{
+    "gitlens.statusBar.reduceFlicker": true,
+    "gitlens.blame.highlight.locations": [
+        "gutter",
+        "overview"
+    ],
+    "gitlens.blame.separateLines": false
+}

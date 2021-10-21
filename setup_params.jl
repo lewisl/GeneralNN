@@ -215,6 +215,7 @@ function args_verify(argsdict)
             msg = get(tst, :msg, warn ? "Input argument not ideal: $k: $v" : "Input argument not valid: $k: $v" )
             !result && (warn ? @warn(msg) : error(msg))
         end
+
     end
 end
 
@@ -309,7 +310,11 @@ end
 # functions used to verify input values in result = all(test.f(v, tst.check))
     eqtype(item, check) = typeof(item) == check
     ininterval(item, check) = check[1] .<= item .<= check[2] 
-    ininterval2(item, check) = check[1] .<= map(x -> parse(Int, x[2]), item) .<= check[2] # 2nd element of tuple item
+
+    function ininterval2(item, check)
+        map(x -> check[1] < x[2] < check[2], item)
+    end
+
     oneof(item::String, check) = lowercase(item) in check 
     oneof(item::Real, check) = item in check
     lengthle(item, check) = length(item) <= check 
@@ -381,7 +386,7 @@ const valid_layers = Dict(
     #     example:  :alpha =>  [(f=eqtype, check=Float64), (f=ininterval, check=(.000001, 9.0), warn=true)]
 const valid_toml = Dict(
           :epochs => [(f=eqtype, check=Int), (f=ininterval, check=(1,9999))],
-          :hidden =>  [ (f=lengthle, check=11), (f=eqtype, check=Array{Array, 1}),
+          :hidden =>  [ (f=lengthle, check=11), (f=eqtype, check=Vector{Vector{Union{Int64, String}}}),
                        (f=ininterval2, check=(1,8192))],                     
           :alpha =>  [(f=eqtype, check=Float64), (f=ininterval, check=(.000001, 9.0), warn=true)],
           :reg =>  [(f=oneof, check=["l2", "l1", "maxnorm", "", "none"])],
@@ -423,7 +428,7 @@ function build_hyper_parameters(argsdict)
 
     for (k,v) in argsdict
         if k == "hidden"  # special case because of TOML limitation:  change [["relu", "80"]] to [("relu", 80)]
-            setproperty!(hp, Symbol(k), map( x -> (x[1], parse(Int, x[2])), v) ) 
+            setproperty!(hp, Symbol(k), map(x -> Tuple(x), v)) 
         else
             setproperty!(hp, Symbol(k), v)
         end
