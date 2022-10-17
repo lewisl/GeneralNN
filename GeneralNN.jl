@@ -166,10 +166,10 @@ using SparseArrays
 using TOML  # we might need private TOML for Julia < 1.3
 using Debugger
 
-# using Plots   # Plots broken by Julia 1.3
-# gr()
+using Plots   # Plots broken by Julia 1.3
+gr()
 
-using PyPlot
+
 
 import Measures: mm # for some plot dimensioning
 

@@ -141,6 +141,17 @@ function relu!(a::AbstractArray{Float64}, z::AbstractArray{Float64})
     @fastmath a[:] = max.(z, 0.0)
 end
 
+function elu!(a::AbstractArray{Float64}, z::AbstractArray{Float64}, alpha=1.0)
+    @fastmath @inbounds for i in eachindex(a) 
+            a[i] =  if z[i] < 0.0
+                        alpha * (exp(z[i]) - 1.0)
+                    else
+                        z[i]
+                    end
+        
+    end
+end
+
 
 #############################################################################
 #  Classifiers used in feedfwd! loop
@@ -319,6 +330,19 @@ function relu_gradient!(grad::T_array_subarray, z::T_array_subarray)
     end
 end
 
+function elu_gradient!(dat::Union{Model_data, Batch_view}, nnw::Wgts, hp::Hyper_parameters, 
+                       bn::Batch_norm_params, lr::Int, alpha=1.0)
+    elu_gradient!(dat.grad[lr], dat.z[lr], alpha)
+end
+
+function elu_gradient!(grad::T_array_subarray, z::T_array_subarray, alpha=1.0)
+    @simd for i = eachindex(z)
+        @inbounds if z[i] > 0.0
+            1.0
+        else
+            alpha * exp(z[i])
+        end
+end  
 
 ###########################################################################
 #  layer functions in update_parameters!
